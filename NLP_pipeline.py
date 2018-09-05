@@ -4,9 +4,10 @@
 
 import spacy
 import pandas as pd
+import sys
+import re
 from os import listdir, makedirs
 from os.path import isfile, join
-import re
 from iwnlp.iwnlp_wrapper import IWNLPWrapper
 
 
@@ -26,9 +27,9 @@ ID2 = 'doc_subid'
 TITLE = 'title'
 TAGS = 'tags'
 TIME = 'date_time'
-#AUTHOR
-#SUBTITLE
-#CATEGORY
+# AUTHOR
+# SUBTITLE
+# CATEGORY
 META = [DATASET, SUBSET, ID, ID2, TITLE, TAGS, TIME]
 TEXT = 'text'
 HASH = 'hash'
@@ -56,9 +57,13 @@ KNOWN = 'known'
 
 
 ### --- load spacy and iwnlp
-
-nlp = spacy.load('de')  # <-- load with dependency parser (slower)
-# nlp = spacy.load('de', disable=['parser'])
+if len(sys.argv) > 1 and sys.argv[1] == '--hpc':
+    print('on hpc')
+    de = '/home/funkea/.local/lib/python3.4/site-packages/de_core_news_sm/de_core_news_sm-2.0.0'
+else:
+    de = 'de'
+nlp = spacy.load(de)  # <-- load with dependency parser (slower)
+# nlp = spacy.load(de, disable=['parser'])
 
 lemmatizer = IWNLPWrapper(lemmatizer_path='../data/IWNLP.Lemmatizer_20170501.json')
 

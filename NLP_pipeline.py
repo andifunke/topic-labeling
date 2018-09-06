@@ -7,7 +7,7 @@ import pandas as pd
 import sys
 import re
 from os import listdir, makedirs
-from os.path import isfile, join
+from os.path import isfile, join, exists
 from iwnlp.iwnlp_wrapper import IWNLPWrapper
 
 
@@ -18,6 +18,8 @@ ETL_BASE = "preprocessed"
 ETL_PATH = join(DATA_BASE, ETL_BASE)
 NLP_BASE = "preprocessed/nlp"
 NLP_PATH = join(DATA_BASE, NLP_BASE)
+SPACY_PATH = join(NLP_PATH, 'spacy_model')
+VOCAB_PATH = join(SPACY_PATH, 'vocab')
 
 # standard meta data fields
 DATASET = 'dataset'
@@ -56,21 +58,29 @@ ENT_IOB = 'ent_iob'
 KNOWN = 'known'
 
 
-### --- load spacy and iwnlp
+### --- load spacy and iwnlp ---
+
 if len(sys.argv) > 1 and sys.argv[1] == '--hpc':
     print('on hpc')
     de = '/home/funkea/.local/lib/python3.4/site-packages/de_core_news_sm/de_core_news_sm-2.0.0'
 else:
     de = 'de'
+
+print("loading spacy")
 nlp = spacy.load(de)  # <-- load with dependency parser (slower)
 # nlp = spacy.load(de, disable=['parser'])
 
+if exists(VOCAB_PATH):
+    print("reading vocab from", VOCAB_PATH)
+    nlp.vocab.from_disk(VOCAB_PATH)
+
+print("loading IWNLPWrapper")
 lemmatizer = IWNLPWrapper(lemmatizer_path='../data/IWNLP.Lemmatizer_20170501.json')
 
 
 ### --- function definitions ---
 
-def process_phrases(doc_):
+def process_phrases(doc):
     """ 
         given a doc process and return the contained noun phrases.
         This function is based on spacy's noun chunk detection. 
@@ -79,7 +89,7 @@ def process_phrases(doc_):
 
     # clean the noun chuncs from spacy first
     noun_chunks = []
-    for chunk in doc_.noun_chunks:
+    for chunk in doc.noun_chunks:
         start = False
         noun_chunk = []
         for token in chunk:
@@ -112,7 +122,7 @@ def process_phrases(doc_):
         phrase_lookup = pd.Series()
         phrase_lookup['lemmatized'] = phrase
         phrase_lookup['original'] = text
-        #phrase_lookup['Spacy Tokens'] = tuple(chunk)
+        # phrase_lookup['Spacy Tokens'] = tuple(chunk)
         phrase_list_lookup.append(phrase_lookup)
         
         # add to document dataframe
@@ -172,10 +182,10 @@ def lemmatize(token: str, pos: str) -> (str, bool):
     return None, False
 
 
-def essence_from_doc(doc_, key):
+def essence_from_doc(doc, key):
     """
     Creates a pandas DataFrame from a given spacy.doc that contains only nouns and noun phrases.
-    :param doc_: spacy.doc 
+    :param doc: spacy.doc
     :return:     pandas.DataFrame
     """
     tags = [
@@ -183,40 +193,42 @@ def essence_from_doc(doc_, key):
          token.text, token.lemma_, token.pos_, token.tag_, token.is_stop,
          token.i, token.idx,
          token.ent_type_, token.ent_iob_, # token.ent_id_,
-         ) for token in doc_ ]
-    df_ = pd.DataFrame(tags)
-    df_ = df_.rename(columns={k:v for k,v in enumerate([
+         ) for token in doc]
+    df = pd.DataFrame(tags)
+    df = df.rename(columns={k:v for k,v in enumerate([
           TEXT, LEMMA, POS, TAG, STOP, INDEX, START, ENT_TYPE, ENT_IOB,
-          #"Dep", "Shape", "alpha", "Ent_id"  # currently not used :(
+          # "Dep", "Shape", "alpha", "Ent_id"  # currently not used :(
     ])})
     
     # add IWNLP lemmatization
-    df_[IWNLP], df_[KNOWN] = zip(*df_.apply(lambda row: lemmatize(row[TEXT], row[POS]), axis=1))
+    df[IWNLP], df[KNOWN] = zip(*df.apply(lambda row: lemmatize(row[TEXT], row[POS]), axis=1))
     
     # add phrases
-    df_phrases, phrase_lookup = process_phrases(doc_)
-    df_ = df_.append(df_phrases).sort_values(START)
-    df_ = df_[df_.POS.isin([NOUN, PROPN, PHRASE])].reset_index(drop=True)
+    df_phrases, phrase_lookup = process_phrases(doc)
+    df = df.append(df_phrases).sort_values(START)
+    df = df[df.POS.isin([NOUN, PROPN, PHRASE])].reset_index(drop=True)
     
     # replace Text with lemmatization, if lemmatization exists
-    mask = ~df_[IWNLP].isnull()
-    df_.loc[mask, TEXT] = df_.loc[mask, IWNLP]
+    mask = ~df[IWNLP].isnull()
+    df.loc[mask, TEXT] = df.loc[mask, IWNLP]
     
     # add hash-key
-    df_[HASH] = key
+    df[HASH] = key
     
-    return df_[[HASH, INDEX, TEXT, POS]], phrase_lookup
+    return df[[HASH, INDEX, TEXT, POS]], phrase_lookup
 
 
 def process_docs(series, size=None):
     """ main function for sending the dataframes from the ETL pipeline to the NLP pipeline """
     length = len(series)
-    ten_percent = length//10
-    j = 0
+    steps = 100
+    step_len = 100//steps
+    percent = length//steps
+    done = 0
     for i, kv in enumerate(series[:size].iteritems()):
-        if i % ten_percent == 0:
-            print("{:d}%: {:d} documents processed".format(j, i))
-            j += 10
+        if i % percent == 0:
+            print("{:d}%: {:d} documents processed".format(done, i))
+            done += step_len
 
         k, v = kv
         # build spacy doc
@@ -229,44 +241,44 @@ def store(corpus, df):
     """returns the file path where the dataframe was stores"""
     makedirs(NLP_PATH, exist_ok=True)
     fname = join(NLP_PATH, corpus + '.pickle')
-    print('saving to', fname)
+    print('saving', corpus, 'to', fname)
     df.to_pickle(fname)
     return fname
 
 
 def read(f):
     """ reads a dataframe from pickle format """
-    print("read:", f)
+    print("reading corpus from", f)
     return pd.read_pickle(f)
 
 
 def read_process_load(file_path, corpus):
     df = read(file_path)
-    print("process:", corpus)
+    print("processing", corpus)
     docs, phrase_lookups = zip(*[tple for tple in process_docs(df[TEXT], size=None)])
     docs = pd.concat(docs).reset_index(drop=True)
     phrase_lookups = pd.concat(phrase_lookups).reset_index(drop=True)
 
     store(corpus + '_nlp', docs)
     store(corpus + '_phrase_lookups', phrase_lookups)
-    print("write model to disk:", NLP_PATH)
+    print("writing spacy model to disk:", NLP_PATH)
     # stored with each corpus, in case anythings goes wrong
-    nlp.to_disk(join(NLP_PATH, 'spacy_model'))
-    #nlp.vocab.to_disk(join(NLP_PATH, 'vocab'))
+    nlp.to_disk(SPACY_PATH)
+    # nlp.vocab.to_disk(VOCAB_PATH)
+
+
+### --- run ---
+
+if __name__ == "__main__":
+
+    LOCAL_PATH = ETL_BASE
+    FULL_PATH = join(DATA_BASE, LOCAL_PATH)
+
+    files = sorted([f for f in listdir(FULL_PATH) if isfile(join(FULL_PATH, f))])
+
+    for name in files:
+        corpus = re.split(r'\.|_', name)[0]
+        fname = join(FULL_PATH, name)
+        read_process_load(fname, corpus)
+
     print("done")
-
-
-# --- definitions and reading for certain corpus
-
-LOCAL_PATH = ETL_BASE
-FULL_PATH = join(DATA_BASE, LOCAL_PATH)
-
-files = sorted([f for f in listdir(FULL_PATH) if isfile(join(FULL_PATH, f))])
-
-for name in files:
-    corpus = re.split(r'\.|_', name)[0]
-    if corpus != 'OnlineParticipation':
-        continue
-    fname = join(FULL_PATH, name)
-    read_process_load(fname, corpus)
-

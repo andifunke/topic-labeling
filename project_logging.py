@@ -1,27 +1,31 @@
 # -*- coding: utf-8 -*-
 
 import logging
-from constants import *
-
+from sys import stdout
+from constants import HPC, LOG, LOG_PATH
 
 # create logger
-logger = logging.getLogger('nlp_pipeline')
+logger = logging.getLogger('NLP_pipe')
 logger.setLevel(logging.DEBUG)
-# create file handler which logs even debug messages
-fh = logging.FileHandler('../nlp_pipe.log')
-fh.setLevel(logging.DEBUG)
-# create formatter and add it to the handlers
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-fh.setFormatter(formatter)
-# add the handlers to the logger
-logger.addHandler(fh)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                              datefmt='%Y-%m-%d %H:%M:%S')
+
+if LOG or HPC:
+    fh = logging.FileHandler(LOG_PATH)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
+if not HPC:
+    # stdout logger
+    ch = logging.StreamHandler(stdout)
+    ch.setLevel(logging.DEBUG)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
 
 
 def log(s: str, error: bool=False):
-    if HPC or LOG:
-        if not error:
-            logger.info(s)
-        else:
-            logger.error(s)
+    if error:
+        logger.error(s)
     else:
-        print(s)
+        logger.info(s)

@@ -3,6 +3,7 @@
 from os.path import join
 import pandas as pd
 from tabulate import tabulate
+from argument_parser import get_options
 
 ### --- default constants definitions ---
 
@@ -32,7 +33,7 @@ TOKEN = 'token'
 
 ### --- additional constants
 
-# tags
+# Universal Tagset
 ADJ = 'ADJ'
 ADV = 'ADV'
 INTJ = 'INTJ'
@@ -71,12 +72,14 @@ KNOWN = 'known'
 SENT_IDX = 'sent_idx'
 SENT_START = 'sent_start'
 
-### --- possible arguments ---
+### --- handle arguments ---
 
-HPC = False
-LOG = False
-file_prefix = ""
-DE = 'de'
+OPTIONS = get_options()
+HPC = OPTIONS['hpc']
+LOG = OPTIONS['log']
+LOG_PATH = OPTIONS['log_path']
+CORPUS_PREFIX = OPTIONS['corpus_prefix']
+DE = OPTIONS['spacy_model_path']
 
 
 def tprint(df: pd.DataFrame, head=0, to_latex=False):

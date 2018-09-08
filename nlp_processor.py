@@ -4,7 +4,7 @@ from os import makedirs
 from os.path import exists
 import pandas as pd
 import spacy
-# from iwnlp.iwnlp_wrapper import IWNLPWrapper
+
 from lemmatizer_plus import LemmatizerPlus
 from constants import *
 from project_logging import log

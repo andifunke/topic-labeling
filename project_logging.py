@@ -2,21 +2,28 @@
 
 import logging
 from sys import stdout
-from constants import HPC, LOG, LOG_PATH
+from os import makedirs
+from os.path import dirname
+from constants import HPC, LOG, NOTEBOOK, LOG_PATH
+
+# create path if necessary
+makedirs(dirname(LOG_PATH), exist_ok=True)
 
 # create logger
 logger = logging.getLogger('NLP_pipe')
 logger.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s | %(message)s',
                               datefmt='%Y-%m-%d %H:%M:%S')
 
+# logging to file
 if LOG or HPC:
     fh = logging.FileHandler(LOG_PATH)
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(formatter)
     logger.addHandler(fh)
 
-if not HPC:
+# logging to stdout
+if not (HPC or NOTEBOOK):
     # stdout logger
     ch = logging.StreamHandler(stdout)
     ch.setLevel(logging.DEBUG)

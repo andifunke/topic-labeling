@@ -15,8 +15,11 @@ def get_options():
 
     # strings / paths
     parser.add_argument('--spacy_model_path', default='de', type=str)
-    parser.add_argument('--log_path', default='../nlp_pipe.log', type=str)
-    parser.add_argument('--corpus_prefix', default='', type=str)
+    parser.add_argument('--log_path', default='./../logs/nlp_pipe.log', type=str)
+    parser.add_argument('--corpus_prefix', default='', nargs='*')
+
+    # dummy argument for IPython
+    parser.add_argument('-f', '--file', help='dummy argument for IPython')
 
     # build and modify argument dictionary
     options = vars(parser.parse_args())

@@ -1,34 +1,33 @@
 # -*- coding: utf-8 -*-
 
-import sys
 import re
 from os import listdir
 from os.path import isfile, join
 from time import time
 
-from project_logging import log
-from constants import *
+from constants import FULL_PATH, CORPUS_PREFIXES, DE, tprint
 from nlp_processor import NLPProcessor
+from project_logging import log
 
-### --- run ---
-log("##### START #####")
 
-t0 = time()
+if __name__ == "__main__":
+    t0 = time()
 
-LOCAL_PATH = ETL_BASE
-FULL_PATH = join(DATA_BASE, LOCAL_PATH)
+    ### --- run ---
+    log("##### START #####")
 
-files = sorted([f for f in listdir(FULL_PATH) if isfile(join(FULL_PATH, f))])
-# filter for certain file prefixes if file_prefix is set
-files = filter(lambda x: x[:len(CORPUS_PREFIX)] == CORPUS_PREFIX if CORPUS_PREFIX else True, files)
-processor = NLPProcessor(spacy_path=DE)
+    # filter files for certain prefixes
+    prefixes = r'^(' + '|'.join(CORPUS_PREFIXES) + r').'
+    pattern = re.compile(prefixes)
+    files = sorted([f for f in listdir(FULL_PATH)
+                    if (isfile(join(FULL_PATH, f)) and pattern.match(f))])
+    processor = NLPProcessor(spacy_path=DE)
 
-for name in files:
-    corpus = re.split(r'\.|_', name)[0]
-    fname = join(FULL_PATH, name)
-    df = processor.read_process_load(fname, corpus, spacy_to_disk=True, size=None)
+    for name in files:
+        corpus = name.split('.')[0]
+        fname = join(FULL_PATH, name)
+        df = processor.read_process_store(fname, corpus, store=True, vocab_to_disk=True, size=None)
+        # tprint(df, 5)
 
-t1 = int(time() - t0)
-log("finished in {:02d}:{:02d}:{:02d} minutes".format(t1//3600, t1//60, t1 % 60))
-
-# tprint(df, 50)
+    t1 = int(time() - t0)
+    log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, t1//60, t1 % 60))

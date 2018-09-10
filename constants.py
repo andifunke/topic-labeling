@@ -10,6 +10,9 @@ from argument_parser import get_options
 DATA_BASE = "../../master_cloud/corpora"
 ETL_BASE = "preprocessed"
 ETL_PATH = join(DATA_BASE, ETL_BASE)
+# TODO: add local path to arguments
+LOCAL_PATH = ETL_BASE
+FULL_PATH = join(DATA_BASE, LOCAL_PATH)
 NLP_BASE = "preprocessed/nlp"
 NLP_PATH = join(DATA_BASE, NLP_BASE)
 SPACY_PATH = join(NLP_PATH, 'spacy_model')
@@ -71,14 +74,16 @@ ENT_IOB = 'ent_iob'
 KNOWN = 'known'
 SENT_IDX = 'sent_idx'
 SENT_START = 'sent_start'
+NOUN_PHRASE = 'noun_phrase'
 
 ### --- handle arguments ---
 
 OPTIONS = get_options()
+NOTEBOOK = False
 HPC = OPTIONS['hpc']
 LOG = OPTIONS['log']
 LOG_PATH = OPTIONS['log_path']
-CORPUS_PREFIX = OPTIONS['corpus_prefix']
+CORPUS_PREFIXES = OPTIONS['corpus_prefix']
 DE = OPTIONS['spacy_model_path']
 
 

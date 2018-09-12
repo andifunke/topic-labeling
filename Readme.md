@@ -1,3 +1,3 @@
 # topic labeling
 
-for an overview see: src/Overview.ipynb
+for an overview consult [Overview.ipynb](Overview.ipynb)

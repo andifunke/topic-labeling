@@ -51,7 +51,7 @@ class NLPProcessor(object):
             self.nlp.vocab.to_disk(VOCAB_PATH)
 
         t1 = int(time() - t0)
-        log("{:s}: done in {:02d}:{:02d}:{:02d}".format(corpus_name, t1//3600, t1//60, t1 % 60))
+        log("{:s}: done in {:02d}:{:02d}:{:02d}".format(corpus_name, t1//3600, (t1//60) % 60, t1 % 60))
 
         return df
 

@@ -50,7 +50,7 @@ class FocusSpider(CrawlSpider):
         item['url'] = response.url
         item['visited'] = datetime.datetime.now().isoformat()
         item['text'] = response.css('.articleContent').xpath('.//div[@class="textBlock"]/p').extract()
-        item['keywords'] = [s for s in response.xpath('//meta[@name="keywords"]/@content').extract()]
+        item['keywords'] = response.xpath('//meta[@name="keywords"]/@content').extract()
         item['published'] = response.xpath('//meta[@name="date"]/@content').extract_first()
         item['title'] = response.xpath('//meta[@property="og:title"]/@content').extract_first()
         item['description'] = response.xpath('//meta[@name="description"]/@content').extract_first()

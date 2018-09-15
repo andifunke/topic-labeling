@@ -1,16 +1,14 @@
 # -*- coding: utf-8 -*-
 
 from os.path import join
-import pandas as pd
-from tabulate import tabulate
-from argument_parser import get_options
 
 ### --- default constants definitions ---
 
+## default paths
 DATA_BASE = "../../master_cloud/corpora"
 ETL_BASE = "preprocessed"
 ETL_PATH = join(DATA_BASE, ETL_BASE)
-# TODO: add local path to arguments
+# TODO: add local path to arguments/options
 LOCAL_PATH = ETL_BASE
 FULL_PATH = join(DATA_BASE, LOCAL_PATH)
 NLP_BASE = "preprocessed/nlp"
@@ -18,7 +16,7 @@ NLP_PATH = join(DATA_BASE, NLP_BASE)
 SPACY_PATH = join(NLP_PATH, 'spacy_model')
 VOCAB_PATH = join(SPACY_PATH, 'vocab')
 
-# standard meta data fields
+## data scheme
 DATASET = 'dataset'
 SUBSET = 'subset'
 ID = 'doc_id'
@@ -26,11 +24,22 @@ ID2 = 'doc_subid'
 TITLE = 'title'
 TAGS = 'tags'
 TIME = 'date_time'
-# AUTHOR
-# SUBTITLE
-# CATEGORY
+# AUTHOR -> mostly unknown or pseudonym
+# SUBTITLE -> use DESCRIPTION
+# CATEGORY -> use DESCRIPTION or LINKS
 META = [DATASET, SUBSET, ID, ID2, TITLE, TAGS, TIME]
+
+# Would have been better to put the TAGS field into DATA instead of META.
+# But then it we would have to calculate all hashes again.
 TEXT = 'text'
+# The DESCRIPTION and LINKS fields were introduced with dewiki and are so far unused in the other datasets.
+# DESCRIPTION: Would be nice to add this especially to the news sites datasets.
+# In dewiki it contains rather a subtitle than a description.
+DESCRIPTION = 'description'
+# LINKS: could be used to link forum threads together, although this is probably already done via ID[2]
+LINKS = 'links'
+DATA = [DESCRIPTION, TEXT, LINKS]
+
 HASH = 'hash'
 TOKEN = 'token'
 
@@ -75,24 +84,3 @@ KNOWN = 'known'
 SENT_IDX = 'sent_idx'
 SENT_START = 'sent_start'
 NOUN_PHRASE = 'noun_phrase'
-
-### --- handle arguments ---
-
-OPTIONS = get_options()
-NOTEBOOK = False
-HPC = OPTIONS['hpc']
-LOG = OPTIONS['log']
-LOG_PATH = OPTIONS['log_path']
-CORPUS_PREFIXES = OPTIONS['corpus_prefix']
-DE = OPTIONS['spacy_model_path']
-
-
-def tprint(df: pd.DataFrame, head=0, to_latex=False):
-    if head > 0:
-        df = df.head(head)
-    elif head < 0:
-        df = df.tail(-head)
-    print(tabulate(df, headers="keys", tablefmt="pipe") + '\n')
-
-    if to_latex:
-        print(df.to_latex(bold_rows=True))

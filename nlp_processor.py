@@ -7,7 +7,7 @@ import spacy
 import pandas as pd
 
 from constants import VOCAB_PATH, TEXT, LEMMA, IWNLP, POS, INDEX, SENT_START, ENT_IOB, TOKEN, SENT_IDX, HASH, \
-    NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, tprint
+    NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET
 from lemmatizer_plus import LemmatizerPlus
 from project_logging import log
 

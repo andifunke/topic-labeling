@@ -4,7 +4,7 @@ import logging
 from sys import stdout
 from os import makedirs
 from os.path import dirname
-from constants import HPC, LOG, NOTEBOOK, LOG_PATH
+from options import HPC, LOG, NOTEBOOK, LOG_PATH
 
 # create path if necessary
 makedirs(dirname(LOG_PATH), exist_ok=True)

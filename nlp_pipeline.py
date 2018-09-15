@@ -5,7 +5,8 @@ from os import listdir
 from os.path import isfile, join
 from time import time
 
-from constants import FULL_PATH, CORPUS_PREFIXES, DE, tprint
+from constants import FULL_PATH
+from options import CORPUS_PREFIXES, DE
 from nlp_processor import NLPProcessor
 from project_logging import log
 

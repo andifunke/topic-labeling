@@ -4,16 +4,17 @@ from os.path import join
 import re
 from time import time
 import pandas as pd
-import csv
-import locale; locale.setlocale(locale.LC_ALL, '')
+import locale
 import xml.etree.ElementTree as et
 from html import unescape
 from datetime import datetime
-
 from constants import DATA_BASE, ETL_PATH, \
-    META, DATASET, SUBSET, ID, ID2, TITLE, TAGS, TIME, DESCRIPTION, TEXT, LINKS, DATA, HASH
-from utils import hms_string
+    META, DATASET, SUBSET, ID, ID2, TITLE, TAGS, TIME, DESCR, TEXT, LINKS, DATA, HASH
+from utils import hms_string, tprint
 
+locale.setlocale(locale.LC_ALL, '')
+
+FIELDS = [HASH] + META + DATA
 CORPUS = "dewiki"
 LOCAL_PATH = "dewiki/dewiki-latest-pages-articles.xml"
 IN_PATH = join(DATA_BASE, LOCAL_PATH)
@@ -27,100 +28,112 @@ def strip_tag(tag):
 def split_title(title):
     split = title.find('(', 1)
     split = None if split < 1 else split
-    return title[:split], (title[split:] if split else '')
+    return title[:split].strip(), (title[split:] if split else '')
 
 
-def store(rows, fname):
-    df = pd.DataFrame.from_dict(rows)
-    print('saving to', fname)
-    df = df.set_index(HASH)[META+DATA]
-    df.to_pickle(fname)
+class DataFrameWriter(object):
+    def __init__(self, outfile, fields):
+        self.outfile = outfile
+        self.fields = fields
+        self.count = 0
+
+    def writerows(self, rows):
+        if rows:
+            df = pd.DataFrame(rows, columns=self.fields)
+            df.set_index(HASH, drop=True, inplace=True)
+            self.count += 1
+            fname = "{}_{:02d}.pickle".format(self.outfile, self.count)
+            print('saving to', fname)
+            df.to_pickle(fname)
 
 
-def parse_xml(infile, outfile, iterations, batch=None, print_every=1000):
+def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000):
     """
     :param infile: path to Wikipedia xml dump
-    :param outfile: path to writable csv file
+    :param outfile: path to writable file. .csv or .pickle will be appended.
     :param iterations: number all articles to process and write. None for all.
-    :param batch: append to csv file every m articles.
-                        if None: writes a pickled DataFrame *after* processing the entire corpus
-                                disadvantage: high memory consumption
-                                advantage: keeps objects as byte streams
+    :param batch_size: append to csv file or DataFrame every m articles
     :param print_every: print progress to stdout every n articles
     :return:
     """
-    outfile += '.csv' if batch else '.pickle'
+    print("reading", infile)
+    with open(infile, 'r') as fr:  #, open(outfile, 'w') as fw:
 
-    with open(infile, 'r') as fr, open(outfile, 'w') as fw:
+        batch_writer = DataFrameWriter(outfile, FIELDS)
 
-        fields = [HASH] + META + DATA
-        writer = csv.DictWriter(fw, fields, quoting=csv.QUOTE_MINIMAL)
-        writer.writeheader()
-
+        # init counters, flags and data structures
         article_count = 0
-        rows = []
-        row = None
-        is_article = is_redirect = False
+        row = is_article = is_redirect = False
+        rows = list()
 
         for event, elem in et.iterparse(fr, events=['start', 'end']):
             tag = strip_tag(elem.tag)
 
             if event == 'start':
-                # start new row
+                # start new row for new page
                 if tag == 'page':
                     row = dict()
             else:
+                # on event end collect data and meta data
                 if tag == 'title':
-                    row[TITLE], row[DESCRIPTION] = split_title(elem.text)
-                elif tag == 'ns' and int(elem.text) == 0:
-                    is_article = True
-                    row[DATASET] = CORPUS
-                    row[SUBSET] = ""
-                elif tag == 'id' and tag not in row:
-                    row[ID] = elem.text
-                    row[ID2] = 0
+                    row[TITLE], row[DESCR] = split_title(elem.text)
+                elif tag == 'ns':
+                    # namespace 0 == article
+                    if int(elem.text) == 0:
+                        is_article = True
+                        row[DATASET] = CORPUS
+                elif tag == 'id':
+                    # only accept the first ID
+                    if ID not in row:
+                        row[ID] = int(elem.text)
+                        row[ID2] = 0
                 elif tag == 'timestamp':
                     row[TIME] = datetime.strptime(elem.text.replace('Z', 'UTC'),
                                                   '%Y-%m-%dT%H:%M:%S%Z')  # 2018-07-29T18:22:20Z
                 elif tag == 'redirect':
                     is_redirect = True
-                    row[LINKS] = elem.get('title')
-                elif tag == 'text' and is_article:
-                    if not is_redirect:
-                        row[TEXT], row[TAGS], row[LINKS] = parse_markdown(elem.text)
-                        row[TAGS] = tuple(row[TAGS])
-                        # dump empty pages
-                        if not row[TEXT]:
-                            is_article = False
-                    else:
-                        row[TEXT], row[TAGS], row[LINKS] = "", tuple(), list()
-                # write and close row, reset flags
-                elif tag == 'page':
+                    row[SUBSET] = "REDIRECT"
+                    row[LINKS], row[DESCR] = split_title(elem.get('title'))
+                    row[TAGS] = (row[LINKS], row[DESCR].strip('()'))
+                elif tag == 'text':
+                    # accept only if namespace == 0
                     if is_article:
+                        if not is_redirect:
+                            row[SUBSET] = "ARTICLE"
+                            row[TEXT], row[LINKS], row[TAGS] = parse_markdown(elem.text.strip())
+                        else:
+                            row[TEXT] = elem.text.strip()
+                # write and close row, reset flags etc. on closing page tag
+                elif tag == 'page':
+                    # handle only if namespace == 0
+                    if is_article:
+                        # calculate hash key
                         row[HASH] = hash(tuple([row[key] for key in META]))
+                        # increment article counter
                         article_count += 1
+                        # append on list of rows
                         rows.append(row)
-                        # print status
-                        if article_count > 1:
-                            if (article_count % print_every) == 0:
-                                print(locale.format("%d", article_count, grouping=True))
-                            if batch:
-                                # if batch is False we will save everything *after* processing
-                                if (article_count % batch) == 0:
-                                    # write batch of rows and reset list of rows
-                                    writer.writerows(rows)
-                                    rows = []
-                    # reset everything
-                    row = None
-                    is_article = is_redirect = False
+                        # write to csv or update dataframe every m articles
+                        if (article_count % batch_size) == 0:
+                            batch_writer.writerows(rows)
+                            # reset rows
+                            rows = []
+                        # print status every n articles
+                        if (article_count % print_every) == 0:
+                            print(locale.format("%d", article_count, grouping=True))
+
+                    # reset page state
+                    row = is_article = is_redirect = False
+
                 elem.clear()
 
             if article_count == iterations:
                 break
 
-    if not batch:
-        store(rows, outfile)
+    batch_writer.writerows(rows)
 
+
+### --- Regex patterns for the following Markdown parser ---
 
 # matches against: [[Kategorie:Soziologische Systemtheorie]], [[Kategorie:Fiktive Person|Smithee, Alan]]
 category = r"\[\[Kategorie:(?P<cat>[\w ]+)(?:\|.*)?\]\]"
@@ -208,11 +221,13 @@ def parse_markdown(text):
         text, n = re_infobox.subn('', text)
 
     text = re_lf.sub('\n', text)
-    return text.strip(' \n}{'), categories, links
+    return text.strip(' \n}{'), links, tuple(categories)
 
 
 if __name__ == '__main__':
     t0 = time()
-    parse_xml(IN_PATH, OUT_PATH, iterations=None, batch=0, print_every=10000)
+    print("Starting ...")
+    scale = 1000
+    parse_xml(IN_PATH, OUT_PATH, iterations=None, batch_size=100*scale, print_every=10*scale)
     t1 = int(time() - t0)
     print("all done in", hms_string(t1))

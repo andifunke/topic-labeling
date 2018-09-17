@@ -6,20 +6,20 @@ def get_options():
     parser = argparse.ArgumentParser(description='topic labeling project')
 
     # boolean
-    parser.add_argument('--hpc', dest='hpc', action='store_true')
-    parser.add_argument('--no-hpc', dest='hpc', action='store_false')
+    parser.add_argument('--hpc', dest='hpc', action='store_true', required=False)
+    parser.add_argument('--no-hpc', dest='hpc', action='store_false', required=False)
     parser.set_defaults(hpc=False)
-    parser.add_argument('--log', dest='log', action='store_true')
-    parser.add_argument('--no-log', dest='log', action='store_false')
+    parser.add_argument('--log', dest='log', action='store_true', required=False)
+    parser.add_argument('--no-log', dest='log', action='store_false', required=False)
     parser.set_defaults(log=True)
 
     # strings / paths
-    parser.add_argument('--spacy_model_path', default='de', type=str)
-    parser.add_argument('--log_path', default='./../logs/nlp_pipe.log', type=str)
-    parser.add_argument('--corpus_prefix', default='', nargs='*')
+    parser.add_argument('--spacy_model_path', default='de', type=str, required=False)
+    parser.add_argument('--log_path', default='./../logs/nlp_pipe.log', type=str, required=False)
+    parser.add_argument('--corpus_prefix', default='', nargs='*', required=False)
 
     # dummy argument for IPython
-    parser.add_argument('-f', '--file', help='dummy argument for IPython')
+    parser.add_argument('-f', '--file', help='dummy argument for IPython', required=False)
 
     # build and modify argument dictionary
     options = vars(parser.parse_args())

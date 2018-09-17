@@ -6,42 +6,42 @@ from os.path import join
 
 ## default paths
 DATA_BASE = "../../master_cloud/corpora"
-ETL_BASE = "preprocessed"
-ETL_PATH = join(DATA_BASE, ETL_BASE)
+ETL_BASE  = "preprocessed"
+ETL_PATH  = join(DATA_BASE, ETL_BASE)
 # TODO: add local path to arguments/options
-LOCAL_PATH = ETL_BASE
-FULL_PATH = join(DATA_BASE, LOCAL_PATH)
-NLP_BASE = "preprocessed/nlp"
-NLP_PATH = join(DATA_BASE, NLP_BASE)
-SPACY_PATH = join(NLP_PATH, 'spacy_model')
-VOCAB_PATH = join(SPACY_PATH, 'vocab')
+LOCL_PATH = ETL_BASE
+FULL_PATH = join(DATA_BASE, LOCL_PATH)
+NLP_BASE  = "preprocessed/nlp"
+NLP_PATH  = join(DATA_BASE, NLP_BASE)
+SPCY_PATH = join(NLP_PATH, 'spacy_model')
+VOC_PATH  = join(SPCY_PATH, 'vocab')
 
 ## data scheme
-DATASET = 'dataset'
-SUBSET = 'subset'
-ID = 'doc_id'
-ID2 = 'doc_subid'
-TITLE = 'title'
-TAGS = 'tags'
-TIME = 'date_time'
+DATASET   = 'dataset'
+SUBSET    = 'subset'
+TIME      = 'date_time'
+ID        = 'doc_id'
+ID2       = 'doc_subid'
+TITLE     = 'title'
 # AUTHOR -> mostly unknown or pseudonym
 # SUBTITLE -> use DESCRIPTION
 # CATEGORY -> use DESCRIPTION or LINKS
-META = [DATASET, SUBSET, ID, ID2, TITLE, TAGS, TIME]
+META = [DATASET, SUBSET, TIME, ID, ID2, TITLE]
 
-# Would have been better to put the TAGS field into DATA instead of META.
-# But then it we would have to calculate all hashes again.
-TEXT = 'text'
+TEXT      = 'text'
 # The DESCRIPTION and LINKS fields were introduced with dewiki and are so far unused in the other datasets.
 # DESCRIPTION: Would be nice to add this especially to the news sites datasets.
 # In dewiki it contains rather a subtitle than a description.
-DESCRIPTION = 'description'
+DESCR     = 'description'
 # LINKS: could be used to link forum threads together, although this is probably already done via ID[2]
-LINKS = 'links'
-DATA = [DESCRIPTION, TEXT, LINKS]
+LINKS     = 'links'
+# moved from META to DATA => hashes have to be recalculated!
+TAGS      = 'tags'
+DATA = [DESCR, TEXT, LINKS, TAGS]
 
-HASH = 'hash'
-TOKEN = 'token'
+HASH      = 'hash'
+TOKEN     = 'token'
+
 
 ### --- additional constants
 

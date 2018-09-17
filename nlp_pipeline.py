@@ -27,9 +27,7 @@ if __name__ == "__main__":
     for name in files:
         corpus = name.split('.')[0]
         fname = join(FULL_PATH, name)
-        df = processor.read_process_store(fname, corpus, store=True, vocab_to_disk=True, size=None)
-        del df
-        # tprint(df, 5)
+        processor.read_process_store(fname, corpus, store=True, vocab_to_disk=True, size=None)
 
     t1 = int(time() - t0)
     log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))

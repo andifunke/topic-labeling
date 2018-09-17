@@ -5,11 +5,15 @@ from os.path import exists, join
 from time import time
 import spacy
 import pandas as pd
+import gc
 
-from constants import VOCAB_PATH, TEXT, LEMMA, IWNLP, POS, INDEX, SENT_START, ENT_IOB, TOKEN, SENT_IDX, HASH, \
-    NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET
+from constants import VOC_PATH, TEXT, LEMMA, IWNLP, POS, INDEX, SENT_START, ENT_IOB, TOKEN, SENT_IDX, HASH, \
+    NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, TITLE, DESCR
 from lemmatizer_plus import LemmatizerPlus
 from project_logging import log
+from utils import tprint
+
+FIELDS = [HASH, INDEX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, NOUN_PHRASE]
 
 
 class NLPProcessor(object):
@@ -19,9 +23,9 @@ class NLPProcessor(object):
         self.nlp = spacy.load(spacy_path)  # <-- load with dependency parser (slower)
         # nlp = spacy.load(de, disable=['parser'])
 
-        if exists(VOCAB_PATH):
-            log("reading vocab from " + VOCAB_PATH)
-            self.nlp.vocab.from_disk(VOCAB_PATH)
+        if exists(VOC_PATH):
+            log("reading vocab from " + VOC_PATH)
+            self.nlp.vocab.from_disk(VOC_PATH)
 
         log("loading IWNLPWrapper")
         self.lemmatizer = LemmatizerPlus(lemmatizer_path=lemmatizer_path)
@@ -31,89 +35,74 @@ class NLPProcessor(object):
         log("*** start new corpus: " + corpus_name)
         t0 = time()
 
-        # read
+        # read the etl dataframe
         log(corpus_name + ": reading corpus from " + file_path)
         df = self.read(file_path)
 
-        # process
+        # start the nlp pipeline
         log(corpus_name + ": start processing:")
-        df = [doc for doc in self.process_docs(df[TEXT], size=size)]
-        df = pd.concat(df).reset_index(drop=True)
+        df = self.process_docs(df, size=size)
 
         # store
         if store:
+            gc.collect()
             self.store(corpus_name, df, suffix='_nlp')
         if vocab_to_disk:
             # stored with each corpus, in case anythings goes wrong
-            log("writing spacy vocab to disk: " + VOCAB_PATH)
+            log("writing spacy vocab to disk: " + VOC_PATH)
             # self.nlp.to_disk(SPACY_PATH)
-            makedirs(VOCAB_PATH, exist_ok=True)
-            self.nlp.vocab.to_disk(VOCAB_PATH)
+            makedirs(VOC_PATH, exist_ok=True)
+            self.nlp.vocab.to_disk(VOC_PATH)
 
         t1 = int(time() - t0)
         log("{:s}: done in {:02d}:{:02d}:{:02d}".format(corpus_name, t1//3600, (t1//60) % 60, t1 % 60))
 
         return df
 
-    def process_docs(self, text_series, size=None, steps=100):
+    def process_docs(self, text_df, size=None, steps=100):
         """ main function for sending the dataframes from the ETL pipeline to the NLP pipeline """
         step_len = 100//steps
-        percent = len(text_series)//steps
+        percent = len(text_df) // steps
         done = 0
-        for i, kv in enumerate(text_series[:size].iteritems()):
+        docs = []
+        for i, kv in enumerate(text_df[:size].itertuples()):
             # log progress
             if percent > 0 and i % percent == 0:
                 log("  {:d}%: {:d} documents processed".format(done, i))
                 done += step_len
 
-            k, v = kv
+            key, title, descr, text = kv
             # build spacy doc
-            doc = self.nlp(v)
-            yield self.df_from_doc(doc, key=k)
+            doc = self.nlp('\n'.join(filter(None, [title, descr, text])))
 
-    def df_from_doc(self, doc, key):
+            noun_phrases = dict()
+            for chunk_idx, chunk in enumerate(doc.noun_chunks, 1):
+                for token in chunk:
+                    noun_phrases[token.i] = chunk_idx
+            tags = [[key,
+                     str(token.text), str(token.lemma_), token._.iwnlp_lemmas, str(token.pos_),
+                     int(token.i), int(token.is_sent_start or 0), token.ent_iob_,
+                     noun_phrases.get(token.i, 0)
+                     ] for token in doc]
+            docs += tags
+
+        df = self.df_from_docs(docs)
+        return df
+
+    @staticmethod
+    def df_from_docs(docs):
         """
         Creates a pandas DataFrame from a given spacy.doc that contains only nouns and noun phrases.
-        :param doc: spacy.doc
-        :param key: hash key from document
+        :param docs: list of tokens (tuples with attributes) from spacy.doc
         :return:    pandas.DataFrame
         """
-        tags = [
-            (
-                str(token.text), str(token.lemma_), token._.iwnlp_lemmas,
-                str(token.pos_),
-                # token.tag_, token.is_stop,
-                int(token.i),
-                # token.idx,
-                int(token.is_sent_start or 0),
-                # token.ent_type_,
-                token.ent_iob_,
-                # token.ent_id_,
-            ) for token in doc
-        ]
-        df = pd.DataFrame(tags)
-        df = df.rename(columns={k: v for k, v in enumerate([
-            TEXT, LEMMA, IWNLP, POS,
-            # TAG, STOP,
-            INDEX,
-            # START,
-            SENT_START,
-            # ENT_TYPE,
-            ENT_IOB,
-            # "Dep", "Shape", "alpha", "Ent_id"  # currently not used :(
-        ])})
-
+        df = pd.DataFrame(docs,
+                          columns=[HASH, TEXT, LEMMA, IWNLP, POS, INDEX, SENT_START, ENT_IOB, NOUN_PHRASE])
         # create Tokens from IWNLP lemmatization, else from spacy lemmatization (or original text)
         mask_iwnlp = ~df[IWNLP].isnull()
         df.loc[mask_iwnlp, TOKEN] = df.loc[mask_iwnlp, IWNLP]
         df.loc[~mask_iwnlp, TOKEN] = df.loc[~mask_iwnlp, LEMMA]
         df[SENT_IDX] = df[SENT_START].cumsum()
-
-        # add phrases
-        df = self.annotate_phrases(df, doc)
-        # add hash-key
-        df[HASH] = key
-
         return df[[HASH, INDEX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, NOUN_PHRASE]]
 
     @staticmethod
@@ -152,9 +141,8 @@ class NLPProcessor(object):
         fname = join(NLP_PATH, corpus + suffix + '.pickle')
         log(corpus + ': saving to ' + fname)
         df.to_pickle(fname)
-        return fname
 
     @staticmethod
     def read(f):
         """ reads a dataframe from pickle format """
-        return pd.read_pickle(f)
+        return pd.read_pickle(f)[[TITLE, DESCR, TEXT]]

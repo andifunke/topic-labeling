@@ -2,7 +2,7 @@ import pandas as pd
 from tabulate import tabulate
 
 
-def tprint(df: pd.DataFrame, head=0, to_latex=False):
+def tprint(df: pd.DataFrame, head=10, to_latex=False):
     if head > 0:
         df = df.head(head)
     elif head < 0:

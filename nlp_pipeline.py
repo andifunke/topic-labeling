@@ -5,8 +5,11 @@ from os import listdir
 from os.path import isfile, join
 from time import time
 
+import options
+options.update_from_args()
+from options import CORPUS_PREFIXES, DE, STORE
+
 from constants import FULL_PATH
-from options import CORPUS_PREFIXES, DE
 from nlp_processor import NLPProcessor
 from project_logging import log
 
@@ -27,7 +30,13 @@ if __name__ == "__main__":
     for name in files:
         corpus = name.split('.')[0]
         fname = join(FULL_PATH, name)
-        processor.read_process_store(fname, corpus, store=True, vocab_to_disk=True, size=None)
+        processor.read_process_store(fname, corpus,
+                                     store=STORE,
+                                     vocab_to_disk=STORE,
+                                     # size=10,
+                                     # print=True,
+                                     # head=100,
+                                     )
 
     t1 = int(time() - t0)
     log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))

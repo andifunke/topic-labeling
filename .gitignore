@@ -215,3 +215,4 @@ detailed_results/
 .ipynb_checkpoints/
 pbs_*.sh
 scrapy/feeds/
+Scratchbook.ipynb

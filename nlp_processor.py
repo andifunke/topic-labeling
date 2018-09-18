@@ -7,16 +7,18 @@ import spacy
 import pandas as pd
 import gc
 
-from constants import VOC_PATH, TEXT, LEMMA, IWNLP, POS, INDEX, SENT_START, ENT_IOB, TOKEN, SENT_IDX, HASH, \
-    NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, TITLE, DESCR
+from constants import VOC_PATH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX, \
+    TOKEN, SENT_IDX, HASH, NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, TITLE, DESCR
 from lemmatizer_plus import LemmatizerPlus
 from project_logging import log
+# from spacy_ner import extract_german_groups
 from utils import tprint
 
-FIELDS = [HASH, INDEX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, NOUN_PHRASE]
+FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
 
 
 class NLPProcessor(object):
+
     def __init__(self, spacy_path, lemmatizer_path='../data/IWNLP.Lemmatizer_20170501.json'):
         ### --- load spacy and iwnlp ---
         log("loading spacy")
@@ -28,10 +30,12 @@ class NLPProcessor(object):
             self.nlp.vocab.from_disk(VOC_PATH)
 
         log("loading IWNLPWrapper")
-        self.lemmatizer = LemmatizerPlus(lemmatizer_path=lemmatizer_path)
+        self.lemmatizer = LemmatizerPlus(lemmatizer_path, self.nlp)
         self.nlp.add_pipe(self.lemmatizer)
+        self.stringstore = self.nlp.vocab.strings
 
-    def read_process_store(self, file_path, corpus_name, store=True, vocab_to_disk=True, size=None):
+    def read_process_store(self, file_path, corpus_name, store=True, vocab_to_disk=True,
+                           size=None, **kwargs):
         log("*** start new corpus: " + corpus_name)
         t0 = time()
 
@@ -43,8 +47,11 @@ class NLPProcessor(object):
         log(corpus_name + ": start processing:")
         df = self.process_docs(df, size=size)
 
-        # store
+        if kwargs.get('print', False):
+            # print dataframe
+            tprint(df, kwargs.get('head', 10))
         if store:
+            # store dataframe, free memory first
             gc.collect()
             self.store(corpus_name, df, suffix='_nlp')
         if vocab_to_disk:
@@ -57,14 +64,14 @@ class NLPProcessor(object):
         t1 = int(time() - t0)
         log("{:s}: done in {:02d}:{:02d}:{:02d}".format(corpus_name, t1//3600, (t1//60) % 60, t1 % 60))
 
-        return df
-
     def process_docs(self, text_df, size=None, steps=100):
         """ main function for sending the dataframes from the ETL pipeline to the NLP pipeline """
         step_len = 100//steps
         percent = len(text_df) // steps
-        done = 0
+        chunk_idx = done = 0
         docs = []
+
+        # process each doc in corpus
         for i, kv in enumerate(text_df[:size].itertuples()):
             # log progress
             if percent > 0 and i % percent == 0:
@@ -75,19 +82,23 @@ class NLPProcessor(object):
             # build spacy doc
             doc = self.nlp('\n'.join(filter(None, [title, descr, text])))
 
+            # annotated phrases
             noun_phrases = dict()
-            for chunk_idx, chunk in enumerate(doc.noun_chunks, 1):
+            for chunk in doc.noun_chunks:
+                chunk_idx += 1
                 for token in chunk:
                     noun_phrases[token.i] = chunk_idx
-            tags = [[key,
+
+            # extract relevant attributes
+            attr = [[key,
                      str(token.text), str(token.lemma_), token._.iwnlp_lemmas, str(token.pos_),
-                     int(token.i), int(token.is_sent_start or 0), token.ent_iob_,
+                     int(token.i), int(token.is_sent_start or 0), token.ent_iob_, token.ent_type_,
                      noun_phrases.get(token.i, 0)
                      ] for token in doc]
-            docs += tags
+            # add list of token to all docs
+            docs += attr
 
-        df = self.df_from_docs(docs)
-        return df
+        return self.df_from_docs(docs)
 
     @staticmethod
     def df_from_docs(docs):
@@ -97,42 +108,23 @@ class NLPProcessor(object):
         :return:    pandas.DataFrame
         """
         df = pd.DataFrame(docs,
-                          columns=[HASH, TEXT, LEMMA, IWNLP, POS, INDEX, SENT_START, ENT_IOB, NOUN_PHRASE])
+                          columns=[HASH, TEXT, LEMMA, IWNLP, POS,
+                                   TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, NOUN_PHRASE])
         # create Tokens from IWNLP lemmatization, else from spacy lemmatization (or original text)
         mask_iwnlp = ~df[IWNLP].isnull()
         df.loc[mask_iwnlp, TOKEN] = df.loc[mask_iwnlp, IWNLP]
         df.loc[~mask_iwnlp, TOKEN] = df.loc[~mask_iwnlp, LEMMA]
+        # set an index for each sentence
         df[SENT_IDX] = df[SENT_START].cumsum()
-        return df[[HASH, INDEX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, NOUN_PHRASE]]
-
-    @staticmethod
-    def annotate_phrases(df, doc):
-        """
-            given a doc process and return the contained noun phrases.
-            This function is based on spacy's noun chunk detection.
-        """
-        df[NOUN_PHRASE] = 0
-
-        # clean the noun chunks from spacy first
-        noun_index = 0
-        for chunk in doc.noun_chunks:
-            if len(chunk) > 5:
-                continue
-            chunk_ids = set()
-            for token in chunk:
-                # exclude punctuation and spaces
-                if token.pos_ in {PUNCT, SPACE, NUM}:
-                    continue
-                # exclude leading determiners
-                if len(chunk_ids) == 0 and (token.pos_ == DET or token.is_stop):
-                    continue
-                chunk_ids.add(token.i)
-                # annotate the tokens with chunk id
-            if len(chunk_ids) > 1:
-                noun_index += 1
-                df.loc[df[INDEX].isin(chunk_ids), NOUN_PHRASE] = noun_index
-
-        return df
+        # set an index for each entity
+        df[ENT_IDX] = (df[ENT_IOB] == 'B')
+        df[ENT_IDX] = df[ENT_IDX].cumsum()
+        df.loc[df[ENT_IOB] == 'O', ENT_IDX] = 0
+        # convert for space efficiency
+        df[POS] = df[POS].astype("category")
+        df[ENT_IOB] = df[ENT_IOB].astype("category")
+        df[ENT_TYPE] = df[ENT_TYPE].astype("category")
+        return df[FIELDS]
 
     @staticmethod
     def store(corpus, df, suffix=''):

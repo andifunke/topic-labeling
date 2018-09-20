@@ -25,10 +25,17 @@ def strip_tag(tag):
     return tag.split('}', 1)[1] if '}' in tag else tag
 
 
+re_title = re.compile(r' \((.+?)\)$')
+
+
 def split_title(title):
-    split = title.find('(', 1)
-    split = None if split < 1 else split
-    return title[:split].strip(), (title[split:] if split else '')
+    matchobj = re.search(re_title, title)
+    if matchobj:
+        title = title[:matchobj.start(1)-2]
+        category = matchobj[1]
+    else:
+        category = None
+    return title, category
 
 
 class DataFrameWriter(object):
@@ -45,6 +52,13 @@ class DataFrameWriter(object):
             fname = "{}_{:02d}.pickle".format(self.outfile, self.count)
             print('saving to', fname)
             df.to_pickle(fname)
+
+            # link_list = []
+            # for doc_id, links in df[LINKS].iteritems():
+            #     for link in links:
+            #         link_list.append((doc_id, *link))
+            # df = pd.DataFrame(link_list, columns=['doc_id', 'link', 'norm', 'category'])
+            # tprint(df, 100)
 
 
 def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000):
@@ -94,7 +108,7 @@ def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000)
                     is_redirect = True
                     row[SUBSET] = "REDIRECT"
                     row[LINKS], row[DESCR] = split_title(elem.get('title'))
-                    row[TAGS] = (row[LINKS], row[DESCR].strip('()'))
+                    row[TAGS] = (row[LINKS], row[DESCR])
                 elif tag == 'text':
                     # accept only if namespace == 0
                     if is_article:
@@ -210,8 +224,15 @@ def parse_markdown(text):
 
     def replace_links(matchobj):
         split = matchobj.group(1).split('|', 1)
-        links.append(split[0])
-        return split[1] if len(split) > 1 else split[0]
+        if len(split) > 1:
+            token = split[1]
+            link, category = split_title(split[0])
+            link = None if token == link else link
+        else:
+            token = split[0]
+            link = category = None
+        links.append((token, link, category))
+        return token
 
     text = re_link.sub(replace_links, text)
 
@@ -228,6 +249,10 @@ if __name__ == '__main__':
     t0 = time()
     print("Starting ...")
     scale = 1000
-    parse_xml(IN_PATH, OUT_PATH, iterations=None, batch_size=100*scale, print_every=10*scale)
+    parse_xml(IN_PATH, OUT_PATH + '_links_optimized',
+              iterations=None,
+              batch_size=100*scale,
+              print_every=10*scale,
+              )
     t1 = int(time() - t0)
     print("all done in", hms_string(t1))

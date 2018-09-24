@@ -13,6 +13,8 @@ LOCL_PATH = ETL_BASE
 FULL_PATH = join(DATA_BASE, LOCL_PATH)
 NLP_BASE  = "preprocessed/nlp"
 NLP_PATH  = join(DATA_BASE, NLP_BASE)
+SMPL_BASE  = "preprocessed/simple"
+SMPL_PATH  = join(DATA_BASE, SMPL_BASE)
 SPCY_PATH = join(NLP_PATH, 'spacy_model')
 VOC_PATH  = join(SPCY_PATH, 'vocab')
 

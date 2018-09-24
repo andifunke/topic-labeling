@@ -1,0 +1,196 @@
+# coding: utf-8
+
+import gc
+from os.path import join
+from time import time
+
+import numpy as np
+import pandas as pd
+import re
+from constants import NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, \
+    TEXT, TOKEN, TOK_IDX, POS, ENT_IOB, ETL_PATH, SPACE, SMPL_PATH
+from options import update_from_args
+from project_logging import log
+
+
+def concat_entities(column):
+    if column.name in {HASH, SENT_IDX, ENT_IDX, ENT_TYPE}:
+        return column.values[0]
+    if column.name in {'tok_idx', NOUN_PHRASE, 'np'}:
+        return tuple(column.values)
+    if column.name in {TEXT, TOKEN}:
+        return column.str.cat(sep='_')
+    return False
+
+
+def get_removable_tokens(df_in):
+    remove_token = []
+    for i, sent_idx, tok_set in df_in.itertuples():
+        for tok_idx in tok_set:
+            remove_token.append((sent_idx, tok_idx))
+    df_out = pd.DataFrame.from_records(remove_token, columns=[SENT_IDX, TOK_IDX])
+    return df_out
+
+
+def insert_phrases(df_orig, df_insert):
+    """add phrases and replace overlapping tokens"""
+    # df_removable_tokens: this DataFrame contains all token-idx we want to replace with phrases
+    df_removable_tokens = get_removable_tokens(df_insert[[SENT_IDX, 'tok_set']])
+    df_combined = (
+        df_orig
+        # remove original unigram tokens
+        .append(df_removable_tokens)
+        .drop_duplicates(subset=[SENT_IDX, TOK_IDX], keep=False)
+        .dropna(subset=[HASH])
+        # insert concatenated phrase tokens
+        .append(df_insert)
+        .sort_values([SENT_IDX, TOK_IDX])
+    )
+    return df_combined
+
+
+# based on Philipp Grawes approach on extracting and normalizing street names
+STREET_NAME_LIST = [r'strasse$', r'straße$', r'str$', r'str.$', r'platz', r'gasse$',
+                    r'allee$', r'ufer$', r'weg$']
+STREET_NAMES = re.compile(r'(' + '|'.join(STREET_NAME_LIST) + ')', re.IGNORECASE)
+STREET_PATTERN = re.compile(r"str(\.|a(ss|ß)e)?\b", re.IGNORECASE)
+SPECIAL_CHAR = re.compile(r'[^\w&/]+')
+
+
+def aggregate_streets(column):
+    if column.name in {HASH, SENT_IDX, ENT_IDX}:
+        return column.values[0]
+    if column.name in {'tok_idx', NOUN_PHRASE, 'np'}:
+        return tuple(column.values)
+    if column.name == TEXT:
+        return column.str.cat(sep='_')
+    if column.name == TOKEN:
+        street_candidate = False
+        for k, token in column.iteritems():
+            if re.search(STREET_NAMES, token):
+                street_candidate = True
+        if street_candidate:
+            if len(column) == 1 and re.fullmatch(STREET_NAMES, column.values[0]):
+                return False
+            else:
+                street_name = column.str.cat(sep=' ')
+                street_name = STREET_PATTERN.sub('straße', street_name)
+                street_name = SPECIAL_CHAR.sub('_', street_name)
+                street_name = street_name.strip('_').title()
+                return street_name
+    return False
+
+
+def main():
+    corpora = {
+        'P': 'PoliticalSpeeches',
+        'E': 'Europarl',
+        'O': 'OnlineParticipation',
+        'FA': 'FAZ',
+        'FO': 'FOCUS',
+    }
+    corpus = corpora['FA']
+    fpath = join(NLP_PATH, corpus + '_nlp.pickle')
+    log("reading from " + fpath)
+    df = pd.read_pickle(fpath)
+
+    log("extracting spacy NER")
+    df_ent = (
+        df
+        .query('ent_idx > 0 & POS != "SPACE"')  # phrases have an ent-index > 0 and we don't care about whitespace
+        .groupby(ENT_IDX).filter(lambda x: len(x) > 1)  # we case only about entities greater than 1 token
+        .groupby(ENT_IDX, as_index=False).agg(concat_entities)  # concatenate entities
+        .assign(
+            length=lambda x: x.tok_idx.apply(lambda y: len(y)),  # add the number of tokens per entity as a new column
+            POS='NER',  # annotations
+            ent_iob='P',
+        )
+        .astype({  # set annoation columns as categorical for memory savings
+            POS: "category",
+            ENT_IOB: "category",
+            ENT_TYPE: "category"
+        })
+    )
+
+    # TODO: taking too long. possible solutions:
+    # 1) try to avoid consecutive grouping
+    # 2) use dask
+    log("extracting spacy noun chunks")
+    df_np = (
+        df
+        .query('noun_phrase > 0 & POS not in ["SPACE", "NUM", "DET", "SYM"]')
+        .groupby(NOUN_PHRASE).filter(lambda x: len(x) > 1)
+        .groupby(NOUN_PHRASE, as_index=False).agg(concat_entities)
+        .assign(
+            length=lambda x: x.tok_idx.apply(lambda y: len(y)),
+            POS='NPHRASE',
+            ent_iob='P',
+        )
+        .astype({
+            POS: "category",
+            ENT_IOB: "category",
+            ENT_TYPE: "category"
+        })
+    )
+
+    log("intersecting both extraction methods")
+    df_phrases = df_ent.append(df_np)
+    mask = df_phrases.duplicated([HASH, SENT_IDX, TOK_IDX])
+    df_phrases = df_phrases[mask]
+    # set column token-index to start of phrase and add column column for the token-indexes instead
+    df_phrases['tok_set'] = df_phrases[TOK_IDX]
+    df_phrases[TOK_IDX] = df_phrases[TOK_IDX].apply(lambda x: x[0])
+    del df_ent
+    del df_np
+
+    log("extracting streets")
+    df_loc = (
+        df
+        .loc[(df[ENT_IDX] > 0) & (df.POS != SPACE)]
+        .groupby(ENT_IDX, as_index=False).agg(aggregate_streets)
+        .query('token != False')
+        .assign(
+            length=lambda x: x.tok_idx.apply(lambda y: len(y)),
+            tok_set=lambda x: x.tok_idx,
+            tok_idx=lambda x: x.tok_idx.apply(lambda y: y[0]),
+            POS='PROPN',
+            ent_iob='L',
+            ent_type='STREET'
+        )
+        .astype({
+            POS: "category",
+            ENT_IOB: "category",
+            ENT_TYPE: "category"
+        })
+    )
+
+    log("insert phrases to original tokens")
+    df_glued = insert_phrases(df, df_phrases)
+    del df_phrases
+    log("insert locations / streets")
+    df_glued = insert_phrases(df_glued, df_loc)
+    del df_loc
+    # simplify dataframe and store
+    df_glued = (
+        df_glued
+        .loc[df_glued.POS != 'SPACE', [HASH, POS, SENT_IDX, TOK_IDX, TOKEN]]
+        .astype({
+            HASH: np.int64,
+            POS: "category",
+            SENT_IDX: np.int32,
+            TOK_IDX: np.int32,
+        })
+    )
+    write_path = join(SMPL_PATH, corpus + '_simple.pickle')
+    gc.collect()
+    log("writing to " + write_path)
+    df_glued.to_pickle(write_path)
+
+
+if __name__ == "__main__":
+    t0 = time()
+    update_from_args()
+    log("##### START #####")
+    main()
+    t1 = int(time() - t0)
+    log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))

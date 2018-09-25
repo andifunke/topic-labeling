@@ -1,15 +1,18 @@
 # coding: utf-8
 
 import gc
-from os.path import join
+from os import listdir
+from os.path import join, isfile
 from time import time
 
 import numpy as np
 import pandas as pd
 import re
+from options import update_from_args
+update_from_args()
+from options import CORPUS_PREFIXES
 from constants import NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, \
     TEXT, TOKEN, TOK_IDX, POS, ENT_IOB, ETL_PATH, SPACE, SMPL_PATH
-from options import update_from_args
 from project_logging import log
 
 
@@ -81,24 +84,17 @@ def aggregate_streets(column):
     return False
 
 
-def main():
-    corpora = {
-        'P': 'PoliticalSpeeches',
-        'E': 'Europarl',
-        'O': 'OnlineParticipation',
-        'FA': 'FAZ',
-        'FO': 'FOCUS',
-    }
-    corpus = corpora['FA']
+def main(corpus):
+
+    t0 = time()
     fpath = join(NLP_PATH, corpus + '_nlp.pickle')
     log("reading from " + fpath)
     df = pd.read_pickle(fpath)
 
     log("extracting spacy NER")
+    df_ent = df.query('ent_idx > 0 & POS != "SPACE"')  # phrases have an ent-index > 0 and we don't care about whitespace
     df_ent = (
-        df
-        .query('ent_idx > 0 & POS != "SPACE"')  # phrases have an ent-index > 0 and we don't care about whitespace
-        .groupby(ENT_IDX).filter(lambda x: len(x) > 1)  # we case only about entities greater than 1 token
+        df_ent[df_ent.groupby(ENT_IDX).ent_idx.transform(len) > 1]
         .groupby(ENT_IDX, as_index=False).agg(concat_entities)  # concatenate entities
         .assign(
             length=lambda x: x.tok_idx.apply(lambda y: len(y)),  # add the number of tokens per entity as a new column
@@ -112,14 +108,10 @@ def main():
         })
     )
 
-    # TODO: taking too long. possible solutions:
-    # 1) try to avoid consecutive grouping
-    # 2) use dask
     log("extracting spacy noun chunks")
+    df_np = df.query('noun_phrase > 0 & POS not in ["SPACE", "NUM", "DET", "SYM"]')
     df_np = (
-        df
-        .query('noun_phrase > 0 & POS not in ["SPACE", "NUM", "DET", "SYM"]')
-        .groupby(NOUN_PHRASE).filter(lambda x: len(x) > 1)
+        df_np[df_np.groupby(NOUN_PHRASE).noun_phrase.transform(len) > 1]
         .groupby(NOUN_PHRASE, as_index=False).agg(concat_entities)
         .assign(
             length=lambda x: x.tok_idx.apply(lambda y: len(y)),
@@ -135,13 +127,14 @@ def main():
 
     log("intersecting both extraction methods")
     df_phrases = df_ent.append(df_np)
+    del df_ent
+    del df_np
+    gc.collect()
     mask = df_phrases.duplicated([HASH, SENT_IDX, TOK_IDX])
     df_phrases = df_phrases[mask]
     # set column token-index to start of phrase and add column column for the token-indexes instead
     df_phrases['tok_set'] = df_phrases[TOK_IDX]
     df_phrases[TOK_IDX] = df_phrases[TOK_IDX].apply(lambda x: x[0])
-    del df_ent
-    del df_np
 
     log("extracting streets")
     df_loc = (
@@ -170,6 +163,7 @@ def main():
     log("insert locations / streets")
     df_glued = insert_phrases(df_glued, df_loc)
     del df_loc
+    gc.collect()
     # simplify dataframe and store
     df_glued = (
         df_glued
@@ -186,11 +180,25 @@ def main():
     log("writing to " + write_path)
     df_glued.to_pickle(write_path)
 
+    t1 = int(time() - t0)
+    log("done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
+
 
 if __name__ == "__main__":
     t0 = time()
-    update_from_args()
+
+    ### --- run ---
     log("##### START #####")
-    main()
+
+    # filter files for certain prefixes
+    prefixes = r'^(' + '|'.join(CORPUS_PREFIXES) + r').'
+    pattern = re.compile(prefixes)
+    files = sorted([f for f in listdir(NLP_PATH)
+                    if (isfile(join(NLP_PATH, f)) and pattern.match(f))])
+
+    for name in files:
+        corpus_name = name.split('_nlp.')[0]
+        main(corpus_name)
+
     t1 = int(time() - t0)
     log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))

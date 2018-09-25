@@ -18,6 +18,14 @@ SMPL_PATH  = join(DATA_BASE, SMPL_BASE)
 SPCY_PATH = join(NLP_PATH, 'spacy_model')
 VOC_PATH  = join(SPCY_PATH, 'vocab')
 
+CORPORA = {
+    'P': 'PoliticalSpeeches',
+    'E': 'Europarl',
+    'O': 'OnlineParticipation',
+    'FA': 'FAZ',
+    'FO': 'FOCUS',
+}
+
 ## data scheme
 DATASET   = 'dataset'
 SUBSET    = 'subset'

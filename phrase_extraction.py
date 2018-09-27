@@ -1,9 +1,12 @@
 # coding: utf-8
 
 import gc
-from os import listdir
+from os import listdir, getpid
 from os.path import join, isfile
 from time import time
+# from guppy import hpy
+import psutil
+process = psutil.Process(getpid())
 
 import numpy as np
 import pandas as pd
@@ -14,6 +17,12 @@ from options import CORPUS_PREFIXES
 from constants import NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, \
     TEXT, TOKEN, TOK_IDX, POS, ENT_IOB, ETL_PATH, SPACE, SMPL_PATH
 from project_logging import log
+
+
+def memstr():
+    rss = "RSS: {:.2f} GB".format(process.memory_info().rss / (2**30))
+    vms = "VMS: {:.2f} GB".format(process.memory_info().vms / (2**30))
+    return rss + ' | ' + vms
 
 
 def concat_entities(column):
@@ -87,9 +96,11 @@ def aggregate_streets(column):
 def main(corpus):
 
     t0 = time()
+
     fpath = join(NLP_PATH, corpus + '_nlp.pickle')
     log("reading from " + fpath)
     df = pd.read_pickle(fpath)
+    log(memstr())
 
     log("extracting spacy NER")
     df_ent = df.query('ent_idx > 0 & POS != "SPACE"')  # phrases have an ent-index > 0 and we don't care about whitespace
@@ -107,6 +118,7 @@ def main(corpus):
             ENT_TYPE: "category"
         })
     )
+    log(memstr())
 
     log("extracting spacy noun chunks")
     df_np = df.query('noun_phrase > 0 & POS not in ["SPACE", "NUM", "DET", "SYM"]')
@@ -124,6 +136,7 @@ def main(corpus):
             ENT_TYPE: "category"
         })
     )
+    log(memstr())
 
     log("intersecting both extraction methods")
     df_phrases = df_ent.append(df_np)
@@ -135,6 +148,7 @@ def main(corpus):
     # set column token-index to start of phrase and add column column for the token-indexes instead
     df_phrases['tok_set'] = df_phrases[TOK_IDX]
     df_phrases[TOK_IDX] = df_phrases[TOK_IDX].apply(lambda x: x[0])
+    log(memstr())
 
     log("extracting streets")
     df_loc = (
@@ -156,9 +170,12 @@ def main(corpus):
             ENT_TYPE: "category"
         })
     )
+    log(memstr())
 
     log("insert phrases to original tokens")
     df_glued = insert_phrases(df, df_phrases)
+    log('df_glued: Memory consumed: {:.2f} Mb'.format(df_glued.memory_usage(index=True, deep=False)))
+    log('df_glued: Memory consumed (deep): {:.2f} Mb'.format(df_glued.memory_usage(index=True, deep=True)))
     del df_phrases
     log("insert locations / streets")
     df_glued = insert_phrases(df_glued, df_loc)
@@ -175,6 +192,9 @@ def main(corpus):
             TOK_IDX: np.int32,
         })
     )
+    log(memstr())
+
+    # log(h.heap())
     write_path = join(SMPL_PATH, corpus + '_simple.pickle')
     gc.collect()
     log("writing to " + write_path)
@@ -186,6 +206,7 @@ def main(corpus):
 
 if __name__ == "__main__":
     t0 = time()
+    #h = hpy()
 
     ### --- run ---
     log("##### START #####")
@@ -199,6 +220,7 @@ if __name__ == "__main__":
     for name in files:
         corpus_name = name.split('_nlp.')[0]
         main(corpus_name)
+        log(memstr())
 
     t1 = int(time() - t0)
     log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))

@@ -92,7 +92,8 @@ class NLPProcessor(object):
             # extract relevant attributes
             attr = [[key,
                      str(token.text), str(token.lemma_), token._.iwnlp_lemmas, str(token.pos_),
-                     int(token.i), int(token.is_sent_start or 0), token.ent_iob_, token.ent_type_,
+                     int(token.i), 1 if (token.is_sent_start or token.i == 0) else 0,
+                     token.ent_iob_, token.ent_type_,
                      noun_phrases.get(token.i, 0)
                      ] for token in doc]
             # add list of token to all docs
@@ -124,7 +125,7 @@ class NLPProcessor(object):
         df[POS] = df[POS].astype("category")
         df[ENT_IOB] = df[ENT_IOB].astype("category")
         df[ENT_TYPE] = df[ENT_TYPE].astype("category")
-        return df[FIELDS]
+        return df[FIELDS + [SENT_START, 'count']]
 
     @staticmethod
     def store(corpus, df, suffix=''):

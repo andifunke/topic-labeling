@@ -40,7 +40,11 @@ def get_removable_tokens(df_in):
     for i, sent_idx, tok_set in df_in.itertuples():
         for tok_idx in tok_set:
             remove_token.append((sent_idx, tok_idx))
-    df_out = pd.DataFrame.from_records(remove_token, columns=[SENT_IDX, TOK_IDX])
+    df_out = (
+        pd.DataFrame
+        .from_records(remove_token, columns=[SENT_IDX, TOK_IDX])
+        .assign(hash=0, ent_idx=0)
+    )
     return df_out
 
 
@@ -53,7 +57,7 @@ def insert_phrases(df_orig, df_insert):
         # remove original unigram tokens
         .append(df_removable_tokens)
         .drop_duplicates(subset=[SENT_IDX, TOK_IDX], keep=False)
-        .dropna(subset=[HASH])
+        .dropna(subset=[TOKEN])
         # insert concatenated phrase tokens
         .append(df_insert)
         .sort_values([SENT_IDX, TOK_IDX])
@@ -174,8 +178,8 @@ def main(corpus):
 
     log("insert phrases to original tokens")
     df_glued = insert_phrases(df, df_phrases)
-    log('df_glued: Memory consumed: {:.2f} Mb'.format(df_glued.memory_usage(index=True, deep=False)))
-    log('df_glued: Memory consumed (deep): {:.2f} Mb'.format(df_glued.memory_usage(index=True, deep=True)))
+    # log('df_glued: Memory consumed: {:.2f} Mb'.format(df_glued.memory_usage(index=True, deep=False)))
+    # log('df_glued: Memory consumed (deep): {:.2f} Mb'.format(df_glued.memory_usage(index=True, deep=True)))
     del df_phrases
     log("insert locations / streets")
     df_glued = insert_phrases(df_glued, df_loc)

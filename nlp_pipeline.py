@@ -35,7 +35,7 @@ if __name__ == "__main__":
                                      vocab_to_disk=STORE,
                                      # size=10,
                                      # print=True,
-                                     # head=100,
+                                     # head=1000,
                                      )
 
     t1 = int(time() - t0)

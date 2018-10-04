@@ -125,7 +125,7 @@ class NLPProcessor(object):
         df[POS] = df[POS].astype("category")
         df[ENT_IOB] = df[ENT_IOB].astype("category")
         df[ENT_TYPE] = df[ENT_TYPE].astype("category")
-        return df[FIELDS + [SENT_START, 'count']]
+        return df[FIELDS]
 
     @staticmethod
     def store(corpus, df, suffix=''):

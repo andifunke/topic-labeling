@@ -122,6 +122,7 @@ def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000)
                     # handle only if namespace == 0
                     if is_article:
                         # calculate hash key
+                        # take care: hash function in python ist non-deterministic !!!
                         row[HASH] = hash(tuple([row[key] for key in META]))
                         # increment article counter
                         article_count += 1
@@ -250,7 +251,7 @@ if __name__ == '__main__':
     print("Starting ...")
     scale = 1000
     parse_xml(IN_PATH, OUT_PATH + '_links_optimized',
-              iterations=None,
+              iterations=100,
               batch_size=100*scale,
               print_every=10*scale,
               )

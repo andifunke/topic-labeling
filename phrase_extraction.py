@@ -4,7 +4,6 @@ import gc
 from os import listdir, getpid
 from os.path import join, isfile
 from time import time
-# from guppy import hpy
 import psutil
 process = psutil.Process(getpid())
 
@@ -17,6 +16,8 @@ from options import CORPUS_PREFIXES
 from constants import NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, \
     TEXT, TOKEN, TOK_IDX, POS, ENT_IOB, ETL_PATH, SPACE, SMPL_PATH
 from project_logging import log
+from tqdm import tqdm
+tqdm.pandas()
 
 
 def memstr():
@@ -97,6 +98,13 @@ def aggregate_streets(column):
     return False
 
 
+def remove_title(x):
+    """ apply this function only on the dewac corpus.
+     It removes the rows up to the first line feed (inclusive), i.e. the document title. """
+    ln_argmx = (x.text.values == '\n').argmax()
+    return x[ln_argmx+1:]
+
+
 def main(corpus):
 
     t0 = time()
@@ -106,13 +114,25 @@ def main(corpus):
     df = pd.read_pickle(fpath)
     log(memstr())
 
+    if corpus.startswith('dewac'):
+        goodids = pd.read_pickle(join(ETL_PATH, 'dewac_good_ids.pickle'))
+        df = df[df.hash.isin(goodids.index)]
+        df = (
+            df
+            .groupby(HASH, sort=False, as_index=False)
+            .progress_apply(remove_title)
+            .reset_index(level=0, drop=True)
+        )
+
     log("extracting spacy NER")
-    df_ent = df.query('ent_idx > 0 & POS != "SPACE"')  # phrases have an ent-index > 0 and we don't care about whitespace
+    # phrases have an ent-index > 0 and we don't care about whitespace
+    df_ent = df.query('ent_idx > 0 & POS != "SPACE"')
     df_ent = (
         df_ent[df_ent.groupby(ENT_IDX).ent_idx.transform(len) > 1]
         .groupby(ENT_IDX, as_index=False).agg(concat_entities)  # concatenate entities
         .assign(
-            length=lambda x: x.tok_idx.apply(lambda y: len(y)),  # add the number of tokens per entity as a new column
+            # add the number of tokens per entity as a new column
+            length=lambda x: x.tok_idx.apply(lambda y: len(y)),
             POS='NER',  # annotations
             ent_iob='P',
         )
@@ -144,9 +164,9 @@ def main(corpus):
 
     log("intersecting both extraction methods")
     df_phrases = df_ent.append(df_np)
-    del df_ent
-    del df_np
+    del df_ent, df_np
     gc.collect()
+
     mask = df_phrases.duplicated([HASH, SENT_IDX, TOK_IDX])
     df_phrases = df_phrases[mask]
     # set column token-index to start of phrase and add column column for the token-indexes instead
@@ -185,6 +205,7 @@ def main(corpus):
     df_glued = insert_phrases(df_glued, df_loc)
     del df_loc
     gc.collect()
+
     # simplify dataframe and store
     df_glued = (
         df_glued
@@ -201,6 +222,7 @@ def main(corpus):
     # log(h.heap())
     write_path = join(SMPL_PATH, corpus + '_simple.pickle')
     gc.collect()
+
     log("writing to " + write_path)
     df_glued.to_pickle(write_path)
 
@@ -210,7 +232,6 @@ def main(corpus):
 
 if __name__ == "__main__":
     t0 = time()
-    #h = hpy()
 
     ### --- run ---
     log("##### START #####")

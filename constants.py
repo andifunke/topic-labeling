@@ -5,7 +5,8 @@ from os.path import join
 ### --- default constants definitions ---
 
 ## default paths
-DATA_BASE = "../../master_cloud/corpora"
+# DATA_BASE = "../../master_cloud/corpora"
+DATA_BASE = "../data"
 ETL_BASE  = "preprocessed"
 ETL_PATH  = join(DATA_BASE, ETL_BASE)
 # TODO: add local path to arguments/options
@@ -13,8 +14,10 @@ LOCL_PATH = ETL_BASE
 FULL_PATH = join(DATA_BASE, LOCL_PATH)
 NLP_BASE  = "preprocessed/nlp"
 NLP_PATH  = join(DATA_BASE, NLP_BASE)
-SMPL_BASE  = "preprocessed/simple"
-SMPL_PATH  = join(DATA_BASE, SMPL_BASE)
+smpl_base  = "preprocessed/simple"
+SMPL_PATH  = join(DATA_BASE, smpl_base)
+tmp_base  = "preprocessed/tmp"
+TMP_PATH  = join(DATA_BASE, tmp_base)
 SPCY_PATH = join(NLP_PATH, 'spacy_model')
 VOC_PATH  = join(SPCY_PATH, 'vocab')
 

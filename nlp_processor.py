@@ -8,7 +8,7 @@ import pandas as pd
 import gc
 
 from constants import VOC_PATH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX, \
-    TOKEN, SENT_IDX, HASH, NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, TITLE, DESCR
+    TOKEN, SENT_IDX, HASH, NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, TITLE, DESCR, ETL_PATH
 from lemmatizer_plus import LemmatizerPlus
 from project_logging import log
 # from spacy_ner import extract_german_groups
@@ -34,26 +34,33 @@ class NLPProcessor(object):
         self.nlp.add_pipe(self.lemmatizer)
         self.stringstore = self.nlp.vocab.strings
 
-    def read_process_store(self, file_path, corpus_name, store=True, vocab_to_disk=True,
-                           size=None, **kwargs):
+    def read_process_store(self, file_path, corpus_name, store=True, vocab_to_disk=False,
+                           start=0, stop=None, **kwargs):
         log("*** start new corpus: " + corpus_name)
         t0 = time()
 
         # read the etl dataframe
-        log(corpus_name + ": reading corpus from " + file_path)
-        df = self.read(file_path)
+        slicing = "[{:d}:{:d}]".format(start, stop) if (start or stop) else ''
+        log("{}: reading corpus{} from {}".format(corpus_name, slicing, file_path))
+        df = self.read(file_path, start=start, stop=stop)
+
+        log('collect: %d' % gc.collect())
 
         # start the nlp pipeline
-        log(corpus_name + ": start processing:")
-        df = self.process_docs(df, size=size)
+        log(corpus_name + ": start processing")
+        df = self.process_docs(df)
+        log('collect: %d' % gc.collect())
 
         if kwargs.get('print', False):
             # print dataframe
             tprint(df, kwargs.get('head', 10))
         if store:
             # store dataframe, free memory first
-            gc.collect()
-            self.store(corpus_name, df, suffix='_nlp')
+            if start or stop:
+                suffix = '_{:d}_{:d}_nlp'.format(start, stop-1)
+            else:
+                suffix = '_nlp'
+            self.store(corpus_name, df, suffix=suffix)
         if vocab_to_disk:
             # stored with each corpus, in case anythings goes wrong
             log("writing spacy vocab to disk: " + VOC_PATH)
@@ -64,18 +71,20 @@ class NLPProcessor(object):
         t1 = int(time() - t0)
         log("{:s}: done in {:02d}:{:02d}:{:02d}".format(corpus_name, t1//3600, (t1//60) % 60, t1 % 60))
 
-    def process_docs(self, text_df, size=None, steps=100):
+    def process_docs(self, text_df, steps=100):
         """ main function for sending the dataframes from the ETL pipeline to the NLP pipeline """
-        step_len = 100//steps
-        percent = len(text_df) // steps
+        steps = max(min(steps, len(text_df)), 1)
+        step_len = max(100//steps, 1)
+        percent = max(len(text_df) // steps, 1)
         chunk_idx = done = 0
         docs = []
 
         # process each doc in corpus
-        for i, kv in enumerate(text_df[:size].itertuples()):
+        for i, kv in enumerate(text_df.itertuples()):
             # log progress
-            if percent > 0 and i % percent == 0:
-                log("  {:d}%: {:d} documents processed".format(done, i))
+            if i % percent == 0:
+                if i > 0:
+                    log("  {:d}%: {:d} documents processed".format(done, i))
                 done += step_len
 
             key, title, descr, text = kv
@@ -136,6 +145,11 @@ class NLPProcessor(object):
         df.to_pickle(fname)
 
     @staticmethod
-    def read(f):
+    def read(f, start=0, stop=None):
         """ reads a dataframe from pickle format """
-        return pd.read_pickle(f)[[TITLE, DESCR, TEXT]]
+        df = pd.read_pickle(f)[[TITLE, DESCR, TEXT]].iloc[start:stop]
+        # lazy hack for dewiki_new
+        goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
+        df = df[df.index.isin(goodids.index)].copy()
+        log('use {:d} documents'.format(len(df)))
+        return df

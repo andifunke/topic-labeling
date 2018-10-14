@@ -10,10 +10,13 @@ LOG_PATH = './../logs/nlp_pipe.log'
 CORPUS_PREFIXES = ''
 DE = 'de'
 DE_HPC = '/home/funkea/.local/lib/python3.4/site-packages/de_core_news_sm/de_core_news_sm-2.0.0'
+START = 0
+BATCH_SIZE = None
+BATCHES = 1
 
 
 def update_from_args():
-    global HPC, LOG, STORE, LOG_PATH, CORPUS_PREFIXES, DE
+    global HPC, LOG, STORE, LOG_PATH, CORPUS_PREFIXES, DE, START, BATCH_SIZE, BATCHES
 
     parser = argparse.ArgumentParser(description='topic labeling project')
 
@@ -28,6 +31,11 @@ def update_from_args():
     parser.add_argument('--no-store', dest='store', action='store_false', required=False)
     parser.set_defaults(store=STORE)
 
+    # ints
+    parser.add_argument('--start', type=int, required=False)
+    parser.add_argument('--batch_size', type=int, required=False)
+    parser.add_argument('--batches', type=int, required=False)
+
     # strings / paths
     parser.add_argument('--spacy_model_path', type=str, required=False)
     parser.add_argument('--log_path', type=str, required=False)
@@ -38,6 +46,9 @@ def update_from_args():
     HPC = options['hpc']
     LOG = options['log']
     STORE = options['store']
+    START = options.get('start', START)
+    BATCH_SIZE = options.get('batch_size', BATCH_SIZE)
+    BATCHES = options.get('batches', BATCHES)
     if options['log_path']:
         LOG_PATH = options['log_path']
     if options['corpus_prefix']:

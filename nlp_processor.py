@@ -151,5 +151,5 @@ class NLPProcessor(object):
         # lazy hack for dewiki_new
         goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
         df = df[df.index.isin(goodids.index)].copy()
-        log('use {:d} documents'.format(len(df)))
+        log('using {:d} documents'.format(len(df)))
         return df

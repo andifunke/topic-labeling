@@ -35,7 +35,7 @@ if __name__ == "__main__":
         corpus = name.split('.')[0]
         fname = join(FULL_PATH, name)
         for i in range(1, batches+1):
-            log('batch: {:d}'.format(i))
+            log('>>> batch: {:d} >>>'.format(i))
             processor.read_process_store(fname, corpus,
                                          start=start,
                                          stop=start+batch_size,

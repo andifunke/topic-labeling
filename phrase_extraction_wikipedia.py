@@ -25,19 +25,18 @@ def ngrams(ser):
         s = ser.str.cat(sep='_')
         size = len(ser)
         while size > 1:
-            if (s in ps):
+            if s in ps:
                 return s, size
             s = s.rsplit('_', 1)[0]
             size -= 1
     return np.nan, 0
 
 
-pattern = re.compile(r'dewiki_01_3|dewiki_09')
+pattern = re.compile(r'dewiki_new_0')
 files = sorted([f for f in listdir(SMPL_PATH)
                 if (isfile(join(SMPL_PATH, f)) and pattern.match(f))])
 
 for name in files[:]:
-    gc.collect()
     gc.collect()
     corpus = name.split('.')[0]
     print(corpus)

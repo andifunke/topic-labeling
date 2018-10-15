@@ -193,6 +193,8 @@ def process_subset(df):
         })
     )
     log(memstr())
+    log('collect: %d' % gc.collect())
+    log(memstr())
 
     log("extracting spacy noun chunks")
     df_np = df.query('noun_phrase > 0 & POS not in ["SPACE", "NUM", "DET", "SYM"]')
@@ -211,17 +213,23 @@ def process_subset(df):
         })
     )
     log(memstr())
+    log('collect: %d' % gc.collect())
+    log(memstr())
 
     log("intersecting both extraction methods")
     df_phrases = df_ent.append(df_np)
     del df_ent, df_np
+    log(memstr())
     log('collect: %d' % gc.collect())
+    log(memstr())
 
     mask = df_phrases.duplicated([HASH, SENT_IDX, TOK_IDX])
     df_phrases = df_phrases[mask]
     # set column token-index to start of phrase and add column column for the token-indexes instead
     df_phrases['tok_set'] = df_phrases[TOK_IDX]
     df_phrases[TOK_IDX] = df_phrases[TOK_IDX].apply(lambda x: x[0])
+    log(memstr())
+    log('collect: %d' % gc.collect())
     log(memstr())
 
     log("extracting streets")
@@ -245,6 +253,8 @@ def process_subset(df):
         })
     )
     log(memstr())
+    log('collect: %d' % gc.collect())
+    log(memstr())
 
     log("insert phrases to original tokens")
     df_glued = insert_phrases(df, df_phrases)
@@ -252,7 +262,9 @@ def process_subset(df):
     log("insert locations / streets")
     df_glued = insert_phrases(df_glued, df_loc)
     del df_loc
+    log(memstr())
     log('collect: %d' % gc.collect())
+    log(memstr())
 
     # simplify dataframe and store
     df_glued = (
@@ -267,9 +279,12 @@ def process_subset(df):
     )
     log(memstr())
     log('collect: %d' % gc.collect())
+    log(memstr())
 
     log("insert wikipedia phrases")
     df_glued = insert_wikipedia_phrases(df_glued)
+    log(memstr())
+    log('collect: %d' % gc.collect())
     log(memstr())
     return df_glued
 
@@ -279,20 +294,40 @@ def main(corpus):
 
     fpath = join(NLP_PATH, corpus + '_nlp.pickle')
     log("reading from " + fpath)
-    df = pd.read_pickle(fpath)
+    df_main = pd.read_pickle(fpath)
     log(memstr())
 
     if corpus.startswith('dewac'):
-        df = preprocess_dewac(df)
+        df_main = preprocess_dewac(df_main)
     elif corpus.startswith('dewiki'):
-        df = preprocess_dewiki(df)
+        df_main = preprocess_dewiki(df_main)
 
-    df = process_subset(df)
+    df_main = df_main.groupby(HASH, sort=False)
+    length = len(df_main)
 
-    write_path = join(SMPL_PATH, corpus + '__{:d}_simple.pickle'.format(i))
-    log('collect: %d' % gc.collect())
-    log("writing to " + write_path)
-    df.to_pickle(write_path)
+    # init
+    t_a = time()
+    groups_tmp = []
+    last_cnt = 1
+    for i, grp in enumerate(df_main, last_cnt):
+        groups_tmp.append(grp[1])
+        if (i % 10_000 == 0) or (i == length):
+            log('process {:d}:{:d}'.format(last_cnt, i))
+            df_glued = process_subset(pd.concat(groups_tmp))
+            write_path = join(SMPL_PATH, corpus + '__{:d}_simple.pickle'.format(i))
+            log(memstr())
+            log('collect: %d' % gc.collect())
+            log(memstr())
+
+            log("writing to " + write_path)
+            df_glued.to_pickle(write_path)
+            t_b = int(time() - t_a)
+            log("subset done in {:02d}:{:02d}:{:02d}".format(t_b//3600, (t_b//60) % 60, t_b % 60))
+
+            # reset
+            t_a = time()
+            groups_tmp = []
+            last_cnt = i+1
 
     t1 = int(time() - t0)
     log("done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))

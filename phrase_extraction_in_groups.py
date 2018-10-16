@@ -192,7 +192,6 @@ def process_subset(df):
             ENT_TYPE: "category"
         })
     )
-    log(memstr())
     log('collect: %d' % gc.collect())
     log(memstr())
 
@@ -212,14 +211,12 @@ def process_subset(df):
             ENT_TYPE: "category"
         })
     )
-    log(memstr())
     log('collect: %d' % gc.collect())
     log(memstr())
 
     log("intersecting both extraction methods")
     df_phrases = df_ent.append(df_np)
     del df_ent, df_np
-    log(memstr())
     log('collect: %d' % gc.collect())
     log(memstr())
 
@@ -228,9 +225,6 @@ def process_subset(df):
     # set column token-index to start of phrase and add column column for the token-indexes instead
     df_phrases['tok_set'] = df_phrases[TOK_IDX]
     df_phrases[TOK_IDX] = df_phrases[TOK_IDX].apply(lambda x: x[0])
-    log(memstr())
-    log('collect: %d' % gc.collect())
-    log(memstr())
 
     log("extracting streets")
     df_loc = (
@@ -252,7 +246,6 @@ def process_subset(df):
             ENT_TYPE: "category"
         })
     )
-    log(memstr())
     log('collect: %d' % gc.collect())
     log(memstr())
 
@@ -262,7 +255,6 @@ def process_subset(df):
     log("insert locations / streets")
     df_glued = insert_phrases(df_glued, df_loc)
     del df_loc
-    log(memstr())
     log('collect: %d' % gc.collect())
     log(memstr())
 
@@ -277,13 +269,11 @@ def process_subset(df):
             TOK_IDX: np.int32,
         })
     )
-    log(memstr())
     log('collect: %d' % gc.collect())
     log(memstr())
 
     log("insert wikipedia phrases")
     df_glued = insert_wikipedia_phrases(df_glued)
-    log(memstr())
     log('collect: %d' % gc.collect())
     log(memstr())
     return df_glued
@@ -348,7 +338,6 @@ if __name__ == "__main__":
     for name in files:
         corpus_name = name.split('_nlp.')[0]
         main(corpus_name)
-        log(memstr())
 
     t1 = int(time() - t0)
     log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))

@@ -20,7 +20,10 @@ from tqdm import tqdm
 tqdm.pandas()
 
 
-BAD = {'ab', 'seit', 'in', }
+BAD = {
+    'ab', 'seit', 'in', 'der', 'die', 'das', 'an', 'am', 'diese',
+}
+
 # based on Philipp Grawes approach on extracting and normalizing street names
 STREET_NAME_LIST = [r'strasse$', r'straße$', r'str$', r'str.$', r'platz', r'gasse$',
                     r'allee$', r'ufer$', r'weg$']

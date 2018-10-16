@@ -16,7 +16,7 @@ p = pd.read_pickle(join(ETL_PATH, 'dewiki_phrases_joined.pickle'))
 ps = set(p)
 
 bad = {
-    'ab', 'seit', 'in',
+    'ab', 'seit', 'in', 'der', 'die', 'das', 'an', 'am', 'diese',
 }
 
 

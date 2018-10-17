@@ -7,13 +7,13 @@ from os.path import join
 ## default paths
 # DATA_BASE = "../../master_cloud/corpora"
 DATA_BASE = "../data"
-ETL_BASE  = "preprocessed"
-ETL_PATH  = join(DATA_BASE, ETL_BASE)
+etl_base  = "preprocessed"
+ETL_PATH  = join(DATA_BASE, etl_base)
 # TODO: add local path to arguments/options
-LOCL_PATH = ETL_BASE
+LOCL_PATH = etl_base
 FULL_PATH = join(DATA_BASE, LOCL_PATH)
-NLP_BASE  = "preprocessed/nlp"
-NLP_PATH  = join(DATA_BASE, NLP_BASE)
+nlp_base  = "preprocessed/nlp"
+NLP_PATH  = join(DATA_BASE, nlp_base)
 smpl_base  = "preprocessed/simple"
 SMPL_PATH  = join(DATA_BASE, smpl_base)
 tmp_base  = "preprocessed/tmp"

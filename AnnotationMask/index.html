@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+	<title>Topic Labeling</title>
+
+	<meta http-equiv="content-type" content="text/html; charset=utf-8">
+	<meta name="language" content="de">
+	<meta name="description" content="Topic Label Bewertungen">
+	<link rel="stylesheet" type="text/css" media="screen" href="sheet.css" />
+
+</head>
+
+<body>
+
+
+<table id="verschachtelt">
+<tr>
+<td id="textbereich">
+
+
+<link href="https://s3.amazonaws.com/mturk-public/bs30/css/bootstrap.min.css" rel="stylesheet" />
+<section class="container" id="Other" style="margin-bottom:15px; padding: 10px 10px; font-family: Verdana, Geneva, sans-serif; color:#333333; font-size:0.9em;">
+<div class="row col-xs-12 col-md-12"><!-- Instructions -->
+<div class="panel panel-primary">
+<div class="panel-heading"><strong>Instructions</strong></div>
+
+<div class="panel-body">
+<p><strong>Dieses Projekt richtet sich an Worker, die der deutschen Sprache m&auml;chtig sind. F&uuml;r eine Liste von W&ouml;rtern werden verschiedene Oberbegriffe (Labels) angezeigt. Aufgabe ist es, diese Labels auf einer Skala von 0-3 zu bewerten.</strong></p>
+
+<p>Ihnen wird eine Liste von 10 W&ouml;rtern angezeigt, die zu einem Thema geh&ouml;ren. Zu diesem Thema werden 20 Oberbegriffe (Labels) vorgeschlagen. Sie sollen bewerten, ob die vorgeschlagenen Labels das Thema eher gut oder eher schlecht repr&auml;sentieren. Repr&auml;sentieren hei&szlig;t hier: Das Label w&auml;re eine geeignete &Uuml;berschrift f&uuml;r dieses Thema.</p>
+
+<p>Die Bewertung erfolgt mittels der folgenden <strong>Skala</strong>:</p>
+
+<ul>
+	<li><strong><span style="color:#FF0000;">3</span> = sehr gutes Label</strong> <em><span style="color:#696969;">(man k&ouml;nnte mit diesem Label die meisten W&ouml;rter der Liste erraten)</span></em></li>
+	<li><strong><span style="color:#FF0000;">2</span> = angemessenes Label</strong> <em><span style="color:#696969;">(man k&ouml;nnte mit diesem Label einige W&ouml;rter der Liste erraten, aber es ist zu generell oder zu spezifisch)</span></em></li>
+	<li><strong><span style="color:#FF0000;">1</span> = verwandt, aber kein guter Oberbegriff</strong> <em><span style="color:#696969;">(der Begriff k&ouml;nnte in der Themenliste auftreten, stellt aber keine &Uuml;berschrift dar)</span></em></li>
+	<li><strong><span style="color:#FF0000;">0</span> = v&ouml;llig unpassendes Label</strong> <span style="color:#696969;"><em>(kein Bezug zum Thema)</em></span></li>
+</ul>
+
+<p>&nbsp;</p>
+
+<h5><strong>Beispiel:</strong></h5>
+
+<p><span style="font-size:3.1;"><em><strong>Thema:</strong></em> &quot;Weltraum, Erde, Mond, Wissenschaft, Licht, Mission, NASA, Weltall, Rakete, Mars&quot;</span></p>
+
+<ul>
+	<li><strong>Raumfahrt: <span style="color:#FF0000;">3</span></strong> <span style="color:#696969;"><em>(sehr gutes Label)</em></span></li>
+	<li><strong>Weltraum: <span style="color:#FF0000;">2</span></strong> <span style="color:#696969;"><em>(angemessenes Label)</em></span></li>
+	<li><strong>Saturn: <span style="color:#FF0000;">1</span></strong> <span style="color:#696969;"><em>(verwandt, aber kein Oberbegriff)</em></span></li>
+	<li><strong>Katze: <span style="color:#FF0000;">0</span></strong> <span style="color:#696969;"><em>(kein Bezug zum Thema)</em></span></li>
+</ul>
+
+<p>Es ist m&ouml;glich, dass es f&uuml;r einige Themen keine &quot;sehr guten&quot; Labels gibt. In diesem Fall w&uuml;rde kein Label die Bewertung <span style="color:#FF0000;"><strong>3</strong></span> erhalten. Ebenso ist es m&ouml;glich, dass f&uuml;r manche Themen mehrere Labels als &quot;sehr gut&quot; betrachtet werden k&ouml;nnen und somit die Bewertung <span style="color:#FF0000;"><strong>3</strong></span> verdienen.</p>
+
+<p>&nbsp;</p>
+
+<h5><strong>Hinweis:</strong></h5>
+
+<p>Alle Labels eines Themas m&uuml;ssen bewertet werden, damit die Arbeit anerkannt wird. Die meisten Themenbegriffe sind aus Alltag und Medien bekannt. Falls Sie mit einem Begriff doch einmal nicht vertraut sind, ist eine kurze Websuche durchaus erlaubt.</p>
+</div>
+</div>
+<!-- End Instructions --><!-- Content Body -->
+
+<form name="hhcfeedback" ACTION="form_kontakt.php" METHOD=POST>
+
+
+
+
+<!-- TOPIC -->
+
+<h2 class="a">Thema:</h2>
+<h2 class="b">&quot;
+	Begriff&nbsp;1,&#160;
+	Begriff&nbsp;2,&#160;
+	Begriff&nbsp;3,&#160;
+	Begriff&nbsp;4,&#160;
+	Begriff&nbsp;5,&#160;<br>
+	Begriff&nbsp;6,&#160;
+	Begriff&nbsp;7,&#160;
+	Begriff&nbsp;8,&#160;
+	Begriff&nbsp;9,&#160;
+	Begriff&nbsp;10
+	&quot;
+</h2>
+
+
+<!-- LABELS -->
+
+<table style="width:auto; max-width:95%; margin:15px auto 0; background:#CCC; border-radius:15px;">
+  <colgroup>
+    <col style="min-width:auto;">
+    <col style="width:100px;">
+    <col style="width:100px;">
+    <col style="width:100px;">
+    <col style="width:100px;">
+  </colgroup>
+  <tr class="bottom">
+    <td class="forml"></td>
+	<td class="h"><span class="h">3</span><br>sehr gut</td>
+	<td class="h"><span class="h">2</span><br>angemessen</td>
+	<td class="h"><span class="h">1</span><br>verwandt</td>
+	<td class="h"><span class="h">0</span><br>kein Bezug</td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l1">Label 1</label></td>
+  	<td class="l_a"><input type="radio" name="l1"></td>
+  	<td class="l_a"><input type="radio" name="l1"></td>
+  	<td class="l_a"><input type="radio" name="l1"></td>
+  	<td class="l_a"><input type="radio" name="l1"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l2">Label 2</label></td>
+  	<td class="l_b"><input type="radio" name="l2"></td>
+  	<td class="l_b"><input type="radio" name="l2"></td>
+  	<td class="l_b"><input type="radio" name="l2"></td>
+  	<td class="l_b"><input type="radio" name="l2"></td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l3">Label 3</label></td>
+  	<td class="l_a"><input type="radio" name="l3"></td>
+  	<td class="l_a"><input type="radio" name="l3"></td>
+  	<td class="l_a"><input type="radio" name="l3"></td>
+  	<td class="l_a"><input type="radio" name="l3"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l4">Label 4</label></td>
+  	<td class="l_b"><input type="radio" name="l4"></td>
+  	<td class="l_b"><input type="radio" name="l4"></td>
+  	<td class="l_b"><input type="radio" name="l4"></td>
+  	<td class="l_b"><input type="radio" name="l4"></td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l5">Label 5</label></td>
+  	<td class="l_a"><input type="radio" name="l5"></td>
+  	<td class="l_a"><input type="radio" name="l5"></td>
+  	<td class="l_a"><input type="radio" name="l5"></td>
+  	<td class="l_a"><input type="radio" name="l5"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l6">Label 6</label></td>
+  	<td class="l_b"><input type="radio" name="l6"></td>
+  	<td class="l_b"><input type="radio" name="l6"></td>
+  	<td class="l_b"><input type="radio" name="l6"></td>
+  	<td class="l_b"><input type="radio" name="l6"></td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l7">Label 7</label></td>
+  	<td class="l_a"><input type="radio" name="l7"></td>
+  	<td class="l_a"><input type="radio" name="l7"></td>
+  	<td class="l_a"><input type="radio" name="l7"></td>
+  	<td class="l_a"><input type="radio" name="l7"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l8">Label 8</label></td>
+  	<td class="l_b"><input type="radio" name="l8"></td>
+  	<td class="l_b"><input type="radio" name="l8"></td>
+  	<td class="l_b"><input type="radio" name="l8"></td>
+  	<td class="l_b"><input type="radio" name="l8"></td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l9">Label 9</label></td>
+  	<td class="l_a"><input type="radio" name="l9"></td>
+  	<td class="l_a"><input type="radio" name="l9"></td>
+  	<td class="l_a"><input type="radio" name="l9"></td>
+  	<td class="l_a"><input type="radio" name="l9"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l10">Label 10</label></td>
+  	<td class="l_b"><input type="radio" name="l10"></td>
+  	<td class="l_b"><input type="radio" name="l10"></td>
+  	<td class="l_b"><input type="radio" name="l10"></td>
+  	<td class="l_b"><input type="radio" name="l10"></td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l11">Label 11</label></td>
+  	<td class="l_a"><input type="radio" name="l11"></td>
+  	<td class="l_a"><input type="radio" name="l11"></td>
+  	<td class="l_a"><input type="radio" name="l11"></td>
+  	<td class="l_a"><input type="radio" name="l11"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l12">Label 12</label></td>
+  	<td class="l_b"><input type="radio" name="l12"></td>
+  	<td class="l_b"><input type="radio" name="l12"></td>
+  	<td class="l_b"><input type="radio" name="l12"></td>
+  	<td class="l_b"><input type="radio" name="l12"></td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l13">Label 13</label></td>
+  	<td class="l_a"><input type="radio" name="l13"></td>
+  	<td class="l_a"><input type="radio" name="l13"></td>
+  	<td class="l_a"><input type="radio" name="l13"></td>
+  	<td class="l_a"><input type="radio" name="l13"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l14">Label 14</label></td>
+  	<td class="l_b"><input type="radio" name="l14"></td>
+  	<td class="l_b"><input type="radio" name="l14"></td>
+  	<td class="l_b"><input type="radio" name="l14"></td>
+  	<td class="l_b"><input type="radio" name="l14"></td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l15">Label 15</label></td>
+  	<td class="l_a"><input type="radio" name="l15"></td>
+  	<td class="l_a"><input type="radio" name="l15"></td>
+  	<td class="l_a"><input type="radio" name="l15"></td>
+  	<td class="l_a"><input type="radio" name="l15"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l16">Label 16</label></td>
+  	<td class="l_b"><input type="radio" name="l16"></td>
+  	<td class="l_b"><input type="radio" name="l16"></td>
+  	<td class="l_b"><input type="radio" name="l16"></td>
+  	<td class="l_b"><input type="radio" name="l16"></td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l17">Label 17</label></td>
+  	<td class="l_a"><input type="radio" name="l17"></td>
+  	<td class="l_a"><input type="radio" name="l17"></td>
+  	<td class="l_a"><input type="radio" name="l17"></td>
+  	<td class="l_a"><input type="radio" name="l17"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l18">Label 18</label></td>
+  	<td class="l_b"><input type="radio" name="l18"></td>
+  	<td class="l_b"><input type="radio" name="l18"></td>
+  	<td class="l_b"><input type="radio" name="l18"></td>
+  	<td class="l_b"><input type="radio" name="l18"></td>
+  </tr>
+  <tr>
+    <td class="forml_a"><label class="norm" for="l19">langes Label 19</label></td>
+  	<td class="l_a"><input type="radio" name="l19"></td>
+  	<td class="l_a"><input type="radio" name="l19"></td>
+  	<td class="l_a"><input type="radio" name="l19"></td>
+  	<td class="l_a"><input type="radio" name="l19"></td>
+  </tr>
+  <tr>
+    <td class="forml"><label class="norm" for="l20">sehr langes Label 20</label></td>
+  	<td class="l_b"><input type="radio" name="l20"></td>
+  	<td class="l_b"><input type="radio" name="l20"></td>
+  	<td class="l_b"><input type="radio" name="l20"></td>
+  	<td class="l_b"><input type="radio" name="l20"></td>
+  </tr>
+  <tr class="bottom">
+    <td class="forml"></td>
+	<td class="h">sehr gut<br><span class="h">3</span></td>
+	<td class="h">angemessen<br><span class="h">2</span></td>
+	<td class="h">verwandt<br><span class="h">1</span></td>
+	<td class="h">kein Bezug<br><span class="h">0</span></td>
+  </tr>
+</table>
+
+
+
+
+<!-- ABSENDEN -->
+<div style="margin-top:5px;">
+<p style="text-align:center; padding-top:0; font-size:1.2em"><input type="submit" value="Absenden"></p>
+</div>
+
+</form>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>

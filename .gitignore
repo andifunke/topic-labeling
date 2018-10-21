@@ -222,3 +222,6 @@ NETL/training/dump
 NETL/training/processed_documents
 NETL/training/trained_models
 Trash*
+NETL/dataset
+*support_files
+

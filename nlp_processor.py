@@ -48,6 +48,7 @@ class NLPProcessor(object):
 
         # start the nlp pipeline
         log(corpus_name + ": start processing")
+        # self.check_docs(df); return
         df = self.process_docs(df)
         log('collect: %d' % gc.collect())
 
@@ -70,6 +71,13 @@ class NLPProcessor(object):
 
         t1 = int(time() - t0)
         log("{:s}: done in {:02d}:{:02d}:{:02d}".format(corpus_name, t1//3600, (t1//60) % 60, t1 % 60))
+
+    def check_docs(self, text_df):
+        for i, kv in enumerate(text_df.itertuples()):
+            key, title, descr, text = kv
+            doc = self.nlp('\n'.join(filter(None, [title, descr, text])))
+            for token in doc:
+                print(token.i, token.is_sent_start, token.text)
 
     def process_docs(self, text_df, steps=100):
         """ main function for sending the dataframes from the ETL pipeline to the NLP pipeline """
@@ -149,7 +157,8 @@ class NLPProcessor(object):
         """ reads a dataframe from pickle format """
         df = pd.read_pickle(f)[[TITLE, DESCR, TEXT]].iloc[start:stop]
         # lazy hack for dewiki_new
-        goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
-        df = df[df.index.isin(goodids.index)].copy()
+        if 'dewiki' in f:
+            goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
+            df = df[df.index.isin(goodids.index)]
         log('using {:d} documents'.format(len(df)))
-        return df
+        return df.copy()

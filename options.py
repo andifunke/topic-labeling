@@ -46,9 +46,6 @@ def update_from_args():
     HPC = options['hpc']
     LOG = options['log']
     STORE = options['store']
-    START = options.get('start', START)
-    BATCH_SIZE = options.get('batch_size', BATCH_SIZE)
-    BATCHES = options.get('batches', BATCHES)
     if options['log_path']:
         LOG_PATH = options['log_path']
     if options['corpus_prefix']:
@@ -57,5 +54,11 @@ def update_from_args():
         DE = options['spacy_model_path']
     if options['hpc']:
         DE = DE_HPC
+    if options['batches']:
+        BATCHES = options['batches']
+    if options['batch_size']:
+        BATCH_SIZE = options['batch_size']
+    if options['start']:
+        START = options['start']
 
     return options

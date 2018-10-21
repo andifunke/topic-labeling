@@ -38,13 +38,16 @@ if __name__ == "__main__":
             log('>>> batch: {:d} >>>'.format(i))
             processor.read_process_store(fname, corpus,
                                          start=start,
-                                         stop=start+batch_size,
+                                         stop=(start+batch_size) if batch_size else None,
                                          store=STORE,
                                          # vocab_to_disk=STORE,
                                          # print=True,
                                          # head=1000,
                                          )
-            start += batch_size
+            if batch_size:
+                start += batch_size
+            else:
+                break
 
     t1 = int(time() - t0)
     log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))

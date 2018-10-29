@@ -1,9 +1,3 @@
-
-# coding: utf-8
-
-# In[1]:
-
-
 # coding: utf-8
 
 from constants import *
@@ -14,12 +8,11 @@ import numpy as np
 import pandas as pd
 import re
 from tqdm import tqdm
+
+from utils import tprint
+
 tqdm.pandas()
 pd.options.display.max_rows = 2001
-
-
-# In[ ]:
-
 
 p = pd.read_pickle(join(ETL_PATH, 'dewiki_phrases_joined.pickle'))
 ps = set(p)
@@ -41,7 +34,7 @@ def ngrams(ser):
     return np.nan, 0
 
 
-pattern = re.compile(r'P')
+pattern = re.compile(r'(O|E)')
 files = sorted([f for f in listdir(SMPL_PATH)
                 if (isfile(join(SMPL_PATH, f)) and pattern.match(f))])
 
@@ -50,7 +43,7 @@ for name in files[:]:
     corpus = name.split('.')[0]
     print(corpus)
     
-    f = join(SMPL_PATH, corpus + '.pickle')
+    f = join(SMPL_PATH, f'{corpus}.pickle')
     df = pd.read_pickle(f)
     df = df.reset_index(drop=True)
     df['__2'] = df.token.shift(-1)
@@ -73,6 +66,5 @@ for name in files[:]:
                     keep[j] = False
     df['keep'] = keep
     df = df[df.keep].drop(['phrase', 'length', 'keep'], axis=1)
-    f = join(SMPL_PATH, corpus + '_wiki_phrases.pickle')
+    f = join(SMPL_PATH, f'{corpus}_wiki_phrases.pickle')
     df.to_pickle(f)
-

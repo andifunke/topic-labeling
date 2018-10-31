@@ -12,6 +12,7 @@ import pandas as pd
 import gc
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import CoherenceModel, TfidfModel, LdaModel, LdaMulticore
+from gensim.models.wrappers import LdaMallet
 # from gensim.models.hdpmodel import HdpModel, HdpTopicFormatter
 from gensim.models.callbacks import CoherenceMetric, DiffMetric, PerplexityMetric, ConvergenceMetric
 from itertools import chain, islice
@@ -19,11 +20,13 @@ from itertools import chain, islice
 from gensim.models.wrappers import LdaMallet
 
 from constants import (
-    FULL_PATH, ETL_PATH, NLP_PATH, SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, SENT_IDX, PUNCT
+    DATA_BASE, FULL_PATH, ETL_PATH, NLP_PATH, SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, SENT_IDX, PUNCT
 )
 # import logging
 import json
 import numpy as np
+import visdom
+vis = visdom.Visdom()
 
 
 # logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -42,6 +45,8 @@ def docs_to_lists(token_series):
 
 def docs2corpora(documents, tfidf=True, stopwords=None, filter_below=5, filter_above=0.5,
                  split=False, max_test_size_rel=0.1, max_test_size_abs=5000):
+
+    print('building dictionary')
     dictionary = Dictionary(documents)
     dictionary.filter_extremes(no_below=filter_below, no_above=filter_above)
 
@@ -114,8 +119,8 @@ bad_tokens = {
     'FOCUS_cleansed': [],
     'OnlineParticipation': [
         'Re', '@#1', '@#2', '@#3', '@#4', '@#5', '@#6', '@#7', '@#8', '@#9', '@#1.1', 'Für', 'Muss',
-        'etc', 'sorry', 'Ggf', 'u.a.', 'z.B.'
-                                       'B.', 'stimmt', ';-)', 'lieber', 'o.', 'Ja', 'Desweiteren',
+        'etc', 'sorry', 'Ggf', 'u.a.', 'z.B.', 'B.', 'stimmt', ';-)', 'lieber', 'o.', 'Ja',
+        'Desweiteren',
     ],
     'PoliticalSpeeches': [],
     'dewiki': [],
@@ -130,13 +135,10 @@ all_bad_tokens = set(chain(*bad_tokens.values()))
 dataset = datasets[args['dataset']]
 print('dataset:', dataset)
 print('-' * 5)
-dir_path = join(SMPL_PATH, 'wiki_phrases')
+
+sub_dir = 'dewiki' if dataset.startswith('dewi') else 'wiki_phrases'
+dir_path = join(SMPL_PATH, sub_dir)
 files = sorted([f for f in listdir(dir_path) if f.startswith(dataset)])
-for name in files:
-    full_path = join(dir_path, name)
-    if isdir(full_path):
-        subdir = sorted([join(name, f) for f in listdir(full_path) if f.startswith(dataset)])
-        files += subdir
 
 keepids = None
 if dataset in goodids:
@@ -185,9 +187,27 @@ del keepids, files
 gc.collect()
 
 
-# In[20]:
+# save full dataset as bow/tfidf corpus in Matrix Market format, including dictionary
+use_tfidf = False
+corpus_type = 'tfidf' if use_tfidf else 'bow'
+split = False
+split_type = 'trainset' if split else 'fullset'
+corpora, dictionary = docs2corpora(
+    documents, tfidf=use_tfidf,
+    filter_below=5, filter_above=0.5,
+    split=split,
+)
+corpus = corpora['training_corpus']
+file_name = f'{dataset}_{split_type}_nouns_{corpus_type}'
+corpus_path = join(ETL_PATH, 'LDAmodel', file_name + '.mm')
+dict_path = join(ETL_PATH, 'LDAmodel', file_name + '.dict')
+print(f'saving {corpus_path}')
+MmCorpus.serialize(corpus_path, corpus)
+print(f'saving {dict_path}')
+dictionary.save(dict_path)
 
 
+# initialize training and test data
 corpora, dictionary = docs2corpora(
     documents, tfidf=False,
     # stopwords=bad_tokens[dataset],
@@ -203,28 +223,34 @@ test_corpus = corpora['test_corpus']
 def init_callbacks(viz_env=None, title_suffix=''):
     # define perplexity callback for hold_out and test corpus
     pl_holdout = PerplexityMetric(
-        corpus=holdout_corpus, logger="visdom", viz_env=viz_env,
+        corpus=holdout_corpus,
+        logger="visdom", viz_env=viz_env,
         title="Perplexity (hold_out)" + title_suffix
     )
     pl_test = PerplexityMetric(
-        corpus=test_corpus, logger="visdom", viz_env=viz_env,
+        corpus=test_corpus,
+        logger="visdom", viz_env=viz_env,
         title="Perplexity (test)" + title_suffix
     )
     # define other remaining metrics available
     ch_umass = CoherenceMetric(
-        corpus=training_corpus, coherence="u_mass", topn=10, logger="visdom", viz_env=viz_env,
+        corpus=training_corpus, coherence="u_mass", topn=10,
+        logger="visdom", viz_env=viz_env,
         title="Coherence (u_mass)" + title_suffix
     )
     ch_cv = CoherenceMetric(
-        corpus=training_corpus, texts=documents, coherence="c_v", topn=10, logger="visdom",
-        viz_env=viz_env, title="Coherence (c_v)" + title_suffix
+        corpus=training_corpus, texts=documents, coherence="c_v", topn=10,
+        logger="visdom", viz_env=viz_env,
+        title="Coherence (c_v)" + title_suffix
     )
     diff_kl = DiffMetric(
-        distance="kullback_leibler", logger="visdom", viz_env=viz_env,
+        distance="kullback_leibler",
+        logger="visdom", viz_env=viz_env,
         title="Diff (kullback_leibler)" + title_suffix
     )
     convergence_kl = ConvergenceMetric(
-        distance="jaccard", logger="visdom", viz_env=viz_env,
+        distance="jaccard",
+        logger="visdom", viz_env=viz_env,
         title="Convergence (jaccard)" + title_suffix
     )
     return [pl_holdout, pl_test, ch_umass, ch_cv, diff_kl, convergence_kl]
@@ -233,11 +259,12 @@ def init_callbacks(viz_env=None, title_suffix=''):
 # In[27]:
 
 
-def get_parameterset(corpus, dictionary, callbacks=None, nbtopics=100, parametrization='a42',
-                     eval_every=None):
+def get_parameterset(corpus, dictionary, callbacks=None, nbtopics=100, parametrization='a42', eval_every=None):
     print(f'building LDA model "{parametrization}" with {nbtopics} number of topics')
-    default = dict(random_state=42, corpus=corpus, id2word=dictionary, num_topics=nbtopics,
-                   eval_every=eval_every, callbacks=callbacks, chunksize=20_000)
+    default = dict(
+        random_state=42, corpus=corpus, id2word=dictionary, num_topics=nbtopics,
+        eval_every=eval_every, callbacks=callbacks, chunksize=20_000
+    )
     ldamodels = {
         'a42': dict(passes=10),
         'b42': dict(passes=10, iterations=200),
@@ -261,23 +288,45 @@ model_name = implementations[choice][0]
 UsedModel = implementations[choice][1]
 save = True
 metrics = []
+topn = 20
 # params = params_list[3]
 for params in params_list:
     env_id = f"{dataset}-{model_name}"
     for nbtopics in [10, 25, 50, 100]:  # range(10, 101, 10):
         # Choose α from [0.05, 0.1, 0.5, 1, 5, 10]
         # Choose β from [0.05, 0.1, 0.5, 1, 5, 10]
-        callbacks = init_callbacks(viz_env=env_id, title_suffix=f", {params}, {nbtopics}tpx")
-        kwargs = get_parameterset(training_corpus, dictionary, callbacks=callbacks,
-                                  nbtopics=nbtopics, parametrization=params)
+        callbacks = init_callbacks(
+            viz_env=env_id,
+            title_suffix=f", {params}, {nbtopics}tpx"
+        )
+        kwargs = get_parameterset(
+            training_corpus,
+            dictionary,
+            callbacks=callbacks,
+            nbtopics=nbtopics,
+            parametrization=params
+        )
         if 'multicore' in model_name:
             kwargs['workers'] = 3
             kwargs.pop('callbacks', None)
+        elif 'mallet' in model_name:
+            kwargs['workers'] = 3
+            kwargs['mallet_path'] = join(DATA_BASE, 'Mallet', 'bin', 'mallet')
+            kwargs.pop('passes', None)
+            kwargs.pop('random_state', None)
+            kwargs.pop('eval_every', None)
+            kwargs.pop('callbacks', None)
+            kwargs.pop('chunksize', None)
+
+        print('running {model_name}')
         ldamodel = UsedModel(**kwargs)
 
-        topics = [[dataset] + [dictionary[term[0]] for term in ldamodel.get_topic_terms(i)] for i in
-                  range(nbtopics)]
-        df_lda = pd.DataFrame(topics, columns=['dataset'] + ['term' + str(i) for i in range(10)])
+        topics = [
+            [dataset] +
+            [dictionary[term[0]] for term in ldamodel.get_topic_terms(i, topn=topn)]
+            for i in range(nbtopics)
+        ]
+        df_lda = pd.DataFrame(topics, columns=['dataset'] + ['term' + str(i) for i in range(topn)])
 
         current_metrics = ldamodel.metrics
         # print(current_metrics)
@@ -301,3 +350,4 @@ for params in params_list:
                     else:
                         serializable_metrics[k] = [float(x) for x in v]
                 json.dump(serializable_metrics, fp)
+            vis.save([env_id])

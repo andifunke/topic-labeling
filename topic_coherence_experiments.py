@@ -11,6 +11,7 @@ import pandas as pd
 import gc
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import CoherenceModel, TfidfModel, LdaModel, LdaMulticore
+from gensim.models.coherencemodel import COHERENCE_MEASURES
 from gensim.models.hdpmodel import HdpModel, HdpTopicFormatter
 from gensim.models.callbacks import CoherenceMetric, DiffMetric, PerplexityMetric, ConvergenceMetric
 from gensim.utils import revdict
@@ -140,5 +141,19 @@ texts.append([placeholder])
 cm = CoherenceModel(topics=topics, texts=texts, dictionary=dict_from_corpus, coherence='c_v', topn=topn)
 x = cm.get_coherence_per_topic(
     #segmented_topics=topics, with_std=False, with_support=False
+)
+print(x)
+
+
+umass_segmented_topics = COHERENCE_MEASURES['c_v'].seg(topicsIds)
+print(umass_segmented_topics)
+#print(cm.segment_topics())
+
+#from pprint import pprint
+#pprint(topics)
+
+x = cm.get_coherence_per_topic(
+    segmented_topics=umass_segmented_topics,
+    # with_std=False, with_support=False
 )
 print(x)

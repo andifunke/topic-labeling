@@ -36,6 +36,7 @@ vis = visdom.Visdom()
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", type=str, required=True)
+parser.add_argument("--nbfiles", type=int, required=False, default=None)
 args = vars(parser.parse_args())
 
 
@@ -146,8 +147,13 @@ if dataset in goodids:
 
 nb_words = 0
 reduction_pos_set = {NOUN, PROPN, 'NER', 'NPHRASE'}
+
+nbfiles = args['nbfiles']
+if nbfiles is not None:
+	print(f'processing {nbfiles} files')
+
 documents = []
-for name in files:
+for name in files[:nbfiles]:
     gc.collect()
     full_path = join(dir_path, name)
     if not isfile(full_path):
@@ -318,7 +324,7 @@ for params in params_list:
             kwargs.pop('callbacks', None)
             kwargs.pop('chunksize', None)
 
-        print('running {model_name}')
+        print(f'running {model_name}')
         ldamodel = UsedModel(**kwargs)
 
         topics = [

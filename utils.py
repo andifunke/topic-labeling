@@ -2,12 +2,12 @@ import pandas as pd
 from tabulate import tabulate
 
 
-def tprint(df: pd.DataFrame, head=10, to_latex=False):
+def tprint(df: pd.DataFrame, head=0, to_latex=False):
     if head > 0:
         df = df.head(head)
     elif head < 0:
         df = df.tail(-head)
-    print(tabulate(df, headers="keys", tablefmt="pipe") + '\n')
+    print(tabulate(df, headers="keys", tablefmt="pipe", showindex="always") + '\n')
 
     if to_latex:
         print(df.to_latex(bold_rows=True))

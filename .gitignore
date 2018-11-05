@@ -224,4 +224,6 @@ NETL/training/trained_models
 Trash*
 NETL/dataset
 *support_files
+*_debug.py
+
 

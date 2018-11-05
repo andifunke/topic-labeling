@@ -22,14 +22,14 @@ from gensim.models.wrappers import LdaMallet
 from constants import (
     DATA_BASE, FULL_PATH, ETL_PATH, NLP_PATH, SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, SENT_IDX, PUNCT
 )
-# import logging
+import logging
 import json
 import numpy as np
 import visdom
 vis = visdom.Visdom()
 
 
-# logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+# logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 # pd.options.display.max_rows = 2001
 
 
@@ -137,97 +137,26 @@ dataset = datasets[args['dataset']]
 print('dataset:', dataset)
 print('-' * 5)
 
-sub_dir = 'dewiki' if dataset.startswith('dewi') else 'wiki_phrases'
-dir_path = join(SMPL_PATH, sub_dir)
-files = sorted([f for f in listdir(dir_path) if f.startswith(dataset)])
-
-keepids = None
-if dataset in goodids:
-    keepids = pd.read_pickle(goodids[dataset])
-
-nb_words = 0
-reduction_pos_set = {NOUN, PROPN, 'NER', 'NPHRASE'}
-
-nbfiles = args['nbfiles']
-if nbfiles is not None:
-    print(f'processing {nbfiles} files')
-
-documents = []
-for name in files[:nbfiles]:
-    gc.collect()
-    full_path = join(dir_path, name)
-    if not isfile(full_path):
-        continue
-
-    print('reading', name)
-    df = pd.read_pickle(join(dir_path, name))
-    print('    initial number of words:', len(df))
-    if keepids is not None:
-        # some datasets have already been filtered so you may not see a difference in any case
-        df = df[df.hash.isin(keepids.index)]
-
-    # fixing bad POS tagging
-    mask = df.token.isin(list('[]<>/–%'))
-    df.loc[mask, POS] = PUNCT
-
-    # using only certain POS tags
-    df = df[df.POS.isin(reduction_pos_set)]
-    df[TOKEN] = df[TOKEN].map(lambda x: x.strip('-/'))
-    df = df[df.token.str.len() > 1]
-    df = df[~df.token.isin(all_bad_tokens)]
-    nb_words += len(df)
-    print('    remaining number of words:', len(df))
-
-    # groupby sorts the documents by hash-id
-    # which is equal to shuffeling the dataset before building the model
-    df = df.groupby([HASH])[TOKEN].agg(docs_to_lists)
-    print('    number of documents:', len(df))
-    documents += df.values.tolist()
-
-nb_docs = len(documents)
-print('-' * 5)
-print('total number of documents:', nb_docs)
-print('total number of words:', nb_words)
-stats = dict(dataset=dataset, pos_set=sorted(reduction_pos_set), nb_docs=nb_docs, nb_words=nb_words)
-del keepids, files
-gc.collect()
-
-
-# save full dataset as bow/tfidf corpus in Matrix Market format, including dictionary
 use_tfidf = False
 corpus_type = 'tfidf' if use_tfidf else 'bow'
 split = False
 split_type = 'trainset' if split else 'fullset'
-corpora, dictionary = docs2corpora(
-    documents, tfidf=use_tfidf,
-    filter_below=5, filter_above=0.5,
-    split=split,
-)
-corpus = corpora['training_corpus']
 file_name = f'{dataset}_{split_type}_nouns_{corpus_type}'
 corpus_path = join(ETL_PATH, 'LDAmodel', file_name + '.mm')
 dict_path = join(ETL_PATH, 'LDAmodel', file_name + '.dict')
-print(f'saving {corpus_path}')
-MmCorpus.serialize(corpus_path, corpus)
-print(f'saving {dict_path}')
-dictionary.save(dict_path)
+print(f'loading {corpus_path}')
+corpus = list(MmCorpus(corpus_path))
+print(f'loading {dict_path}')
+dictionary = Dictionary.load(dict_path)
 doc_path = join(ETL_PATH, 'LDAmodel', file_name.rstrip(f'{corpus_type}') + 'texts.json')
-print(f'saving {doc_path}')
-with open(doc_path, 'w') as fp:
-    json.dump(documents, fp, ensure_ascii=False)
+print(f'loading {doc_path}')
+with open(doc_path, 'r') as fp:
+    documents = json.load(fp)
 
-
-# initialize training and test data
-corpora, dictionary = docs2corpora(
-    documents, tfidf=False,
-    # stopwords=bad_tokens[dataset],
-    # stopword removale has been moved to the pandas preprocessing pipeline
-    filter_below=5, filter_above=0.5,
-    split=True,
-)
-training_corpus = corpora['training_corpus']
-holdout_corpus = corpora['holdout_corpus']
-test_corpus = corpora['test_corpus']
+training_corpus = corpus[:-10_000]
+holdout_corpus = corpus[-10_000:-5000]
+test_corpus = corpus[-5000:]
+del corpus
 
 
 def init_callbacks(viz_env=None, title_suffix=''):
@@ -266,9 +195,6 @@ def init_callbacks(viz_env=None, title_suffix=''):
     return [pl_holdout, pl_test, ch_umass, ch_cv, diff_kl, convergence_kl]
 
 
-# In[27]:
-
-
 def get_parameterset(corpus, dictionary, callbacks=None, nbtopics=100, parametrization='a42', eval_every=None):
     print(f'building LDA model "{parametrization}" with {nbtopics} number of topics')
     default = dict(
@@ -287,7 +213,7 @@ def get_parameterset(corpus, dictionary, callbacks=None, nbtopics=100, parametri
     return ldamodels[parametrization]
 
 
-params_list = ['a42', 'b42', 'c42', 'd42', 'e42']
+params_list = ['b42', 'c42', 'd42', 'e42']
 implementations = [
     ('LDAmodel', LdaModel),
     ('LDAmulticore', LdaMulticore),
@@ -303,6 +229,10 @@ topn = 20
 for params in params_list:
     env_id = f"{dataset}-{model_name}"
     for nbtopics in [10, 25, 50, 100]:  # range(10, 101, 10):
+        if params == 'b42':
+            if nbtopics in [10, 25, 50]:
+                continue
+        print(gc.collect())
         # Choose α from [0.05, 0.1, 0.5, 1, 5, 10]
         # Choose β from [0.05, 0.1, 0.5, 1, 5, 10]
         callbacks = init_callbacks(
@@ -350,8 +280,8 @@ for params in params_list:
             print('saving to', out)
             df_lda.to_csv(out + '.csv')
             ldamodel.save(out)
-            with open(out + '_stats.json', 'w') as fp:
-                json.dump(stats, fp)
+            # with open(out + '_stats.json', 'w') as fp:
+            #     json.dump(stats, fp)
             with open(out + '_metrics.json', 'w') as fp:
                 serializable_metrics = {}
                 for k, v in current_metrics.items():

@@ -3,6 +3,8 @@
 import json
 from itertools import chain
 from os.path import join
+from pprint import pprint
+from time import time
 
 import numpy as np
 import pandas as pd
@@ -53,27 +55,79 @@ params_list = ['a42', 'b42', 'c42', 'd42', 'e42']
 placeholder = '[[PLACEHOLDER]]'
 
 
-class ModelLoader(object):
+# --------------------------------------------------------------------------------------------------
+# --- TopicLoader Class ---
 
-    def __init__(self, dataset_name, param_id, nbtopics):
+
+class TopicsLoader(object):
+
+    def __init__(self, dataset_name, param_ids: list, nbs_topics: list, topn=20):
+        self.topn = topn
         self.dataset = dataset_name
-        self.param = param_id
-        self.nbtopics = nbtopics
-        self.ldamodel = self._load_model()
-        self.dict_from_model = self.ldamodel.id2word
+        self.param_ids = param_ids
+        self.nb_topics_list = nbs_topics
+        self.nb_topics = sum(nbs_topics) * len(param_ids)
         split_type = 'fullset'
         self.corpus_type = 'bow'
         self.data_filename = f'{dataset_name}_{split_type}_nouns_{self.corpus_type}'
         self.dict_from_corpus = self._load_dict()
         self.corpus = self._load_corpus()
         self.texts = self._load_texts()
+        self.topics = self._topn_topics()
 
-    def _load_model(self):
+    def _topn_topics(self):
+        """
+        get the topn topics from the LDA-model in DataFrame format
+        """
+        all_topics = []
+        for param_id in self.param_ids:
+            for nb_topics in self.nb_topics_list:
+                ldamodel = self._load_model(param_id, nb_topics)
+                # topics = [
+                #     [ldamodel.id2word[term[0]] for term in ldamodel.get_topic_terms(i, topn=self.topn)]
+                #     for i in range(nb_topics)
+                # ]
+
+                # alternative topic building ignoring placeholder values
+                topics = []
+                for i in range(nb_topics):
+                    topic = []
+                    for term in ldamodel.get_topic_terms(i, topn=self.topn+10):
+                        token = ldamodel.id2word[term[0]]
+                        if token not in all_bad_tokens:
+                            topic.append(token)
+                            if len(topic) == self.topn:
+                                break
+                    topics.append(topic)
+
+                model_topics = (
+                    pd.DataFrame(topics, columns=['term' + str(i) for i in range(self.topn)])
+                    # .applymap(lambda x: placeholder if x in all_bad_tokens else x)
+                    .assign(
+                        dataset=self.dataset,
+                        param_id=param_id,
+                        nb_topics=nb_topics
+                    )
+                )
+                all_topics.append(model_topics)
+        topics = (
+            pd.concat(all_topics)
+            .rename_axis('topic_idx')
+            .reset_index(drop=False)
+            .set_index(['dataset', 'param_id', 'nb_topics', 'topic_idx'])
+        )
+        # tprint(topics, 0)
+        return topics
+
+    def topic_ids(self):
+        return self.topics.applymap(lambda x: self.dict_from_corpus.token2id[x])
+
+    def _load_model(self, param_id, nb_topics):
         """
         Load an LDA model.
         """
-        model_filename = f'{self.dataset}_LDAmodel_{self.param}_{self.nbtopics}'
-        path = join(ETL_PATH, 'LDAmodel', self.param, model_filename)
+        model_filename = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}'
+        path = join(ETL_PATH, 'LDAmodel', param_id, model_filename)
         print('loading model from', path)
         return LdaModel.load(path)
 
@@ -97,7 +151,6 @@ class ModelLoader(object):
         print('loading corpus from', corpus_path)
         corpus = MmCorpus(corpus_path)
         corpus = list(corpus)
-        # this!
         corpus.append([(self.dict_from_corpus.token2id[placeholder], 1.0)])
         return corpus
 
@@ -112,68 +165,53 @@ class ModelLoader(object):
         with open(doc_path, 'r') as fp:
             print('loading texts from', doc_path)
             texts = json.load(fp)
-        # this!
         texts.append([placeholder])
         return texts
 
 
+# --------------------------------------------------------------------------------------------------
+# --- Reranker Class ---
+
+
 class Reranker(object):
 
-    def __init__(self, modelloader, topn=20, nbtopterms=10, processes=-1):
+    def __init__(self, topics: TopicsLoader, nb_candidate_terms=None, nb_top_terms=10, processes=-1):
         """
-        :param modelloader: pass instance of ModelLoader
-        :param topn:        number to topic terms to evaluate the model over. topn must be > nbtopterms.
-        :param nbtopterms:  number of remaining topic terms. The size of the final topic representation
-                            set. nbtopterms ust be < topn.
-        :param processes:   number of workers / CPUs used for calculation
+        :param topics:              pass instance of ModelLoader.
+        :param nb_candidate_terms:  number of topic terms to evaluate the model over.
+                                    nb_candidate_terms must be > nb_top_terms.
+                                    The value is usually infered from the given topics.
+        :param nb_top_terms:        number of remaining topic terms. The size of the final topic
+                                    representation set. nb_top_terms ust be < nb_candidate_terms.
+        :param processes:           number of processes used for the calculations.
         """
-        self.dict_from_corpus = modelloader.dict_from_corpus
-        self.corpus = modelloader.corpus
-        self.texts = modelloader.texts
-        self.nbtopics = modelloader.nbtopics
-        self.nbtopterms = nbtopterms
-        self.topn = topn
+        self.dict_from_corpus = topics.dict_from_corpus
+        self.corpus = topics.corpus
+        self.texts = topics.texts
+        self.nb_topics = topics.nb_topics
+        self.topic_terms = topics.topics
+        self.topic_ids = topics.topic_ids()
+        self.nb_top_terms = nb_top_terms
         self.processes = processes
 
-        self.topic_terms = self._topn_topics(modelloader)
-        self.topic_terms_ids = self._topn_topics_ids()
-        self.shifted_topics = self._shift_topn_topics()
+        if nb_candidate_terms is None:
+            self.nb_candidate_terms = topics.topn
+        else:
+            self.nb_candidate_terms = nb_candidate_terms
+
+        self.shifted_topics = self._shift_topics()
         self.topic_candidates = None
+        self._statistics_ = dict()
+        self._statistics_['dataset'] = topics.dataset
 
-    def _topn_topics(self, modelloader):
-        """
-        get the topn topics from the LDA-model in DataFrame format
-        :type modelloader: ModelLoader
-        """
-        ldamodel = modelloader.ldamodel
-        dict_from_model = modelloader.dict_from_model
-        dataset = modelloader.dataset
-
-        topics = [
-            [dataset] +
-            [dict_from_model[term[0]] for term in ldamodel.get_topic_terms(i, topn=self.topn)]
-            for i in range(self.nbtopics)
-        ]
-        df_topics = pd.DataFrame(
-            topics,
-            columns=['dataset'] + ['term' + str(i) for i in range(self.topn)]
-        )
-        df_topics = df_topics.applymap(lambda x: placeholder if x in all_bad_tokens else x)
-        topic_terms = df_topics.iloc[:, 1:]
-        return topic_terms
-
-    def _topn_topics_ids(self):
-        topic_terms_ids = self.topic_terms.applymap(lambda x: self.dict_from_corpus.token2id[x])
-        return topic_terms_ids
-
-    def _shift_topn_topics(self):
+    def _shift_topics(self):
         """
         from the top n terms construct all topic set that omit one term,
         resulting in n topics with n-1 topic terms for each topic
         """
         shifted_frames = []
-        for i in range(self.topn):
-            df = pd.DataFrame(np.roll(self.topic_terms_ids.values, shift=-i, axis=1))
+        for i in range(self.nb_candidate_terms):
+            df = pd.DataFrame(np.roll(self.topic_ids.values, shift=-i, axis=1))
             # tprint(df.applymap(lambda x: self.dict_from_corpus[x]))
             shifted_frames.append(df)
         shifted_ids = pd.concat(shifted_frames)
@@ -188,64 +226,92 @@ class Reranker(object):
         :param group: applied on a DataFrame topic group
         :return:
         """
+
         # count terms and remove placeholder
-        y = group.apply(pd.value_counts).sum(axis=1).astype(np.int16).sort_values(ascending=False)
+        y = (
+            group
+            .apply(pd.value_counts)
+            .sum(axis=1)
+            .astype(np.int16)
+            .sort_values(ascending=False, kind='mergesort')
+        )
         y = y[y.index != placeholder]
 
-        # restore original order
-        reference_order = pd.Index(group[group.index.get_level_values('source') == 'ref'].squeeze())
         # this is a bit delicate for terms with the same (min) count
         # which may or may not be in the final set. Therefore we address this case separately
-        if len(y) > self.nbtopterms:
-            min_vote = y[self.nbtopterms-1]
-            min_vote2 = y[self.nbtopterms]
+        if len(y) > self.nb_top_terms:
+            min_vote = y[self.nb_top_terms - 1]
+            min_vote2 = y[self.nb_top_terms]
             split_on_min_vote = (min_vote == min_vote2)
         else:
             min_vote = 0
             split_on_min_vote = False
 
-        def indices(x):
-            if x in reference_order:
-                idx = reference_order.get_loc(x)
-            else:
-                idx = self.nbtopterms
-            return idx
-
         df = y.to_frame(name='counter')
-        df['idx'] = y.index.map(indices)
+        # restore original order
+        topic_id = group.index.get_level_values('topic_idx')[0]
+        reference_order = pd.Index(self.topic_terms.iloc[topic_id])
+        df['ref_idx'] = y.index.map(reference_order.get_loc)
 
         if split_on_min_vote:
             nb_above = (y > min_vote).sum()
-            remaining_places = self.nbtopterms - nb_above
+            remaining_places = self.nb_top_terms - nb_above
             df_min = df[df.counter == min_vote]
-            df_min = df_min.sort_values('idx')
+            df_min = df_min.sort_values('ref_idx')
             df_min = df_min[:remaining_places]
             df_above = df[df.counter > min_vote]
             df = df_above.append(df_min)
         else:
             df = df[df.counter >= min_vote]
 
-        df = df.sort_values('idx')
+        df = df.sort_values('ref_idx')
         return pd.Series(df.index)
 
     def _id2term(self, id_):
         return self.dict_from_corpus[id_]
 
-    def rerank_fast_per_metric(self, measure, coherence_model=None):
-        if self.shifted_topics is None:
-            self.shifted_topics = self._shift_topn_topics()
-        # print('shifted topics shape', np.asarray(self.shifted_topics).shape)
+    def _add_index(self, df, metric):
+        return (
+            df
+            .set_index(self.topic_terms.index)
+            .assign(metric=metric)
+            .set_index('metric', append=True)
+            .reorder_levels(['dataset', 'metric', 'param_id', 'nb_topics', 'topic_idx'])
+        )
 
-        print(f'produce scores for {measure}, n={self.topn}')
+    def get_reference(self):
+        metric = 'ref'
+        ref_topics_terms = (
+            self.topic_ids.iloc[:, :self.nb_top_terms]
+            .pipe(self._add_index, metric)
+            # .assign(metric=metric)
+            # .set_index('metric', append=True)
+            # .reorder_levels(['dataset', 'metric', 'param_id', 'nb_topics', 'topic_idx'])
+        )
+        tprint(ref_topics_terms)
+        self._statistics_[metric] = dict()
+        self._statistics_[metric]['oop_score'] = 0
+        self._statistics_[metric]['runtime'] = 0
+        return ref_topics_terms
+
+    def rerank_fast_per_metric(self, metric, coherence_model=None):
+        if self.shifted_topics is None:
+            self.shifted_topics = self._shift_topics()
+
+        t0 = time()
+        print(f'producing coherence scores for {metric} measure '
+              f'using {self.nb_candidate_terms} candidate terms '
+              f'for {self.nb_topics} topics')
+
         # calculate the scores for all shifted topics
         kwargs = dict(
             topics=self.shifted_topics,
             dictionary=self.dict_from_corpus,
-            coherence=measure,
-            topn=self.topn-1,
+            coherence=metric,
+            topn=self.nb_candidate_terms - 1,
             processes=self.processes
         )
-        if measure == 'u_mass':
+        if metric == 'u_mass':
             kwargs['corpus'] = self.corpus
         else:
             kwargs['texts'] = self.texts
@@ -254,102 +320,136 @@ class Reranker(object):
             cm = CoherenceModel(**kwargs)
         else:
             cm = coherence_model
-            cm.coherence = measure
+            cm.coherence = metric
 
         scores1d = cm.get_coherence_per_topic()
-        # print('len scores1d', len(scores1d))
-        # print(np.ascarray(scores1d))
-        scores2d = np.reshape(scores1d, (self.topn, -1)).T
-        # print('shape scores2d', scores2d.shape)
-        # print(scores2d)
-
+        scores2d = np.reshape(scores1d, (self.nb_candidate_terms, -1)).T
         # the highest values indicate the terms whose absence improves the topic coherence most
         sorted_scores = np.argsort(scores2d, axis=1)
-        # print('sorted scores', sorted_scores.shape)
-        # print(np.sort(scores2d, axis=1))
-        # print(sorted_scores)
         # thus we will keep the first nbtopterms (default 10) indices
-        top_scores = sorted_scores[:, :self.nbtopterms]
-        # print('top scores', top_scores.shape)
-        # print(top_scores)
+        top_scores = sorted_scores[:, :self.nb_top_terms]
         # and sort them back for convenience
         top_scores = np.sort(top_scores, axis=1)
-        # print('top scores sorted', top_scores.shape)
-        # print(top_scores)
 
         # out of place score compared to the reference topics
-        refgrid = np.mgrid[0:self.nbtopics, 0:self.nbtopterms][1]
-        oop_score = np.abs(top_scores - refgrid).sum() / self.nbtopics
-        print(f'avg out of place score compared to original topic terms: {oop_score}')
+        refgrid = np.mgrid[0:self.nb_topics, 0:self.nb_top_terms][1]
+        oop_score = np.abs(top_scores - refgrid).sum() / self.nb_topics
+        print(f'avg out of place score compared to original topic term rankings: {oop_score:.1f}')
 
         # replacing indices with token-ids
         tpx_ids = []
-        for i in range(self.nbtopics):
-            tpx = self.topic_terms_ids.values[i, top_scores[i]]
+        for i in range(self.nb_topics):
+            tpx = self.topic_ids.values[i, top_scores[i]]
             tpx_ids.append(tpx)
-        tpx_ids = pd.DataFrame.from_records(tpx_ids, columns=self.topic_terms.columns[:self.nbtopterms])
-        # print('inserted term ids', tpx_ids.shape)
-        # tprint(tpx_ids, 0)
+        tpx_ids = (
+            pd.DataFrame.from_records(tpx_ids, columns=self.topic_terms.columns[:self.nb_top_terms])
+            .pipe(self._add_index, metric)
+            # .set_index(self.topic_terms.index)
+            # .assign(metric=metric)
+            # .set_index('metric', append=True)
+            # .reorder_levels(['dataset', 'metric', 'param_id', 'nb_topics', 'topic_idx'])
+        )
 
-        # replacing token-ids with tokens -> resulting in the final topic candidates
-        tpx_terms = tpx_ids.applymap(self._id2term)
-        # print('inserted term ids', tpx_terms.shape)
-        # tprint(tpx_terms, 0)
+        t1 = int(time() - t0)
+        self._statistics_[metric] = dict()
+        self._statistics_[metric]['oop_score'] = oop_score
+        self._statistics_[metric]['runtime'] = t1
+        print("done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
+        return tpx_ids, cm
 
-        return tpx_terms, cm
+    def rerank_by_vote(self, topic_candidates):
+        t0 = time()
+        metric = 'vote'
+        print(f'producing candidates via majority vote '
+              f'using {self.nb_candidate_terms} candidate terms '
+              f'for {len(topic_candidates)} topics')
+        tprint(topic_candidates, 0)
+
+        tc_grouped = (
+            topic_candidates
+            .sort_index(level='topic_idx', kind='mergesort')
+            # .sort_index(level='param_id', kind='mergesort')
+            # .sort_index(level='nb_topics', kind='mergesort')
+            # .rename_axis('topic_idx')
+            # .reset_index(drop=False)
+            # .set_index(['topic_idx', 'metric'])
+        )
+        tprint(tc_grouped, 0)
+        quit()
+        topic_votes = tc_grouped.groupby('topic_idx', sort=False).apply(self._vote)
+        topic_votes = topic_votes.rename(columns=lambda x: topic_candidates.columns[x])
+        topic_votes['metric'] = metric
+
+        tprint(topic_votes)
+        topic_votes = topic_votes.set_index(self.topic_terms.index)
+        tprint(topic_votes)
+
+        t1 = int(time() - t0)
+        self._statistics_[metric] = dict()
+        self._statistics_[metric]['oop_score'] = None
+        self._statistics_[metric]['runtime'] = t1
+        print("done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
+        return topic_votes
 
     def rerank_fast(self, metrics=None):
         """
-        This is the main method for a Reranker to call.
-        :param   metrics -> list of str. str must be in {'u_mass', 'c_v', 'c_uci', 'c_npmi'}
-        :return:
+        Main method of a Reranker instance. It generates topic candidates for the given coherence
+        metrics. A topic candidate is a reranking of the representational terms of a topic. For each
+        topic each metric generates one topic candidate. This results in |topics| * (|metrics|+1)
+        topic candidates, or in other words |metrics|+1 candidates for each topic. The +1 offest is
+        due to the original topic ranking added to the candidate set.
+
+        The reranking is based on the top m topic terms and then reduced to the top n topic terms
+        where m > n. Typical values are m=20 and n=10. The original order of the terms is kept while
+        filtering out the terms outside the n best scores.
+
+        :param   metrics -> list of str.
+                 str must be in {'u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote'}.
+        :return  DataFrame containing all topic candidates
         """
         available_metrics = ['u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote']
         if metrics is None:
             metrics = available_metrics
 
+        print(f'creating reranked top candidates for metrics {metrics}, using fast method')
+
         candidates = []
 
-        print(f'creating reranked topc candidates for metrics {metrics}, using fast method')
-
-        ref_topics_terms = self.topic_terms.iloc[:, :self.nbtopterms]
-        ref_topics_terms['source'] = f'ref_{self.topn}'
+        # adding original (reference) topics
+        ref_topics_terms = self.get_reference()
         candidates.append(ref_topics_terms)
 
+        # adding several rerankings according to different metrics
         cm = None
         if 'u_mass' in metrics:
             umass_topics_terms, _ = self.rerank_fast_per_metric('u_mass')
-            umass_topics_terms['source'] = f'umass_{self.topn}'
             candidates.append(umass_topics_terms)
         if 'c_v' in metrics:
             cv_topics_terms, _ = self.rerank_fast_per_metric('c_v')
-            cv_topics_terms['source'] = f'cv_{self.topn}'
             candidates.append(cv_topics_terms)
         if 'c_uci' in metrics:
             cuci_topics_terms, cm = self.rerank_fast_per_metric('c_uci', cm)
-            cuci_topics_terms['source'] = f'cuci_{self.topn}'
             candidates.append(cuci_topics_terms)
         if 'c_npmi' in metrics:
             cnpmi_topics_terms, cm = self.rerank_fast_per_metric('c_npmi', cm)
-            cnpmi_topics_terms['source'] = f'cnpmi_{self.topn}'
             candidates.append(cnpmi_topics_terms)
-
-        # combining the topics candidates
         topic_candidates = pd.concat(candidates, axis=0)
 
-        # adding candidates by majority votes
+        # adding candidates by majority votes from prior reference and rerankings
         if 'vote' in metrics:
-            tc_grouped = (
-                topic_candidates
-                .sort_index(kind='mergesort')
-                .assign(topic=lambda x: x.index)
-                .set_index(['topic', 'source'])
-            )
-            topic_votes = tc_grouped.groupby('topic').apply(self._vote)
-            topic_votes = topic_votes.rename(columns=lambda x: topic_candidates.columns[x])
-            topic_votes['source'] = f'vote_{self.topn}'
-            topic_candidates = topic_candidates.append(topic_votes)
+            vote_topic_terms = self.rerank_by_vote(topic_candidates)
+            topic_candidates = topic_candidates.append(vote_topic_terms)
 
+        tprint(topic_candidates, 0)
+        topic_candidates = (
+            topic_candidates
+            # .rename_axis('topic_idx')
+            # .reset_index(drop=False)
+            # .set_index(['metric', 'topic_idx'])
+            # replacing token-ids with tokens -> resulting in the final topic candidates
+            .applymap(self._id2term)
+        )
+        tprint(topic_candidates, 0)
         self.topic_candidates = topic_candidates
         return topic_candidates
 
@@ -364,7 +464,7 @@ class Reranker(object):
 
         # reference scores per topic for top topic terms
         if nbtopterms is None:
-            nbtopterms = self.nbtopterms
+            nbtopterms = self.nb_top_terms
 
         if topic_candidates is None:
             topic_candidates = self.topic_candidates
@@ -404,7 +504,7 @@ class Reranker(object):
         :rtype: pd.DataFrame
         """
         if nbtopics is None:
-            nbtopics = self.nbtopics
+            nbtopics = self.nb_topics
 
         length = len(columns)
         df = pd.DataFrame(np.reshape(scores, (length, nbtopics)), index=columns).T
@@ -414,49 +514,83 @@ class Reranker(object):
         mean = descr.loc['mean']
         bestidx = mean.idxmax()
         bestval = mean[bestidx]
-        print(f'topic reranking with highest score: {bestidx} [{round(bestval, 3)}]')
+        print(f'topic reranking with highest score: {bestidx} [{bestval:.3f}]')
         print(descr.T[['mean', 'std']].sort_values('mean', ascending=False))
         return descr
 
+    def statistics(self):
+        self._statistics_['nb_topics'] = self.nb_topics
+        self._statistics_['nb_candidate_terms'] = self.nb_candidate_terms
+        self._statistics_['size_vocabulary'] = len(self.dict_from_corpus)
+        self._statistics_['size_corpus'] = len(self.corpus)
+        return self._statistics_
 
-def rerank(dataset, nbtopics, param, topns=None, metrics=None):
-    model_loader = ModelLoader(dataset, param, nbtopics)
+
+# --------------------------------------------------------------------------------------------------
+# --- App ---
+
+
+def rerank(dataset, param_ids, nbs_topics, topns=None, metrics=None, evaluate=False):
     if topns is None:
-        topns = [20]  # [20, 30, 50]
+        topns = [20]
     if metrics is None:
         metrics = ['u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote']
-    all_topic_candidates = []
+
     reranker = None
+    all_topic_candidates = []
     for n in topns:
-        reranker = Reranker(model_loader, topn=n, processes=4)
+        topics_loader = TopicsLoader(dataset, param_ids, nbs_topics, topn=n)
+        reranker = Reranker(topics_loader, nb_candidate_terms=n, processes=4)
         tc = reranker.rerank_fast(metrics)
         all_topic_candidates.append(tc)
 
     all_topic_candidates = pd.concat(all_topic_candidates)
-    columns = ['ref'] + metrics
-    columns = ['_'.join([s, str(n)]) for n in topns for s in columns]
-    all_tc_list = all_topic_candidates.drop('source', axis=1).values.tolist()
-    scores = reranker.evaluate(all_tc_list)
 
-    stats_umass = reranker.stats(scores['u_mass'], columns).assign(eval_metric='u_mass')
-    stats_cv = reranker.stats(scores['c_v'], columns).assign(eval_metric='c_v')
-    stats_cuci = reranker.stats(scores['c_uci'], columns).assign(eval_metric='c_uci')
-    stats_cnpmi = reranker.stats(scores['c_npmi'], columns).assign(eval_metric='c_npmi')
-    stats = (
-        pd.concat([stats_umass, stats_cv, stats_cuci, stats_cnpmi])
-        .assign(
-            dataset=dataset,
-            nbtopics=nbtopics,
-            param=param
+    if evaluate:
+        all_tc_list = all_topic_candidates.drop('metric', axis=1).values.tolist()
+        scores = reranker.evaluate(all_tc_list)
+
+        columns = ['ref'] + metrics
+        columns = ['_'.join([s, str(n)]) for n in topns for s in columns]
+        stats_umass = reranker.stats(scores['u_mass'], columns).assign(eval_metric='u_mass')
+        stats_cv = reranker.stats(scores['c_v'], columns).assign(eval_metric='c_v')
+        stats_cuci = reranker.stats(scores['c_uci'], columns).assign(eval_metric='c_uci')
+        stats_cnpmi = reranker.stats(scores['c_npmi'], columns).assign(eval_metric='c_npmi')
+        stats = (
+            pd.concat([stats_umass, stats_cv, stats_cuci, stats_cnpmi])
+            .assign(
+                dataset=dataset,
+                # nbtopics=nbtopics,
+                # param=param
+            )
         )
+    else:
+        stats = None
+
+    pprint(reranker.statistics())
+    return all_topic_candidates, stats
+
+
+def main():
+    param_ids = ['a42', 'b42', 'c42', 'd42', 'e42']
+    nbs_topics = [10, 25, 50, 100]
+
+    topics, stats = rerank(
+        datasets['O'],
+        param_ids[:2],
+        nbs_topics[:1],
+        # metrics=['u_mass', 'vote']
     )
-    return stats
+    tprint(topics, 0)
 
 
-# from a tutorial
-# ##### c_uci and c_npmi coherence measures
-# c_v and c_uci and c_npmi all use the boolean sliding window approach of estimating probabilities.
-# Since the `CoherenceModel` caches the accumulated statistics, calculation of c_uci and c_npmi are
-# practically free after calculating c_v coherence. These two methods are simpler and were shown to
-# correlate less with human judgements than c_v but more so than u_mass. <<< **this is not correct.
-# c_uci and c_npmi use per default a different segmentation than c_v**
+if __name__ == '__main__':
+    main()
+
+    # from a tutorial
+    # ##### c_uci and c_npmi coherence measures
+    # c_v and c_uci and c_npmi all use the boolean sliding window approach of estimating probabilities.
+    # Since the `CoherenceModel` caches the accumulated statistics, calculation of c_uci and c_npmi are
+    # practically free after calculating c_v coherence. These two methods are simpler and were shown to
+    # correlate less with human judgements than c_v but more so than u_mass. <<< **this is not correct.
+    # c_uci and c_npmi use per default a different segmentation than c_v**

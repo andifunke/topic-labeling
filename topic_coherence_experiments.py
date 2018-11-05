@@ -116,7 +116,6 @@ class TopicsLoader(object):
             .reset_index(drop=False)
             .set_index(['dataset', 'param_id', 'nb_topics', 'topic_idx'])
         )
-        # tprint(topics, 0)
         return topics
 
     def topic_ids(self):
@@ -186,6 +185,7 @@ class Reranker(object):
         :param processes:           number of processes used for the calculations.
         """
         self.dict_from_corpus = topics.dict_from_corpus
+        self.placeholder_id = topics.dict_from_corpus.token2id[placeholder]
         self.corpus = topics.corpus
         self.texts = topics.texts
         self.nb_topics = topics.nb_topics
@@ -193,6 +193,7 @@ class Reranker(object):
         self.topic_ids = topics.topic_ids()
         self.nb_top_terms = nb_top_terms
         self.processes = processes
+        self.dataset = topics.dataset
 
         if nb_candidate_terms is None:
             self.nb_candidate_terms = topics.topn
@@ -212,13 +213,14 @@ class Reranker(object):
         shifted_frames = []
         for i in range(self.nb_candidate_terms):
             df = pd.DataFrame(np.roll(self.topic_ids.values, shift=-i, axis=1))
-            # tprint(df.applymap(lambda x: self.dict_from_corpus[x]))
             shifted_frames.append(df)
         shifted_ids = pd.concat(shifted_frames)
         # omit the first topic term, then the second and append the first etc...
         shifted_topics = shifted_ids.iloc[:, 1:].values.tolist()
-        # print('topics shape: %s' % str(np.asarray(shifted_topics).shape))
         return shifted_topics
+
+    def _id2term(self, id_):
+        return self.dict_from_corpus[id_]
 
     def _vote(self, group):
         """
@@ -226,7 +228,6 @@ class Reranker(object):
         :param group: applied on a DataFrame topic group
         :return:
         """
-
         # count terms and remove placeholder
         y = (
             group
@@ -235,13 +236,13 @@ class Reranker(object):
             .astype(np.int16)
             .sort_values(ascending=False, kind='mergesort')
         )
-        y = y[y.index != placeholder]
+        y = y[y.index != self.placeholder_id]
 
         # this is a bit delicate for terms with the same (min) count
         # which may or may not be in the final set. Therefore we address this case separately
         if len(y) > self.nb_top_terms:
-            min_vote = y[self.nb_top_terms - 1]
-            min_vote2 = y[self.nb_top_terms]
+            min_vote = y.iloc[self.nb_top_terms - 1]
+            min_vote2 = y.iloc[self.nb_top_terms]
             split_on_min_vote = (min_vote == min_vote2)
         else:
             min_vote = 0
@@ -250,7 +251,7 @@ class Reranker(object):
         df = y.to_frame(name='counter')
         # restore original order
         topic_id = group.index.get_level_values('topic_idx')[0]
-        reference_order = pd.Index(self.topic_terms.iloc[topic_id])
+        reference_order = pd.Index(self.topic_ids.iloc[topic_id])
         df['ref_idx'] = y.index.map(reference_order.get_loc)
 
         if split_on_min_vote:
@@ -264,37 +265,57 @@ class Reranker(object):
         else:
             df = df[df.counter >= min_vote]
 
-        df = df.sort_values('ref_idx')
-        return pd.Series(df.index)
-
-    def _id2term(self, id_):
-        return self.dict_from_corpus[id_]
-
-    def _add_index(self, df, metric):
-        return (
+        df = (
             df
-            .set_index(self.topic_terms.index)
-            .assign(metric=metric)
-            .set_index('metric', append=True)
-            .reorder_levels(['dataset', 'metric', 'param_id', 'nb_topics', 'topic_idx'])
+            .sort_values('ref_idx')
+            .reset_index(drop=False)
+            .rename(columns={'index': 'ids'})
+            .drop('counter', axis=1)
+            .T
         )
+        return df
+
+    def oop_score(self, top_scores):
+        """
+        Avg. out of place score per metric in relation to the reference topics.
+        Higher scores indicate a stronger degree of reranking while lower scores
+        indicate a stronger similarity with the reference topics.
+
+        :param top_scores: numpy array with the reranked indices of the candidate terms.
+                           generated from a metric. shape: (nb_top_terms, nb_topics)
+        :return:           float (scalar) of mean of a oop score over all given topics.
+        """
+        refgrid = np.mgrid[0:self.nb_topics, 0:self.nb_top_terms][1]
+        oop = np.abs(top_scores - refgrid).sum() / self.nb_topics
+        print(f'avg out of place score compared to original topic term rankings: {oop:.1f}')
+        return oop
 
     def get_reference(self):
         metric = 'ref'
         ref_topics_terms = (
             self.topic_ids.iloc[:, :self.nb_top_terms]
-            .pipe(self._add_index, metric)
-            # .assign(metric=metric)
-            # .set_index('metric', append=True)
-            # .reorder_levels(['dataset', 'metric', 'param_id', 'nb_topics', 'topic_idx'])
+            .copy()
+            .reset_index(drop=True)
+            .assign(metric=metric)
         )
-        tprint(ref_topics_terms)
         self._statistics_[metric] = dict()
         self._statistics_[metric]['oop_score'] = 0
         self._statistics_[metric]['runtime'] = 0
         return ref_topics_terms
 
     def rerank_fast_per_metric(self, metric, coherence_model=None):
+        """
+        Object method to trigger the reranking for a given metric.
+        It uses the fast heuristic for the reranking in O(n) with n being the number
+        of candidate terms. A coherence metric is applied on each set of topic terms,
+        when we leave exactly one term out. The resulting coherence score indicates, if
+        a term strengthens or weakens the coherence of a topic. We remove those terms
+        from the set whose absence resulted in higher scores.
+
+        :param metric:
+        :param coherence_model:
+        :return:
+        """
         if self.shifted_topics is None:
             self.shifted_topics = self._shift_topics()
 
@@ -330,29 +351,17 @@ class Reranker(object):
         top_scores = sorted_scores[:, :self.nb_top_terms]
         # and sort them back for convenience
         top_scores = np.sort(top_scores, axis=1)
-
-        # out of place score compared to the reference topics
-        refgrid = np.mgrid[0:self.nb_topics, 0:self.nb_top_terms][1]
-        oop_score = np.abs(top_scores - refgrid).sum() / self.nb_topics
-        print(f'avg out of place score compared to original topic term rankings: {oop_score:.1f}')
-
         # replacing indices with token-ids
-        tpx_ids = []
-        for i in range(self.nb_topics):
-            tpx = self.topic_ids.values[i, top_scores[i]]
-            tpx_ids.append(tpx)
+        tpx_ids = [self.topic_ids.values[i, top_scores[i]] for i in range(self.nb_topics)]
         tpx_ids = (
-            pd.DataFrame.from_records(tpx_ids, columns=self.topic_terms.columns[:self.nb_top_terms])
-            .pipe(self._add_index, metric)
-            # .set_index(self.topic_terms.index)
-            # .assign(metric=metric)
-            # .set_index('metric', append=True)
-            # .reorder_levels(['dataset', 'metric', 'param_id', 'nb_topics', 'topic_idx'])
+            pd.DataFrame
+            .from_records(tpx_ids, columns=self.topic_terms.columns[:self.nb_top_terms])
+            .assign(metric=metric)
         )
 
         t1 = int(time() - t0)
         self._statistics_[metric] = dict()
-        self._statistics_[metric]['oop_score'] = oop_score
+        self._statistics_[metric]['oop_score'] = self.oop_score(top_scores)
         self._statistics_[metric]['runtime'] = t1
         print("done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
         return tpx_ids, cm
@@ -363,30 +372,27 @@ class Reranker(object):
         print(f'producing candidates via majority vote '
               f'using {self.nb_candidate_terms} candidate terms '
               f'for {len(topic_candidates)} topics')
-        tprint(topic_candidates, 0)
 
-        tc_grouped = (
+        topic_votes = (
             topic_candidates
-            .sort_index(level='topic_idx', kind='mergesort')
-            # .sort_index(level='param_id', kind='mergesort')
-            # .sort_index(level='nb_topics', kind='mergesort')
-            # .rename_axis('topic_idx')
-            # .reset_index(drop=False)
-            # .set_index(['topic_idx', 'metric'])
+            .sort_index(kind='mergesort')
+            .rename_axis('topic_idx')
+            .reset_index(drop=False)
+            .set_index(['topic_idx', 'metric'])
+            .groupby('topic_idx', sort=False).apply(self._vote)
         )
-        tprint(tc_grouped, 0)
-        quit()
-        topic_votes = tc_grouped.groupby('topic_idx', sort=False).apply(self._vote)
-        topic_votes = topic_votes.rename(columns=lambda x: topic_candidates.columns[x])
-        topic_votes['metric'] = metric
-
-        tprint(topic_votes)
-        topic_votes = topic_votes.set_index(self.topic_terms.index)
-        tprint(topic_votes)
+        oop_indices = topic_votes.xs('ref_idx', level=1, drop_level=False).values
+        topic_votes = (
+            topic_votes
+            .xs('ids', level=1, drop_level=False)
+            .reset_index(drop=True)
+            .rename(columns=lambda x: topic_candidates.columns[x])
+            .assign(metric=metric)
+        )
 
         t1 = int(time() - t0)
         self._statistics_[metric] = dict()
-        self._statistics_[metric]['oop_score'] = None
+        self._statistics_[metric]['oop_score'] = self.oop_score(oop_indices)
         self._statistics_[metric]['runtime'] = t1
         print("done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
         return topic_votes
@@ -412,7 +418,6 @@ class Reranker(object):
             metrics = available_metrics
 
         print(f'creating reranked top candidates for metrics {metrics}, using fast method')
-
         candidates = []
 
         # adding original (reference) topics
@@ -440,16 +445,14 @@ class Reranker(object):
             vote_topic_terms = self.rerank_by_vote(topic_candidates)
             topic_candidates = topic_candidates.append(vote_topic_terms)
 
-        tprint(topic_candidates, 0)
         topic_candidates = (
             topic_candidates
-            # .rename_axis('topic_idx')
-            # .reset_index(drop=False)
-            # .set_index(['metric', 'topic_idx'])
+            .groupby('metric', sort=False, as_index=False, group_keys=False)
+            .apply(lambda x: x.set_index(self.topic_terms.index))
+            .set_index('metric', append=True)
             # replacing token-ids with tokens -> resulting in the final topic candidates
             .applymap(self._id2term)
         )
-        tprint(topic_candidates, 0)
         self.topic_candidates = topic_candidates
         return topic_candidates
 
@@ -521,16 +524,30 @@ class Reranker(object):
     def statistics(self):
         self._statistics_['nb_topics'] = self.nb_topics
         self._statistics_['nb_candidate_terms'] = self.nb_candidate_terms
+        self._statistics_['nb_top_terms'] = self.nb_top_terms
         self._statistics_['size_vocabulary'] = len(self.dict_from_corpus)
         self._statistics_['size_corpus'] = len(self.corpus)
         return self._statistics_
+
+    def save_results(self, directory):
+        filename = join(directory, self.dataset)
+
+        if self.topic_candidates is not None:
+            fcsv = f'{filename}_topic-candidates.csv'
+            print(f"writing topic candidates fo {fcsv}")
+            self.topic_candidates.to_csv(fcsv)
+
+        fjson = f'{filename}_reranker-statistics.json'
+        with open(fjson, 'w') as fp:
+            print(f"writing Reranker statistics to {fjson}")
+            json.dump(self.statistics(), fp, ensure_ascii=False, indent=2)
 
 
 # --------------------------------------------------------------------------------------------------
 # --- App ---
 
 
-def rerank(dataset, param_ids, nbs_topics, topns=None, metrics=None, evaluate=False):
+def rerank(dataset, param_ids, nbs_topics, topns=None, metrics=None, evaluate=False, save=True):
     if topns is None:
         topns = [20]
     if metrics is None:
@@ -541,8 +558,10 @@ def rerank(dataset, param_ids, nbs_topics, topns=None, metrics=None, evaluate=Fa
     for n in topns:
         topics_loader = TopicsLoader(dataset, param_ids, nbs_topics, topn=n)
         reranker = Reranker(topics_loader, nb_candidate_terms=n, processes=4)
-        tc = reranker.rerank_fast(metrics)
-        all_topic_candidates.append(tc)
+        reranker.rerank_fast(metrics)
+        if save:
+            reranker.save_results(join(ETL_PATH, 'Reranker'))
+        all_topic_candidates.append(reranker)
 
     all_topic_candidates = pd.concat(all_topic_candidates)
 
@@ -567,7 +586,6 @@ def rerank(dataset, param_ids, nbs_topics, topns=None, metrics=None, evaluate=Fa
     else:
         stats = None
 
-    pprint(reranker.statistics())
     return all_topic_candidates, stats
 
 
@@ -577,9 +595,10 @@ def main():
 
     topics, stats = rerank(
         datasets['O'],
-        param_ids[:2],
-        nbs_topics[:1],
-        # metrics=['u_mass', 'vote']
+        param_ids[:],
+        nbs_topics[:],
+        # metrics=['u_mass', 'vote'],
+        save=True,
     )
     tprint(topics, 0)
 
@@ -587,10 +606,12 @@ def main():
 if __name__ == '__main__':
     main()
 
-    # from a tutorial
-    # ##### c_uci and c_npmi coherence measures
-    # c_v and c_uci and c_npmi all use the boolean sliding window approach of estimating probabilities.
-    # Since the `CoherenceModel` caches the accumulated statistics, calculation of c_uci and c_npmi are
-    # practically free after calculating c_v coherence. These two methods are simpler and were shown to
-    # correlate less with human judgements than c_v but more so than u_mass. <<< **this is not correct.
-    # c_uci and c_npmi use per default a different segmentation than c_v**
+
+# from a tutorial:
+# ##### c_uci and c_npmi coherence measures
+# c_v and c_uci and c_npmi all use the boolean sliding window approach of estimating probabilities.
+# Since the `CoherenceModel` caches the accumulated statistics, calculation of c_uci and c_npmi are
+# practically free after calculating c_v coherence. These two methods are simpler and were shown to
+# correlate less with human judgements than c_v but more so than u_mass.
+#
+# ^ **this is not correct. c_uci and c_npmi use per default a different segmentation than c_v**

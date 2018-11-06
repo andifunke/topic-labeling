@@ -3,12 +3,10 @@
 import json
 from itertools import chain
 from os.path import join
-from pprint import pprint
 from time import time
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import CoherenceModel, LdaModel
 from pandas.core.common import SettingWithCopyWarning
@@ -83,12 +81,7 @@ class TopicsLoader(object):
         for param_id in self.param_ids:
             for nb_topics in self.nb_topics_list:
                 ldamodel = self._load_model(param_id, nb_topics)
-                # topics = [
-                #     [ldamodel.id2word[term[0]] for term in ldamodel.get_topic_terms(i, topn=self.topn)]
-                #     for i in range(nb_topics)
-                # ]
-
-                # alternative topic building ignoring placeholder values
+                # topic building ignoring placeholder values
                 topics = []
                 for i in range(nb_topics):
                     topic = []
@@ -102,7 +95,6 @@ class TopicsLoader(object):
 
                 model_topics = (
                     pd.DataFrame(topics, columns=['term' + str(i) for i in range(self.topn)])
-                    # .applymap(lambda x: placeholder if x in all_bad_tokens else x)
                     .assign(
                         dataset=self.dataset,
                         param_id=param_id,
@@ -127,7 +119,7 @@ class TopicsLoader(object):
         """
         model_filename = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}'
         path = join(ETL_PATH, 'LDAmodel', param_id, model_filename)
-        print('loading model from', path)
+        print('Loading model from', path)
         return LdaModel.load(path)
 
     def _load_dict(self):
@@ -204,6 +196,7 @@ class Reranker(object):
         self.topic_candidates = None
         self._statistics_ = dict()
         self._statistics_['dataset'] = topics.dataset
+        self.eval_scores = None
 
     def _shift_topics(self):
         """
@@ -287,7 +280,7 @@ class Reranker(object):
         """
         refgrid = np.mgrid[0:self.nb_topics, 0:self.nb_top_terms][1]
         oop = np.abs(top_scores - refgrid).sum() / self.nb_topics
-        print(f'avg out of place score compared to original topic term rankings: {oop:.1f}')
+        print(f'    avg out of place score compared to original topic term rankings: {oop:.1f}')
         return oop
 
     def get_reference(self):
@@ -302,6 +295,37 @@ class Reranker(object):
         self._statistics_[metric]['oop_score'] = 0
         self._statistics_[metric]['runtime'] = 0
         return ref_topics_terms
+
+    def rerank_by_vote(self, topic_candidates):
+        t0 = time()
+        metric = 'vote'
+        print(f'Calculating topic candidates using majority vote '
+              f'on {self.nb_candidate_terms} candidate terms '
+              f'for {self.nb_topics} topics')
+
+        topic_votes = (
+            topic_candidates
+            .sort_index(kind='mergesort')
+            .rename_axis('topic_idx')
+            .reset_index(drop=False)
+            .set_index(['topic_idx', 'metric'])
+            .groupby('topic_idx', sort=False).apply(self._vote)
+        )
+        oop_indices = topic_votes.xs('ref_idx', level=1, drop_level=False).values
+        topic_votes = (
+            topic_votes
+            .xs('ids', level=1, drop_level=False)
+            .reset_index(drop=True)
+            .rename(columns=lambda x: topic_candidates.columns[x])
+            .assign(metric=metric)
+        )
+
+        t1 = int(time() - t0)
+        self._statistics_[metric] = dict()
+        self._statistics_[metric]['oop_score'] = self.oop_score(oop_indices)
+        self._statistics_[metric]['runtime'] = t1
+        print("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
+        return topic_votes
 
     def rerank_fast_per_metric(self, metric, coherence_model=None):
         """
@@ -320,8 +344,8 @@ class Reranker(object):
             self.shifted_topics = self._shift_topics()
 
         t0 = time()
-        print(f'producing coherence scores for {metric} measure '
-              f'using {self.nb_candidate_terms} candidate terms '
+        print(f'Calculating topic candidates using {metric} coherence measure '
+              f'on {self.nb_candidate_terms} candidate terms '
               f'for {self.nb_topics} topics')
 
         # calculate the scores for all shifted topics
@@ -363,39 +387,8 @@ class Reranker(object):
         self._statistics_[metric] = dict()
         self._statistics_[metric]['oop_score'] = self.oop_score(top_scores)
         self._statistics_[metric]['runtime'] = t1
-        print("done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
-        return tpx_ids, cm
-
-    def rerank_by_vote(self, topic_candidates):
-        t0 = time()
-        metric = 'vote'
-        print(f'producing candidates via majority vote '
-              f'using {self.nb_candidate_terms} candidate terms '
-              f'for {len(topic_candidates)} topics')
-
-        topic_votes = (
-            topic_candidates
-            .sort_index(kind='mergesort')
-            .rename_axis('topic_idx')
-            .reset_index(drop=False)
-            .set_index(['topic_idx', 'metric'])
-            .groupby('topic_idx', sort=False).apply(self._vote)
-        )
-        oop_indices = topic_votes.xs('ref_idx', level=1, drop_level=False).values
-        topic_votes = (
-            topic_votes
-            .xs('ids', level=1, drop_level=False)
-            .reset_index(drop=True)
-            .rename(columns=lambda x: topic_candidates.columns[x])
-            .assign(metric=metric)
-        )
-
-        t1 = int(time() - t0)
-        self._statistics_[metric] = dict()
-        self._statistics_[metric]['oop_score'] = self.oop_score(oop_indices)
-        self._statistics_[metric]['runtime'] = t1
-        print("done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
-        return topic_votes
+        print("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
+        return tpx_ids
 
     def rerank_fast(self, metrics=None):
         """
@@ -417,7 +410,7 @@ class Reranker(object):
         if metrics is None:
             metrics = available_metrics
 
-        print(f'creating reranked top candidates for metrics {metrics}, using fast method')
+        print(f'Creating reranked top candidates for metrics {metrics}, using fast method')
         candidates = []
 
         # adding original (reference) topics
@@ -425,18 +418,17 @@ class Reranker(object):
         candidates.append(ref_topics_terms)
 
         # adding several rerankings according to different metrics
-        cm = None
         if 'u_mass' in metrics:
-            umass_topics_terms, _ = self.rerank_fast_per_metric('u_mass')
+            umass_topics_terms = self.rerank_fast_per_metric('u_mass')
             candidates.append(umass_topics_terms)
         if 'c_v' in metrics:
-            cv_topics_terms, _ = self.rerank_fast_per_metric('c_v')
+            cv_topics_terms = self.rerank_fast_per_metric('c_v')
             candidates.append(cv_topics_terms)
         if 'c_uci' in metrics:
-            cuci_topics_terms, cm = self.rerank_fast_per_metric('c_uci', cm)
+            cuci_topics_terms = self.rerank_fast_per_metric('c_uci')
             candidates.append(cuci_topics_terms)
         if 'c_npmi' in metrics:
-            cnpmi_topics_terms, cm = self.rerank_fast_per_metric('c_npmi', cm)
+            cnpmi_topics_terms = self.rerank_fast_per_metric('c_npmi')
             candidates.append(cnpmi_topics_terms)
         topic_candidates = pd.concat(candidates, axis=0)
 
@@ -452,6 +444,7 @@ class Reranker(object):
             .set_index('metric', append=True)
             # replacing token-ids with tokens -> resulting in the final topic candidates
             .applymap(self._id2term)
+            .reorder_levels([0, -1, 1, 2, 3])
         )
         self.topic_candidates = topic_candidates
         return topic_candidates
@@ -462,6 +455,14 @@ class Reranker(object):
     def rerank_full(self):
         pass
 
+    def reranking_statistics(self):
+        self._statistics_['nb_topics'] = self.nb_topics
+        self._statistics_['nb_candidate_terms'] = self.nb_candidate_terms
+        self._statistics_['nb_top_terms'] = self.nb_top_terms
+        self._statistics_['size_vocabulary'] = len(self.dict_from_corpus)
+        self._statistics_['size_corpus'] = len(self.corpus)
+        return self._statistics_
+
     def evaluate(self, topic_candidates=None, nbtopterms=None):
         print('evaluating topic candidates')
 
@@ -470,123 +471,122 @@ class Reranker(object):
             nbtopterms = self.nb_top_terms
 
         if topic_candidates is None:
-            topic_candidates = self.topic_candidates
+            topic_candidates = self.topic_candidates.values.tolist()
 
+        topics_list = topic_candidates.values.tolist()
+
+        print('> u_mass')
+        t0 = time()
         cm_umass = CoherenceModel(
-            topics=topic_candidates, corpus=self.corpus, dictionary=self.dict_from_corpus,
+            topics=topics_list, corpus=self.corpus, dictionary=self.dict_from_corpus,
             coherence='u_mass', topn=nbtopterms, processes=self.processes
         )
         umass_scores = cm_umass.get_coherence_per_topic(with_std=False, with_support=False)
+        t1 = int(time() - t0)
+        print("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
 
+        print('> c_v')
+        t0 = time()
         cm_cv = CoherenceModel(
-            topics=topic_candidates, texts=self.texts, dictionary=self.dict_from_corpus,
+            topics=topics_list, texts=self.texts, dictionary=self.dict_from_corpus,
             coherence='c_v', topn=nbtopterms, processes=self.processes
         )
         cv_scores = cm_cv.get_coherence_per_topic()
+        t1 = int(time() - t0)
+        print("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
 
         # changed segmentation for c_uci and c_npmi from s_one_set to s_one_one (default)
+        print('> c_uci')
+        t0 = time()
         cm_cuci = CoherenceModel(
-            topics=topic_candidates, texts=self.texts, dictionary=self.dict_from_corpus,
+            topics=topics_list, texts=self.texts, dictionary=self.dict_from_corpus,
             coherence='c_uci', topn=nbtopterms, processes=self.processes
         )
         cuci_scores = cm_cuci.get_coherence_per_topic()
+        t1 = int(time() - t0)
+        print("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
 
+        print('> c_npmi')
+        t0 = time()
         cm_cuci.coherence = 'c_npmi'  # reusing precalculated probability estimates
-        cnpmi_scores = cm_cuci.get_coherence_per_topic()
+        cnpmi_scores1 = cm_cuci.get_coherence_per_topic()
+        t1 = int(time() - t0)
+        print("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
+
+        # print('> c_npmi')
+        # t0 = time()
+        # cm_cnpmi = CoherenceModel(
+        #     topics=topics_list, texts=self.texts, dictionary=self.dict_from_corpus,
+        #     coherence='c_npmi', topn=nbtopterms, processes=self.processes
+        # )
+        # cnpmi_scores2 = cm_cnpmi.get_coherence_per_topic()
+        # t1 = int(time() - t0)
+        # print("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
 
         scores = {
-            'u_mass': umass_scores,
-            'c_v': cv_scores,
-            'c_uci': cuci_scores,
-            'c_npmi': cnpmi_scores,
+            'u_mass_eval': umass_scores,
+            'c_v_eval': cv_scores,
+            'c_uci_eval': cuci_scores,
+            'c_npmi_eval': cnpmi_scores1,
+            # 'c_npmi2_eval': cnpmi_scores2,
         }
+        scores = pd.DataFrame(scores)
+        scores.index = topic_candidates.index.copy()
+        scores = scores.unstack('metric')
+        self.eval_scores = scores
         return scores
-
-    def stats(self, scores: list, columns: list, nbtopics: int = None) -> pd.DataFrame:
-        """
-        :rtype: pd.DataFrame
-        """
-        if nbtopics is None:
-            nbtopics = self.nb_topics
-
-        length = len(columns)
-        df = pd.DataFrame(np.reshape(scores, (length, nbtopics)), index=columns).T
-        df.plot()
-        plt.show()
-        descr = df.describe()
-        mean = descr.loc['mean']
-        bestidx = mean.idxmax()
-        bestval = mean[bestidx]
-        print(f'topic reranking with highest score: {bestidx} [{bestval:.3f}]')
-        print(descr.T[['mean', 'std']].sort_values('mean', ascending=False))
-        return descr
-
-    def statistics(self):
-        self._statistics_['nb_topics'] = self.nb_topics
-        self._statistics_['nb_candidate_terms'] = self.nb_candidate_terms
-        self._statistics_['nb_top_terms'] = self.nb_top_terms
-        self._statistics_['size_vocabulary'] = len(self.dict_from_corpus)
-        self._statistics_['size_corpus'] = len(self.corpus)
-        return self._statistics_
 
     def save_results(self, directory):
         filename = join(directory, self.dataset)
 
         if self.topic_candidates is not None:
             fcsv = f'{filename}_topic-candidates.csv'
-            print(f"writing topic candidates fo {fcsv}")
+            print(f"Writing topic candidates to {fcsv}")
             self.topic_candidates.to_csv(fcsv)
 
         fjson = f'{filename}_reranker-statistics.json'
         with open(fjson, 'w') as fp:
-            print(f"writing Reranker statistics to {fjson}")
-            json.dump(self.statistics(), fp, ensure_ascii=False, indent=2)
+            print(f"Writing Reranker statistics to {fjson}")
+            json.dump(self.reranking_statistics(), fp, ensure_ascii=False, indent=2)
+
+        if self.eval_scores is not None:
+            fcsv = f'{filename}_evaluation-scores.csv'
+            print(f"Writing evaluation scores to {fcsv}")
+            self.eval_scores.to_csv(fcsv)
 
 
 # --------------------------------------------------------------------------------------------------
 # --- App ---
 
 
-def rerank(dataset, param_ids, nbs_topics, topns=None, metrics=None, evaluate=False, save=True):
-    if topns is None:
-        topns = [20]
+def rerank(dataset, topn = 20, metrics=None, param_ids=None, nbs_topics=None, save=True):
+
     if metrics is None:
         metrics = ['u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote']
+    if param_ids is None:
+        param_ids = ['a42', 'b42', 'c42', 'd42', 'e42']
+    if nbs_topics is None:
+        nbs_topics = [10, 25, 50, 100]
 
-    reranker = None
-    all_topic_candidates = []
-    for n in topns:
-        topics_loader = TopicsLoader(dataset, param_ids, nbs_topics, topn=n)
-        reranker = Reranker(topics_loader, nb_candidate_terms=n, processes=4)
-        reranker.rerank_fast(metrics)
-        if save:
-            reranker.save_results(join(ETL_PATH, 'Reranker'))
-        all_topic_candidates.append(reranker)
+    topics_loader = TopicsLoader(dataset, param_ids, nbs_topics, topn=topn)
+    reranker = Reranker(topics_loader, processes=4)
+    topic_candidates = reranker.rerank_fast(metrics)
+    scores = reranker.evaluate(topic_candidates)
 
-    all_topic_candidates = pd.concat(all_topic_candidates)
+    for column in scores.columns.levels[0]:
+        scores[column].reset_index(drop=True).plot(title=column, grid=True)
+        descr = scores[column].describe()
+        mean = descr.loc['mean']
+        bestidx = mean.idxmax()
+        bestval = mean[bestidx]
+        print(f'reranking metric with highest score: {bestidx} [{bestval:.3f}]')
+        print(descr.T[['mean', 'std']].sort_values('mean', ascending=False))
+        print('-' * 50)
 
-    if evaluate:
-        all_tc_list = all_topic_candidates.drop('metric', axis=1).values.tolist()
-        scores = reranker.evaluate(all_tc_list)
+    if save:
+        reranker.save_results(join(ETL_PATH, 'LDAmodel', 'Reranker'))
 
-        columns = ['ref'] + metrics
-        columns = ['_'.join([s, str(n)]) for n in topns for s in columns]
-        stats_umass = reranker.stats(scores['u_mass'], columns).assign(eval_metric='u_mass')
-        stats_cv = reranker.stats(scores['c_v'], columns).assign(eval_metric='c_v')
-        stats_cuci = reranker.stats(scores['c_uci'], columns).assign(eval_metric='c_uci')
-        stats_cnpmi = reranker.stats(scores['c_npmi'], columns).assign(eval_metric='c_npmi')
-        stats = (
-            pd.concat([stats_umass, stats_cv, stats_cuci, stats_cnpmi])
-            .assign(
-                dataset=dataset,
-                # nbtopics=nbtopics,
-                # param=param
-            )
-        )
-    else:
-        stats = None
-
-    return all_topic_candidates, stats
+    return reranker
 
 
 def main():
@@ -594,9 +594,9 @@ def main():
     nbs_topics = [10, 25, 50, 100]
 
     topics, stats = rerank(
-        datasets['O'],
-        param_ids[:],
-        nbs_topics[:],
+        dataset=datasets['O'],
+        param_ids=param_ids[:2],
+        nbs_topics=nbs_topics[:1],
         # metrics=['u_mass', 'vote'],
         save=True,
     )

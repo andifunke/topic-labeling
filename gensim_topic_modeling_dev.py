@@ -1,13 +1,7 @@
 # coding: utf-8
 
-# In[1]:
-
-
-# coding: utf-8
 from os import listdir, makedirs
 from os.path import join, isfile, isdir, exists
-from typing import Dict, Any
-
 import pandas as pd
 import gc
 from gensim.corpora import Dictionary, MmCorpus

@@ -59,18 +59,19 @@ placeholder = '[[PLACEHOLDER]]'
 
 class TopicsLoader(object):
 
-    def __init__(self, dataset_name, param_ids: list, nbs_topics: list, topn=20):
+    def __init__(self, dataset, param_ids: list, nbs_topics: list, topn=20):
         self.topn = topn
-        self.dataset = dataset_name
+        self.dataset = dataset
         self.param_ids = param_ids
         self.nb_topics_list = nbs_topics
         self.nb_topics = sum(nbs_topics) * len(param_ids)
         split_type = 'fullset'
         self.corpus_type = 'bow'
-        self.data_filename = f'{dataset_name}_{split_type}_nouns_{self.corpus_type}'
+        self.data_filename = f'{dataset}_{split_type}_nouns_{self.corpus_type}'
         self.dict_from_corpus = self._load_dict()
         self.corpus = self._load_corpus()
         self.texts = self._load_texts()
+        self.ldamodels = []
         self.topics = self._topn_topics()
 
     def _topn_topics(self):
@@ -120,7 +121,9 @@ class TopicsLoader(object):
         model_filename = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}'
         path = join(ETL_PATH, 'LDAmodel', param_id, model_filename)
         print('Loading model from', path)
-        return LdaModel.load(path)
+        ldamodel = LdaModel.load(path)
+        self.ldamodels.append((self.dataset, param_id, nb_topics, ldamodel))
+        return ldamodel
 
     def _load_dict(self):
         """
@@ -532,34 +535,77 @@ class Reranker(object):
         }
         scores = pd.DataFrame(scores)
         scores.index = topic_candidates.index.copy()
-        scores = scores.unstack('metric')
         self.eval_scores = scores
         return scores
 
-    def save_results(self, directory):
+    def save_results(self, directory=None, topics=True, scores=True, stats=True):
+        if directory is None:
+            directory = join(ETL_PATH, 'LDAmodel', 'Reranker')
         filename = join(directory, self.dataset)
 
-        if self.topic_candidates is not None:
+        if topics and self.topic_candidates is not None:
             fcsv = f'{filename}_topic-candidates.csv'
             print(f"Writing topic candidates to {fcsv}")
             self.topic_candidates.to_csv(fcsv)
 
-        fjson = f'{filename}_reranker-statistics.json'
-        with open(fjson, 'w') as fp:
-            print(f"Writing Reranker statistics to {fjson}")
-            json.dump(self.reranking_statistics(), fp, ensure_ascii=False, indent=2)
+        if stats:
+            fjson = f'{filename}_reranker-statistics.json'
+            with open(fjson, 'w') as fp:
+                print(f"Writing Reranker statistics to {fjson}")
+                json.dump(self.reranking_statistics(), fp, ensure_ascii=False, indent=2)
 
-        if self.eval_scores is not None:
-            fcsv = f'{filename}_evaluation-scores.csv'
-            print(f"Writing evaluation scores to {fcsv}")
-            self.eval_scores.to_csv(fcsv)
+        if scores and self.eval_scores is not None:
+            self.save_scores(self.eval_scores, self.dataset, directory)
+
+    def plot(self):
+        Reranker.plot_scores(self.eval_scores)
+
+    @classmethod
+    def save_scores(cls, scores, dataset, directory=None):
+        if directory is None:
+            directory = join(ETL_PATH, 'LDAmodel', 'Reranker')
+        filename = join(directory, dataset)
+        fcsv = f'{filename}_evaluation-scores.csv'
+        print(f"Writing evaluation scores to {fcsv}")
+        scores.to_csv(fcsv)
+
+    @classmethod
+    def _load(cls, path):
+        print('Loading', path)
+        return pd.read_csv(path, index_col=[0, 1, 2, 3, 4])
+
+    @classmethod
+    def load_topics_and_scores(cls, dataset, directory=None, joined=False, topics_only=False):
+        if directory is None:
+            directory = join(ETL_PATH, 'LDAmodel', 'Reranker')
+        topics = cls._load(join(directory, f'{dataset}_topic-candidates.csv'))
+        if topics_only:
+            return topics
+        scores = cls._load(join(directory, f'{dataset}_evaluation-scores.csv'))
+        if joined:
+            return topics.join(scores)
+        else:
+            return topics, scores
+
+    @staticmethod
+    def plot_scores(scores):
+        scores = scores.unstack('metric')
+        for column in scores.columns.levels[0]:
+            scores[column].reset_index(drop=True).plot(title=column, grid=True)
+            descr = scores[column].describe()
+            mean = descr.loc['mean']
+            bestidx = mean.idxmax()
+            bestval = mean[bestidx]
+            print(f'reranking metric with highest score: {bestidx} [{bestval:.3f}]')
+            print(descr.T[['mean', 'std']].sort_values('mean', ascending=False))
+            print('-' * 50)
 
 
 # --------------------------------------------------------------------------------------------------
 # --- App ---
 
 
-def rerank(dataset, topn = 20, metrics=None, param_ids=None, nbs_topics=None, save=True):
+def rerank(dataset, topn=20, metrics=None, param_ids=None, nbs_topics=None, save=True):
 
     if metrics is None:
         metrics = ['u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote']
@@ -571,20 +617,10 @@ def rerank(dataset, topn = 20, metrics=None, param_ids=None, nbs_topics=None, sa
     topics_loader = TopicsLoader(dataset, param_ids, nbs_topics, topn=topn)
     reranker = Reranker(topics_loader, processes=4)
     topic_candidates = reranker.rerank_fast(metrics)
-    scores = reranker.evaluate(topic_candidates)
-
-    for column in scores.columns.levels[0]:
-        scores[column].reset_index(drop=True).plot(title=column, grid=True)
-        descr = scores[column].describe()
-        mean = descr.loc['mean']
-        bestidx = mean.idxmax()
-        bestval = mean[bestidx]
-        print(f'reranking metric with highest score: {bestidx} [{bestval:.3f}]')
-        print(descr.T[['mean', 'std']].sort_values('mean', ascending=False))
-        print('-' * 50)
-
+    reranker.evaluate(topic_candidates)
     if save:
-        reranker.save_results(join(ETL_PATH, 'LDAmodel', 'Reranker'))
+        reranker.save_results()
+    reranker.plot()
 
     return reranker
 
@@ -593,13 +629,15 @@ def main():
     param_ids = ['a42', 'b42', 'c42', 'd42', 'e42']
     nbs_topics = [10, 25, 50, 100]
 
-    topics, stats = rerank(
+    reranker = rerank(
         dataset=datasets['O'],
         param_ids=param_ids[:2],
         nbs_topics=nbs_topics[:1],
         # metrics=['u_mass', 'vote'],
         save=True,
     )
+    topics = reranker.topic_candidates
+    scores = reranker.eval_scores
     tprint(topics, 0)
 
 

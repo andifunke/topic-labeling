@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+from itertools import chain
 from os.path import join
 
 ### --- default constants definitions ---
@@ -98,3 +98,44 @@ KNOWN = 'known'
 SENT_IDX = 'sent_idx'
 SENT_START = 'sent_start'
 NOUN_PHRASE = 'noun_phrase'
+
+
+### --- for LDA modeling
+
+DATASETS = {
+    'E': 'Europarl',
+    'FA': 'FAZ_combined',
+    'FO': 'FOCUS_cleansed',
+    'O': 'OnlineParticipation',
+    'P': 'PoliticalSpeeches',
+    'dewi': 'dewiki',
+    'dewa': 'dewac',
+}
+
+# --- filter lookup table
+BAD_TOKENS_DICT = {
+    'Europarl': [
+        'E.', 'Kerr', 'The', 'la', 'ia', 'For', 'Ieke', 'the', 'WPA', 'INSPIRE', 'EN', 'ASEM',
+        'ISA', 'EIT',
+    ],
+    'FAZ_combined': [
+        'S.', 'j.reinecke@faz.de', 'B.', 'P.', 'of',
+    ],
+    'FOCUS_cleansed': [
+        'OTS', 'RSS', 'of', 'UP', 'v.',
+    ],
+    'OnlineParticipation': [
+        'Re', '@#1', '@#2', '@#3', '@#4', '@#5', '@#6', '@#7', '@#8', '@#9', '@#1.1', 'Für', 'Muss',
+        'etc', 'sorry', 'Ggf', 'u.a.', 'z.B.', 'B.', 'stimmt', ';-)', 'lieber', 'o.', 'Ja',
+        'Desweiteren', '@#4.1.1'
+    ],
+    'PoliticalSpeeches': [
+        'ZIF', 'of', 'and', 'DFFF',
+    ],
+    'dewiki': [],
+    'dewac': [
+        'H.', 'm.', 'W.', 'K.', 'g.', 'r.', 'A.', 'f.', 'l.', 'J.', 'EZLN', 'LAGH', 'LSVD', 'AdsD',
+        'NAD', 'DÖW', 'Rn',
+    ],
+}
+BAD_TOKENS = set(chain(*BAD_TOKENS_DICT.values()))

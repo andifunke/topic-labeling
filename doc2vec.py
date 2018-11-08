@@ -6,7 +6,7 @@ import re
 from os import listdir
 from os.path import isfile, join
 import gc
-import gensim
+from gensim.models.callbacks import CallbackAny2Vec
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 import logging
 from constants import *
@@ -37,8 +37,6 @@ class EpochSaver(CallbackAny2Vec):
         self.epoch += 1
 
 
-
-
 t0 = time()
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -49,8 +47,10 @@ wikipath = join(SMPL_PATH, 'dewiki')
 files = sorted([f for f in listdir(wikipath)
                 if isfile(join(wikipath, f))])
 
+
 def docs_to_lists(token_series):
     return tuple(token_series.tolist())
+
 
 tagged_documents = []
 for name in files[:]:
@@ -67,11 +67,12 @@ for name in files[:]:
     # remove punctuation only for doc2vec
     df = df[df.POS != PUNCT]
     df = df.groupby([HASH], sort=False)[TOKEN].agg(docs_to_lists)
-    # the conversion of the hash_id to str is necessary since gensim trys to allocate an array for ids of size 2^64 if int values are too big.
+    # the conversion of the hash_id to str is necessary since gensim trys to allocate an array for ids
+    # of size 2^64 if int values are too big.
     tagged_documents += [TaggedDocument(doc, [str(doc_id)]) for doc_id, doc in df.iteritems()]
     gc.collect()
 
-del df, goodids, mask
+del goodids
 gc.collect()
 
 

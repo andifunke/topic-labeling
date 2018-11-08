@@ -1,7 +1,6 @@
 # coding: utf-8
 
 import json
-from itertools import chain
 from os.path import join
 from time import time
 
@@ -11,9 +10,7 @@ from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import CoherenceModel, LdaModel
 from pandas.core.common import SettingWithCopyWarning
 
-from constants import (
-    ETL_PATH
-)
+from constants import ETL_PATH, BAD_TOKENS, DATASETS
 import warnings
 warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 from utils import tprint
@@ -22,33 +19,6 @@ pd.options.display.max_rows = 2001
 pd.options.display.precision = 3
 np.set_printoptions(precision=3, threshold=None, edgeitems=None, linewidth=800, suppress=None)
 
-datasets = {
-    'E': 'Europarl',
-    'FA': 'FAZ_combined',
-    'FO': 'FOCUS_cleansed',
-    'O': 'OnlineParticipation',
-    'P': 'PoliticalSpeeches',
-    'dewi': 'dewiki',
-    'dewa': 'dewac',
-}
-bad_tokens = {
-    'Europarl': [
-        'E.', 'Kerr', 'The', 'la', 'ia', 'For', 'Ieke', 'the',
-    ],
-    'FAZ_combined': [
-        'S.', 'j.reinecke@faz.de', 'B.',
-    ],
-    'FOCUS_cleansed': [],
-    'OnlineParticipation': [
-        'Re', '@#1', '@#2', '@#3', '@#4', '@#5', '@#6', '@#7', '@#8', '@#9', '@#1.1', 'Für', 'Muss',
-        'etc', 'sorry', 'Ggf', 'u.a.', 'z.B.', 'B.', 'stimmt', ';-)', 'lieber', 'o.', 'Ja',
-        'Desweiteren',
-    ],
-    'PoliticalSpeeches': [],
-    'dewiki': [],
-    'dewac': [],
-}
-all_bad_tokens = set(chain(*bad_tokens.values()))
 params_list = ['a42', 'b42', 'c42', 'd42', 'e42']
 placeholder = '[[PLACEHOLDER]]'
 
@@ -71,7 +41,7 @@ class TopicsLoader(object):
         self.dict_from_corpus = self._load_dict()
         self.corpus = self._load_corpus()
         self.texts = self._load_texts()
-        self.ldamodels = []
+        # self.ldamodels = []
         self.topics = self._topn_topics()
 
     def _topn_topics(self):
@@ -88,7 +58,7 @@ class TopicsLoader(object):
                     topic = []
                     for term in ldamodel.get_topic_terms(i, topn=self.topn+10):
                         token = ldamodel.id2word[term[0]]
-                        if token not in all_bad_tokens:
+                        if token not in BAD_TOKENS:
                             topic.append(token)
                             if len(topic) == self.topn:
                                 break
@@ -122,7 +92,7 @@ class TopicsLoader(object):
         path = join(ETL_PATH, 'LDAmodel', param_id, model_filename)
         print('Loading model from', path)
         ldamodel = LdaModel.load(path)
-        self.ldamodels.append((self.dataset, param_id, nb_topics, ldamodel))
+        # self.ldamodels.append((self.dataset, param_id, nb_topics, ldamodel))
         return ldamodel
 
     def _load_dict(self):
@@ -630,7 +600,7 @@ def main():
     nbs_topics = [10, 25, 50, 100]
 
     reranker = rerank(
-        dataset=datasets['O'],
+        dataset=DATASETS['O'],
         param_ids=param_ids[:2],
         nbs_topics=nbs_topics[:1],
         # metrics=['u_mass', 'vote'],

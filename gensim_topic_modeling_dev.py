@@ -1,7 +1,7 @@
 # coding: utf-8
 
 from os import listdir, makedirs
-from os.path import join, isfile, isdir, exists
+from os.path import join, isfile, isdir, exists, dirname
 import pandas as pd
 import gc
 from gensim.corpora import Dictionary, MmCorpus
@@ -9,29 +9,39 @@ from gensim.models import CoherenceModel, TfidfModel, LdaModel, LdaMulticore
 from gensim.models.wrappers import LdaMallet
 # from gensim.models.hdpmodel import HdpModel, HdpTopicFormatter
 from gensim.models.callbacks import CoherenceMetric, DiffMetric, PerplexityMetric, ConvergenceMetric
-from itertools import chain, islice
-
-from gensim.models.wrappers import LdaMallet
+# from itertools import chain, islice
 
 from constants import (
-    DATA_BASE, FULL_PATH, ETL_PATH, NLP_PATH, SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, SENT_IDX, PUNCT
+    DATA_BASE, ETL_PATH, SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS
 )
-# import logging
+import logging
 import json
 import numpy as np
 import visdom
 vis = visdom.Visdom()
-
-
-# logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
-# pd.options.display.max_rows = 2001
-
 
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", type=str, required=True)
 parser.add_argument("--nbfiles", type=int, required=False, default=None)
 args = vars(parser.parse_args())
+dataset = DATASETS[args['dataset']]
+
+
+# logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+LOG_PATH = f'./../logs/LDA_training_{dataset}.log'
+# create path if necessary
+makedirs(dirname(LOG_PATH), exist_ok=True)
+logger = logging.getLogger('LDA_training')
+logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+fh = logging.FileHandler(LOG_PATH)
+fh.setLevel(logging.DEBUG)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
 
 
 def docs_to_lists(token_series):
@@ -83,18 +93,6 @@ def docs2corpora(documents, tfidf=True, stopwords=None, filter_below=5, filter_a
     return corpora, dictionary
 
 
-# In[8]:
-
-
-datasets = {
-    'E': 'Europarl',
-    'FA': 'FAZ_combined',
-    'FO': 'FOCUS_cleansed',
-    'O': 'OnlineParticipation',
-    'P': 'PoliticalSpeeches',
-    'dewi': 'dewiki',
-    'dewa': 'dewac',
-}
 goodids = {
     # filetered via some fixed rules and similarity measure to character distribution
     'dewac': join(ETL_PATH, 'dewac_good_ids.pickle'),
@@ -104,30 +102,9 @@ goodids = {
     # 'FAZ_combined': join(ETL_PATH, 'FAZ_document_sample3.pickle'),
     # 'FOCUS_cleansed': join(ETL_PATH, 'FOCUS_document_sample3.pickle'),
 }
-bad_tokens = {
-    'Europarl': [
-        'E.', 'Kerr', 'The', 'la', 'ia', 'For', 'Ieke', 'the',
-    ],
-    'FAZ_combined': [
-        'S.', 'j.reinecke@faz.de', 'B.',
-    ],
-    'FOCUS_cleansed': [],
-    'OnlineParticipation': [
-        'Re', '@#1', '@#2', '@#3', '@#4', '@#5', '@#6', '@#7', '@#8', '@#9', '@#1.1', 'Für', 'Muss',
-        'etc', 'sorry', 'Ggf', 'u.a.', 'z.B.', 'B.', 'stimmt', ';-)', 'lieber', 'o.', 'Ja',
-        'Desweiteren',
-    ],
-    'PoliticalSpeeches': [],
-    'dewiki': [],
-    'dewac': [],
-}
-all_bad_tokens = set(chain(*bad_tokens.values()))
-
-# In[24]:
 
 
 # for dataset in datasets[1:2]:
-dataset = datasets[args['dataset']]
 print('dataset:', dataset)
 print('-' * 5)
 
@@ -168,7 +145,7 @@ for name in files[:nbfiles]:
     df = df[df.POS.isin(reduction_pos_set)]
     df[TOKEN] = df[TOKEN].map(lambda x: x.strip('-/'))
     df = df[df.token.str.len() > 1]
-    df = df[~df.token.isin(all_bad_tokens)]
+    df = df[~df.token.isin(BAD_TOKENS)]
     nb_words += len(df)
     print('    remaining number of words:', len(df))
 
@@ -263,7 +240,8 @@ def init_callbacks(viz_env=None, title_suffix=''):
 # In[27]:
 
 
-def get_parameterset(corpus, dictionary, callbacks=None, nbtopics=100, parametrization='a42', eval_every=None):
+def get_parameterset(corpus, dictionary, callbacks=None, nbtopics=100, parametrization='a42',
+                     eval_every=None):
     print(f'building LDA model "{parametrization}" with {nbtopics} number of topics')
     default = dict(
         random_state=42, corpus=corpus, id2word=dictionary, num_topics=nbtopics,

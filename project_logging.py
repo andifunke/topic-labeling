@@ -10,7 +10,7 @@ from options import HPC, LOG, NOTEBOOK, LOG_PATH
 makedirs(dirname(LOG_PATH), exist_ok=True)
 
 # create logger
-logger = logging.getLogger('Doc2Vec')
+logger = logging.getLogger('Topic_labeling')
 logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s | %(message)s',
                               datefmt='%Y-%m-%d %H:%M:%S')

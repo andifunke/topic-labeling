@@ -1,5 +1,9 @@
 # coding: utf-8
 
+"""
+This version of phrase_extraction applies the process to smaller batches in order to save memory.
+"""
+
 import gc
 from os import listdir, getpid
 from os.path import join, isfile

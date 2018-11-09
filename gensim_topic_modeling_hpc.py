@@ -76,9 +76,9 @@ def docs2corpora(documents, tfidf=True, stopwords=None, filter_below=5, filter_a
         training_texts = documents[:split2]
         test_texts = documents[split2:]
         logger.info(
-            f'split dataset. size of:'
-            f'train_set={len(training_texts)},'
-            f'test_set={len(test_texts)},'
+            f'split dataset. size of: '
+            f'train_set={len(training_texts)}, '
+            f'test_set={len(test_texts)}'
         )
         corpora['training_corpus'] = [dictionary.doc2bow(text) for text in training_texts]
         corpora['test_corpus'] = [dictionary.doc2bow(text) for text in test_texts]

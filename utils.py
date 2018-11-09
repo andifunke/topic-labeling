@@ -1,8 +1,8 @@
-import pandas as pd
 from tabulate import tabulate
 
 
-def tprint(df: pd.DataFrame, head=0, floatfmt=None, to_latex=False):
+def tprint(df, head=0, floatfmt=None, to_latex=False):
+    shape = df.shape
     if head > 0:
         df = df.head(head)
     elif head < 0:
@@ -10,7 +10,8 @@ def tprint(df: pd.DataFrame, head=0, floatfmt=None, to_latex=False):
     kwargs = dict()
     if floatfmt is not None:
         kwargs['floatfmt'] = floatfmt
-    print(tabulate(df, headers="keys", tablefmt="pipe", showindex="always", **kwargs) + '\n')
+    print(tabulate(df, headers="keys", tablefmt="pipe", showindex="always", **kwargs))
+    print('shape:', shape, '\n')
 
     if to_latex:
         print(df.to_latex(bold_rows=True))

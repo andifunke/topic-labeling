@@ -82,13 +82,14 @@ for path, subdirs, files in os.walk(tokenised_wiki_directory):
         temp = os.path.join(path, name)
         filenames.append(temp)
 filenames = sorted(filenames)
-filenames_temp = filenames[:4]
+# filenames_temp = filenames[:4]
 print("Got all files")
+print(filenames)
 
 # Multiprocess files
 cores = mp.cpu_count()
 pool = Pool(processes=cores)
-y_parallel = pool.map(get_labels, filenames_temp)
+y_parallel = pool.map(get_labels, filenames)
 
 # converting a list of list into list
 all_docs = [item for sublist in y_parallel for item in sublist]

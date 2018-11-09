@@ -17,10 +17,10 @@ import re
 import pickle
 
 #Global Parameters
-doc2vec_model = "model_run/pre_trained_models/doc2vec/docvecmodel.d2v"   # Trained Doc2vec Model
-word2vec_model = "model_run/pre_trained_models/word2vec/word2vec" # Trained word2vec model
-short_label_documents = "short_label_documents" # The file created by pruned_documents.py. FIltering short or long title documents.
-short_label_word2vec_tokenised = "training/additional_files/word2vec_phrases_list_tokenized.txt" #The file created by word2vec_phrases.py Removing brackets from filtered wiki titles.
+doc2vec_model = "model_run/pre_trained_models/doc2vec_en/docvecmodel.d2v"   # Trained Doc2vec Model
+word2vec_model = "model_run/pre_trained_models/word2vec_en/word2vec" # Trained word2vec model
+short_label_documents = "additional_support_files/short_label_documents_en" # The file created by pruned_documents.py. FIltering short or long title documents.
+short_label_word2vec_tokenised = "training/additional_files/word2vec_phrases_list_tokenized2.txt" #The file created by word2vec_phrases.py Removing brackets from filtered wiki titles.
 doc2vec_indices_output = "doc2vec_indices"  # The output file which map pruned doc2vec labels to indcies from doc2vec model.
 word2vec_indices_output ="word2vec_indices" # the output file that maps short_label_word2vec_tokenised to indices from wrod2vec model.
 
@@ -41,7 +41,9 @@ def get_word(word):
     return False,word
 
 # Load the trained doc2vec and word2vec models.
+print 'loading d2v'
 model1 =Doc2Vec.load(doc2vec_model)
+print 'loading w2v'
 model2 = Word2Vec.load(word2vec_model)
 print "Models loaded"
 
@@ -49,10 +51,11 @@ print "Models loaded"
 with open(short_label_documents,"r") as k:
     doc_labels = pickle.load(k)
 doc_labels = set(doc_labels)
-print "Pruned document titles loaded"
+print "Pruned document titles loaded", short_label_documents
 
 # laoding thw phrasses used in training word2vec model. And then replacing space with underscore.
 h = open(short_label_word2vec_tokenised,'r')
+print "loaded", short_label_word2vec_tokenised
 list_labels=[]
 for line in h:
     line = line.strip()

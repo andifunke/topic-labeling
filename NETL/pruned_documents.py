@@ -21,7 +21,8 @@ from multiprocessing import Pool
 title_length = 5 # Length of wikipedia title you want to filter. All titles greater than or equal to this value will be thrown away
 doc_length = 40 # length of documents. All documents having number of words less than this value will not be considered.
 tokenised_wiki_directory = 'training/processed_documents/docs_tokenised' # the directory in which you tokenised all files extracted from Wiki-Extractor using stanford tokenizer
-output_filename = 'short_label_documents' # The name of output file you want the list of valid wikipedia titles to be saved into. Will be a pickle file
+output_filename = 'short_label_documents_de_NETL_implementation' 
+# The name of output file you want the list of valid wikipedia titles to be saved into. Will be a pickle file
 
 
 def get_labels(filename):
@@ -46,30 +47,35 @@ def get_labels(filename):
                     for word in line.split(" "):
                         values.append(word.strip())
 
-                if "</doc" in line:                     # checks if we reach end of that particular document and if condition ois satisfied title is added into list. 
+                # checks if we reach end of that particular document and if condition ois satisfied title is added into list. 
+                if "</doc" in line:
                     temp_list= found.split("_")
                     if (len(values) > doc_length) and (len(temp_list) < title_length):
-   		        list_labels.append(found)
-   
+                        list_labels.append(found)
     return list_labels
 
 # Walking through directory and getting the filenames from the tokenised directory.
-filenames=[]
+filenames = []
 for path,subdirs,files in os.walk(tokenised_wiki_directory):
     for name in files:
+        print name
         temp = os.path.join(path, name)
         filenames.append(temp)
 
 print "Got all files"
 # Multiprocess files
-cores = mp.cpu_count()
-pool = Pool(processes = cores)
-y_parallel = pool.map(get_labels, filenames)
+#cores = 1 # mp.cpu_count()
+#pool = Pool(processes = cores)
+#pool.map(get_labels, filenames)
+y_parallel = map(get_labels, filenames)
+# print y_parallel
+
 
 # converting a list of list into list
 all_docs = [item for sublist in y_parallel for item in sublist]
+# print "all_docs", all_docs
 
 #Writing into pickle file
-print "Writng labels to picke file"
+print "Writing labels to pickle file", output_filename
 with open(output_filename,'w') as k:
     pickle.dump(all_docs,k)

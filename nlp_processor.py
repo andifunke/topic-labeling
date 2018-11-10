@@ -7,11 +7,12 @@ import spacy
 import pandas as pd
 import gc
 
-from constants import VOC_PATH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX, \
+from constants import (
+    VOC_PATH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX,
     TOKEN, SENT_IDX, HASH, NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, TITLE, DESCR, ETL_PATH
+)
 from lemmatizer_plus import LemmatizerPlus
 from project_logging import log
-# from spacy_ner import extract_german_groups
 from utils import tprint
 
 FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
@@ -20,7 +21,7 @@ FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE,
 class NLPProcessor(object):
 
     def __init__(self, spacy_path, lemmatizer_path='../data/IWNLP.Lemmatizer_20170501.json'):
-        ### --- load spacy and iwnlp ---
+        # ------ load spacy and iwnlp ------
         log("loading spacy")
         self.nlp = spacy.load(spacy_path)  # <-- load with dependency parser (slower)
         # nlp = spacy.load(de, disable=['parser'])
@@ -132,6 +133,9 @@ class NLPProcessor(object):
         mask_iwnlp = ~df[IWNLP].isnull()
         df.loc[mask_iwnlp, TOKEN] = df.loc[mask_iwnlp, IWNLP]
         df.loc[~mask_iwnlp, TOKEN] = df.loc[~mask_iwnlp, LEMMA]
+        # fixes wrong POS tagging for punctuation (TODO: untested at this step)
+        mask_punct = df[TOKEN].isin(list('[]<>/–%'))
+        df.loc[mask_punct, POS] = PUNCT
         # set an index for each sentence
         df[SENT_IDX] = df[SENT_START].cumsum()
         # set an index for each entity

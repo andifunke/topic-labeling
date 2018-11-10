@@ -113,6 +113,7 @@ DATASETS = {
 }
 
 # --- filter lookup table
+# the follwoing tokens are filtered befor applying LDA training
 BAD_TOKENS_DICT = {
     'Europarl': [
         'E.', 'Kerr', 'The', 'la', 'ia', 'For', 'Ieke', 'the', 'WPA', 'INSPIRE', 'EN', 'ASEM',
@@ -139,3 +140,13 @@ BAD_TOKENS_DICT = {
     ],
 }
 BAD_TOKENS = set(chain(*BAD_TOKENS_DICT.values()))
+
+"""
+ list of tokens to ignore when at the beginning of a phrase
+ This is needed to avoid changing all appearances of for example
+ 'die Firma' to 'Die_Firma' since this is also a movie title.
+"""
+BAD_FIRST_PHRASE_TOKEN = {
+    'ab', 'seit', 'in', 'der', 'die', 'das', 'an', 'am', 'diese', 'bis', 'ein', 'es', 'mit', 'im',
+    'für', 'zur', 'auf', '!', '(', 'ich', 'so', 'auch', 'wir', 'auch', 'mich', 'du',
+}

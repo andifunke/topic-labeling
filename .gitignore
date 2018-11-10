@@ -225,5 +225,6 @@ Trash*
 NETL/dataset
 *support_files
 *_debug.py
-*Copy1*
+*Copy*
+NETL/model_run/output_candidates_de
 

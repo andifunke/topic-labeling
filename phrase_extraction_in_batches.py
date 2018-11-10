@@ -10,23 +10,17 @@ from os.path import join, isfile
 from time import time
 import psutil
 process = psutil.Process(getpid())
-
 import numpy as np
 import pandas as pd
 import re
-from options import update_from_args
-update_from_args()
-from options import CORPUS_PREFIXES
-from constants import NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, \
-    TEXT, TOKEN, TOK_IDX, POS, ENT_IOB, ETL_PATH, SPACE, SMPL_PATH
+from constants import (
+    NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, TEXT, TOKEN, TOK_IDX, POS, ENT_IOB,
+    ETL_PATH, SPACE, SMPL_PATH, BAD_FIRST_PHRASE_TOKEN,
+    PUNCT)
 from project_logging import log
 from tqdm import tqdm
 tqdm.pandas()
 
-
-BAD = {
-    'ab', 'seit', 'in', 'der', 'die', 'das', 'an', 'am', 'diese',
-}
 
 # based on Philipp Grawes approach on extracting and normalizing street names
 STREET_NAME_LIST = [r'strasse$', r'straße$', r'str$', r'str.$', r'platz', r'gasse$',
@@ -139,7 +133,7 @@ def preprocess_dewiki(df):
 
 
 def ngrams(ser):
-    if ser[0] not in BAD:
+    if ser[0].lower() not in BAD_FIRST_PHRASE_TOKEN:
         s = ser.str.cat(sep='_')
         size = len(ser)
         while size > 1:
@@ -153,8 +147,9 @@ def ngrams(ser):
 def insert_wikipedia_phrases(df):
     global PS
     if PS is None:
-        p = pd.read_pickle(join(ETL_PATH, 'dewiki_phrases_joined.pickle'))
-        PS = set(p)
+        p = pd.read_pickle(join(ETL_PATH, 'dewiki_phrases_lemmatized.pickle'))
+        p = p[p.title_len > 1]
+        PS = set(p.text.append(p.token))
 
     df = df.reset_index(drop=True)
     df['__2'] = df.token.shift(-1)
@@ -286,7 +281,7 @@ def process_subset(df):
     return df_glued
 
 
-def main(corpus):
+def main(corpus, batch_size=None):
     t0 = time()
 
     fpath = join(NLP_PATH, corpus + '_nlp.pickle')
@@ -299,6 +294,10 @@ def main(corpus):
     elif corpus.startswith('dewiki'):
         df_main = preprocess_dewiki(df_main)
 
+    # fixes wrong POS tagging for punctuation
+    mask_punct = df_main[TOKEN].isin(list('[]<>/–%'))
+    df_main.loc[mask_punct, POS] = PUNCT
+
     df_main = df_main.groupby(HASH, sort=False)
     length = len(df_main)
 
@@ -308,7 +307,9 @@ def main(corpus):
     last_cnt = 1
     for i, grp in enumerate(df_main, last_cnt):
         groups_tmp.append(grp[1])
-        if (i % 10_000 == 0) or (i == length):
+        # process and save in batches of size batch_size if batch_size is not None
+        # or if the last document is reached
+        if (batch_size is not None and (i % batch_size == 0)) or (i == length):
             log('process {:d}:{:d}'.format(last_cnt, i))
             df_glued = process_subset(pd.concat(groups_tmp))
             write_path = join(SMPL_PATH, corpus + '__{:d}_simple.pickle'.format(i))
@@ -331,20 +332,26 @@ def main(corpus):
 
 
 if __name__ == "__main__":
-    t0 = time()
+    from options import update_from_args
+    update_from_args()
+    from options import CORPUS_PREFIXES
 
-    ### --- run ---
+    t_0 = time()
+
+    # ------ run ------
     log("##### START #####")
 
     # filter files for certain prefixes
     prefixes = r'^(' + '|'.join(CORPUS_PREFIXES) + r').'
     pattern = re.compile(prefixes)
-    files = sorted([f for f in listdir(NLP_PATH)
-                    if (isfile(join(NLP_PATH, f)) and pattern.match(f))])
+    files = sorted([
+        f for f in listdir(NLP_PATH)
+        if (isfile(join(NLP_PATH, f)) and pattern.match(f))
+    ])
 
     for name in files:
         corpus_name = name.split('_nlp.')[0]
-        main(corpus_name)
+        main(corpus_name, batch_size=10000)
 
-    t1 = int(time() - t0)
-    log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
+    t_1 = int(time() - t_0)
+    log("all done in {:02d}:{:02d}:{:02d}".format(t_1//3600, (t_1//60) % 60, t_1 % 60))

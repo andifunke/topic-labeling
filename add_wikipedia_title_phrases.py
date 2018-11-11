@@ -32,7 +32,7 @@ subdir = ''
 if dataset.startswith('dewi'):
     subdir = 'dewiki'
 
-goodids = None
+GOOD_IDS = None
 pattern = re.compile(dataset)
 files = sorted([f for f in listdir(join(SMPL_PATH, subdir))
                 if (isfile(join(SMPL_PATH, subdir, f)) and pattern.match(f))])
@@ -46,9 +46,9 @@ for name in files[start:nbfiles]:
 
     # filter Wikipedia documents. Process only valid articles.
     if name.startswith('dewiki'):
-        if goodids is None:
-            goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
-        df = df[df.hash.isin(goodids.index)]
+        if GOOD_IDS is None:
+            GOOD_IDS = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
+        df = df[df.hash.isin(GOOD_IDS.index)]
 
     df = insert_wikipedia_phrases(df)
 

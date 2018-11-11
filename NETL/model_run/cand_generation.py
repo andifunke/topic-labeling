@@ -16,7 +16,7 @@ from gensim import matutils
 import re
 import pickle
 import argparse
-from word2vec import EpochLogger, EpochSaver
+from train_w2v import EpochLogger, EpochSaver
 from utils import tprint
 # import multiprocessing as mp
 

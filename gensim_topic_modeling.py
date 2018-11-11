@@ -23,12 +23,16 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", type=str, required=True)
 parser.add_argument("--logger", type=str, required=False, default='Shell')
-parser.add_argument("--params", nargs='*', type=str, required=False)
+parser.add_argument("--params", nargs='*', type=str, required=False,
+                    default=['a42', 'b42', 'c42', 'd42', 'e42'])
+parser.add_argument("--nbtopics", nargs='*', type=int, required=False,
+                    default=[10, 25, 50, 100])
 parser.add_argument("--nbfiles", type=int, required=False, default=None)
 args = vars(parser.parse_args())
 dataset = DATASETS[args['dataset']]
 logr = args['logger']
 param_args = args['params']
+nbtopics_args = args['nbtopics']
 
 save = True
 
@@ -248,7 +252,7 @@ def main():
     training_corpus = corpora['training_corpus']
     test_corpus = corpora['test_corpus']
 
-    params_list = param_args  #['a42', 'b42', 'c42', 'd42', 'e42'][-1:]
+    params_list = param_args
     implementations = [
         ('LDAmodel', LdaModel),
     ]
@@ -260,7 +264,7 @@ def main():
     # params = params_list[3]
     for params in params_list:
         env_id = f"{dataset}-{model_name}"
-        for nbtopics in [10, 25, 50, 100]:  # range(10, 101, 10):
+        for nbtopics in nbtopics_args:  # range(10, 101, 10):
             # Choose α from [0.05, 0.1, 0.5, 1, 5, 10]
             # Choose β from [0.05, 0.1, 0.5, 1, 5, 10]
             callbacks = init_callbacks(

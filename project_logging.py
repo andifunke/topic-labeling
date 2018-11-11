@@ -24,7 +24,6 @@ if LOG or HPC:
 
 # logging to stdout
 if not (HPC or NOTEBOOK):
-    # stdout logger
     ch = logging.StreamHandler(stdout)
     ch.setLevel(logging.DEBUG)
     ch.setFormatter(formatter)

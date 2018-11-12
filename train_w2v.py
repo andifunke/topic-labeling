@@ -91,7 +91,7 @@ class Sentences(object):
     def init_file_cache(self):
         if not exists(self.cache_dir):
             makedirs(self.cache_dir)
-        self.logger.info('inititalizing file cache in', self.cache_dir)
+        self.logger.info('inititalizing file cache in ' + self.cache_dir)
         for filename in self.files:
             ser = self.load(filename)
             ser.to_pickle(join(self.cache_dir, filename.split('.')[0] + '_cache.pickle'))
@@ -141,6 +141,7 @@ def parse_args():
 
     parser.add_argument("--cores", type=int, required=False)
     parser.add_argument("--epochs", type=int, required=False)
+    parser.add_argument("--min_count", type=int, required=False)
     parser.add_argument("--checkpoint_every", type=int, required=False)
     parser.add_argument("--model_name", type=str, required=False)
 
@@ -155,6 +156,7 @@ def main():
     cache_in_memory = args.get('cache_in_memory')
     cores = args.get('cores', multiprocessing.cpu_count())
     epochs = args.get('epochs', 100)
+    min_count = args.get('min_count', 20)
     checkpoint_every = args.get('checkpoint_every', epochs//10)
     model_name = args.get('model_name', 'w2v')
 
@@ -166,6 +168,7 @@ def main():
     logger.info('cpu count: %d' % multiprocessing.cpu_count())
     logger.info('worker used: %d' % cores)
     logger.info('epochs: %d' % epochs)
+    logger.info('min_count: %d' % min_count)
     logger.info('save checkpoint every %d epochs' % checkpoint_every)
     logger.info('cache in memory: %r' % cache_in_memory)
     logger.info('model name: ' + model_name)
@@ -190,7 +193,7 @@ def main():
     model = Word2Vec(
         size=300,
         window=5,
-        min_count=20,
+        min_count=min_count,
         sample=1e-5,
         negative=5,
         sg=1,

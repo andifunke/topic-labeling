@@ -8,21 +8,16 @@ import gensim
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import TfidfModel, LdaModel
 from gensim.models.callbacks import CoherenceMetric, DiffMetric, PerplexityMetric, ConvergenceMetric
-
-from constants import (
-    DATA_BASE, ETL_PATH, SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS
-)
+from constants import ETL_PATH, SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS
 import logging
 import json
 import numpy as np
-import visdom
-vis = visdom.Visdom()
-
 import argparse
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", type=str, required=True)
-parser.add_argument("--logger", type=str, required=False, default='Shell')
+parser.add_argument("--logger", type=str, required=False, default='shell')
 parser.add_argument("--params", nargs='*', type=str, required=False,
                     default=['a42', 'b42', 'c42', 'd42', 'e42'])
 parser.add_argument("--nbtopics", nargs='*', type=int, required=False,
@@ -30,13 +25,19 @@ parser.add_argument("--nbtopics", nargs='*', type=int, required=False,
 parser.add_argument("--nbfiles", type=int, required=False, default=None)
 args = vars(parser.parse_args())
 dataset = DATASETS[args['dataset']]
-logr = args['logger']
+callback_logger = args['logger']
+
+vis = None
+if callback_logger == 'visdom':
+    import visdom
+    vis = visdom.Visdom()
+
 param_args = args['params']
 nbtopics_args = args['nbtopics']
 
 save = True
 
-LOG_PATH = f'./../logs/LDA_training_{dataset}.log'
+LOG_PATH = './../logs/LDA_training_{}.log'.format(dataset)
 # create path if necessary
 makedirs(dirname(LOG_PATH), exist_ok=True)
 logger = logging.getLogger('LDA_training')
@@ -87,9 +88,8 @@ def docs2corpora(documents, tfidf=True, stopwords=None, filter_below=5, filter_a
         training_texts = documents[:split2]
         test_texts = documents[split2:]
         logger.info(
-            f'split dataset. size of: '
-            f'train_set={len(training_texts)}, '
-            f'test_set={len(test_texts)}'
+            'split dataset. size of: train_set={:d}, test_set={:d}'
+            .format(len(training_texts), len(test_texts))
         )
         corpora['training_corpus'] = [dictionary.doc2bow(text) for text in training_texts]
         corpora['test_corpus'] = [dictionary.doc2bow(text) for text in test_texts]
@@ -109,28 +109,28 @@ def init_callbacks(training_corpus, test_corpus, documents, viz_env=None, title_
     # define perplexity callback for hold_out and test corpus
     pl_test = PerplexityMetric(
         corpus=test_corpus,
-        logger=logr, viz_env=viz_env,
+        logger=callback_logger, viz_env=viz_env,
         title="Perplexity (test)" + title_suffix
     )
     # define other remaining metrics available
     ch_umass = CoherenceMetric(
         corpus=training_corpus, coherence="u_mass", topn=10,
-        logger=logr, viz_env=viz_env,
+        logger=callback_logger, viz_env=viz_env,
         title="Coherence (u_mass)" + title_suffix
     )
     ch_cv = CoherenceMetric(
         corpus=training_corpus, texts=documents, coherence="c_v", topn=10,
-        logger=logr, viz_env=viz_env,
+        logger=callback_logger, viz_env=viz_env,
         title="Coherence (c_v)" + title_suffix
     )
     diff_kl = DiffMetric(
         distance="kullback_leibler",
-        logger=logr, viz_env=viz_env,
+        logger=callback_logger, viz_env=viz_env,
         title="Diff (kullback_leibler)" + title_suffix
     )
     convergence_kl = ConvergenceMetric(
         distance="jaccard",
-        logger=logr, viz_env=viz_env,
+        logger=callback_logger, viz_env=viz_env,
         title="Convergence (jaccard)" + title_suffix
     )
     return [pl_test, ch_umass, ch_cv, diff_kl, convergence_kl]
@@ -138,10 +138,13 @@ def init_callbacks(training_corpus, test_corpus, documents, viz_env=None, title_
 
 def get_parameterset(corpus, dictionary, callbacks=None, nbtopics=100, parametrization='a42',
                      eval_every=None):
-    logger.info(f'building LDA model "{parametrization}" with {nbtopics} number of topics')
+    logger.info(
+        'building LDA model "{}" with {} number of topics'
+        .format(parametrization, nbtopics)
+    )
     default = dict(
         random_state=42, corpus=corpus, id2word=dictionary, num_topics=nbtopics,
-        eval_every=eval_every, callbacks=callbacks, chunksize=20000
+        eval_every=eval_every, callbacks=callbacks, chunksize=20000, dtype=np.float64
     )
     ldamodels = {
         'a42': dict(passes=20),
@@ -163,7 +166,7 @@ def main():
     }
 
     # for dataset in datasets[1:2]:
-    logger.info(f'dataset: {dataset}')
+    logger.info('dataset: ' + dataset)
     logger.info('-' * 5)
 
     sub_dir = 'dewiki' if dataset.startswith('dewi') else 'wiki_phrases'
@@ -179,7 +182,7 @@ def main():
 
     nbfiles = args['nbfiles']
     if nbfiles is not None:
-        logger.info(f'processing {nbfiles} files')
+        logger.info('processing {} files'.format(nbfiles))
 
     documents = []
     for name in files[:nbfiles]:
@@ -187,9 +190,9 @@ def main():
         if not isfile(full_path):
             continue
 
-        logger.info(f'reading {name}')
+        logger.info('reading ' + name)
         df = pd.read_pickle(join(dir_path, name))
-        logger.info(f'    initial number of words: {len(df)}')
+        logger.info('    initial number of words: ' + str(len(df)))
         if keepids is not None:
             # some datasets have already been filtered so you may not see a difference in any case
             df = df[df.hash.isin(keepids.index)]
@@ -204,18 +207,18 @@ def main():
         df = df[df.token.str.len() > 1]
         df = df[~df.token.isin(BAD_TOKENS)]
         nb_words += len(df)
-        logger.info(f'    remaining number of words: {len(df)}')
+        logger.info('    remaining number of words: ' + str(len(df)))
 
         # groupby sorts the documents by hash-id
         # which is equal to shuffeling the dataset before building the model
         df = df.groupby([HASH])[TOKEN].agg(docs_to_lists)
-        logger.info(f'    number of documents: {len(df)}')
+        logger.info('    number of documents: ' + str(len(df)))
         documents += df.values.tolist()
 
     nb_docs = len(documents)
     logger.info('-' * 5)
-    logger.info(f'total number of documents: {nb_docs}')
-    logger.info(f'total number of words: {nb_words}')
+    logger.info('total number of documents: ' + str(nb_docs))
+    logger.info('total number of words: ' + str(nb_words))
     stats = dict(dataset=dataset, pos_set=sorted(reduction_pos_set), nb_docs=nb_docs, nb_words=nb_words)
     del keepids, files
     gc.collect()
@@ -231,15 +234,15 @@ def main():
         split=split,
     )
     corpus = corpora['training_corpus']
-    file_name = f'{dataset}_{split_type}_nouns_{corpus_type}'
+    file_name = '{}_{}_nouns_{}'.format(dataset, split_type, corpus_type)
     corpus_path = join(ETL_PATH, 'LDAmodel', file_name + '.mm')
     dict_path = join(ETL_PATH, 'LDAmodel', file_name + '.dict')
-    logger.info(f'saving {corpus_path}')
+    logger.info('saving ' + corpus_path)
     MmCorpus.serialize(corpus_path, corpus)
-    logger.info(f'saving {dict_path}')
+    logger.info('saving ' + dict_path)
     dictionary.save(dict_path)
-    doc_path = join(ETL_PATH, 'LDAmodel', file_name.rstrip(f'{corpus_type}') + 'texts.json')
-    logger.info(f'saving {doc_path}')
+    doc_path = join(ETL_PATH, 'LDAmodel', file_name.rstrip(corpus_type) + 'texts.json')
+    logger.info('saving ' + doc_path)
     with open(doc_path, 'w') as fp:
         json.dump(documents, fp, ensure_ascii=False)
 
@@ -253,12 +256,7 @@ def main():
     test_corpus = corpora['test_corpus']
 
     params_list = param_args
-    implementations = [
-        ('LDAmodel', LdaModel),
-    ]
-    choice = 0
-    model_name = implementations[choice][0]
-    UsedModel = implementations[choice][1]
+    model_name = 'LDAmodel'
     metrics = []
     topn = 20
     # params = params_list[3]
@@ -281,20 +279,9 @@ def main():
                 nbtopics=nbtopics,
                 parametrization=params
             )
-            if 'multicore' in model_name:
-                kwargs['workers'] = 3
-                kwargs.pop('callbacks', None)
-            elif 'mallet' in model_name:
-                kwargs['workers'] = 3
-                kwargs['mallet_path'] = join(DATA_BASE, 'Mallet', 'bin', 'mallet')
-                kwargs.pop('passes', None)
-                kwargs.pop('random_state', None)
-                kwargs.pop('eval_every', None)
-                kwargs.pop('callbacks', None)
-                kwargs.pop('chunksize', None)
 
-            logger.info(f'running {model_name}')
-            ldamodel = UsedModel(**kwargs)
+            logger.info('running ' + model_name)
+            ldamodel = LdaModel(**kwargs)
 
             topics = [
                 [dataset] +
@@ -308,11 +295,11 @@ def main():
             metrics.append(('env_id', current_metrics))
 
             if save:
-                out_dir = join(ETL_PATH, f'{model_name}/{params}')
+                out_dir = join(ETL_PATH, model_name, params)
                 if not exists(out_dir):
                     makedirs(out_dir)
-                out = join(out_dir, f'{dataset}_{model_name}_{params}_{nbtopics}')
-                logger.info(f'saving to {out}')
+                out = join(out_dir, '{}_{}_{}_{}'.format(dataset, model_name, params, nbtopics))
+                logger.info('saving to ' + out)
                 df_lda.to_csv(out + '.csv')
                 ldamodel.save(out)
                 with open(out + '_stats.json', 'w') as fp:
@@ -325,7 +312,8 @@ def main():
                         else:
                             serializable_metrics[k] = [float(x) for x in v]
                     json.dump(serializable_metrics, fp)
-                vis.save([env_id])
+                if callback_logger == 'visdom' and vis is not None:
+                    vis.save([env_id])
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 # coding: utf-8
 
 """
-This processing step is also included in phrase_extraction_in_batches.py leading to some redundancy.
+This processing step is also included in phrase_extraction.py leading to some redundancy.
 For some documents it had to be applied seperately and was first developed here and later added to
 the simple/phrase-extraction pipeline. This should be streamlined to avoid additional maintenance.
 """
@@ -13,7 +13,7 @@ import gc
 import pandas as pd
 import re
 from tqdm import tqdm
-from phrase_extraction_in_batches import insert_wikipedia_phrases
+from phrase_extraction import insert_wikipedia_phrases
 import argparse
 tqdm.pandas()
 
@@ -25,7 +25,7 @@ args = vars(parser.parse_args())
 start = args['start']
 nbfiles = args['nbfiles']
 if nbfiles is not None:
-    print(f'processing {nbfiles} files')
+    print('processing files', nbfiles)
     nbfiles += start
 dataset = args['dataset']
 subdir = ''
@@ -58,7 +58,7 @@ for name in files[start:nbfiles]:
         out_dir = join(SMPL_PATH, 'wiki_phrases')
         if not exists(out_dir):
             makedirs(out_dir)
-        f = join(out_dir, f'{corpus}_wiki_phrases.pickle')
+        f = join(out_dir, corpus + '_wiki_phrases.pickle')
     print('Writing', f)
     df.to_pickle(f)
     gc.collect()

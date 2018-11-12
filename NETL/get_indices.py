@@ -9,6 +9,7 @@ output files from URLs in readme.(Word2vec phrase List and Filtered/short docume
 all these files have already been given to run the models but script is given if you want to create
 your own. These indices fileswill be used in cand-generation.py to generate label candidates.
 """
+from itertools import islice
 
 from gensim.models import Doc2Vec
 from gensim.models import Word2Vec
@@ -58,7 +59,8 @@ print("Models loaded")
 with open(short_label_documents, "rb") as fp:
     doc_labels = pickle.load(fp)
 doc_labels = set(doc_labels)
-print("Pruned document titles loaded", short_label_documents)
+print(len(doc_labels))
+print(sorted(doc_labels)[:20])
 
 # laoding thw phrasses used in training word2vec model. And then replacing space with underscore.
 with open(short_label_word2vec_tokenised, 'r') as fp:
@@ -68,7 +70,8 @@ with open(short_label_word2vec_tokenised, 'r') as fp:
         line = line.strip()
         list_labels.append(line)
     list_labels = set(list_labels)
-    print(list_labels)
+print(len(list_labels))
+print(sorted(list_labels)[:20])
 
 word2vec_labels = []
 for words in list_labels:
@@ -81,23 +84,30 @@ print("Word2vec model phrases loaded")
 doc_indices = []
 word_indices = []
 
+print('doc_labels')
 # finds the coresponding index of the title from doc2vec model
-for elem in doc_labels:
+for elem in islice(doc_labels, 100):
+    print(elem)
     status, item = get_word(elem)
     if status:
         try:
             val = d2v_model.docvecs.doctags[elem].offset
+            print(val)
             doc_indices.append(val)
-        except:
-            pass
+        except Exception as e:
+            print('not found', e)
 
+print('w2v_labels')
 # Finds the corseponding index from word2vec model
-for elem in word2vec_labels:
+for elem in islice(word2vec_labels, 100):
+    print(elem)
     try:
         val = w2v_model.wv.vocab[elem].index
+        print(val)
         word_indices.append(val)
-    except:
-        pass
+    except Exception as e:
+        print('not found', e)
+quit()
 
 # creating output indices file
 with open(doc2vec_indices_output, 'wb') as fp:

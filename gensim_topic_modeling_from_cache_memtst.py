@@ -14,6 +14,8 @@ import json
 import numpy as np
 import argparse
 from topic_reranking import NBTOPICS, PARAMS
+import psutil
+process = psutil.Process(getpid())
 np.set_printoptions(precision=3, threshold=11, formatter={'float': '{: 0.3f}'.format})
 LOG = None
 
@@ -29,6 +31,7 @@ class EpochLogger(Metric):
         self.additional_logger = additional_logger
 
     def get_value(self, **kwargs):
+        logmem()
         if self.additional_logger is not None:
             self.additional_logger.info(
                 "----- Epoch #{:02d} {} [{}] -----".format(self.epoch, self.message, self.title)
@@ -52,6 +55,7 @@ class PerplexityMetric(Metric):
 
     def get_value(self, **kwargs):
         super(PerplexityMetric, self).set_parameters(**kwargs)
+        logmem()
         if self.additional_logger is not None:
             self.additional_logger.info('   %s' % self.title)
         corpus_words = sum(cnt for document in self.corpus for _, cnt in document)
@@ -84,6 +88,7 @@ class CoherenceMetric(Metric):
 
     def get_value(self, **kwargs):
         super(CoherenceMetric, self).set_parameters(**kwargs)
+        logmem()
         if self.additional_logger is not None:
             self.additional_logger.info('   %s' % self.title)
         cm = gensim.models.CoherenceModel(
@@ -123,6 +128,7 @@ class DiffMetric(Metric):
 
     def get_value(self, **kwargs):
         super(DiffMetric, self).set_parameters(**kwargs)
+        logmem()
         if self.additional_logger is not None:
             self.additional_logger.info('   %s' % self.title)
         diff_diagonal, _ = self.diff(
@@ -227,6 +233,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--logger", type=str, required=False, default='shell')
+    parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
+    parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)
     parser.add_argument("--nbfiles", type=int, required=False, default=None)
     parser.add_argument("--epochs", type=int, required=False, default=20)
     args = parser.parse_args()
@@ -261,6 +269,16 @@ def init_logging(dataset):
     LOG.info('python: ' + sys.version)
     LOG.info('gensim: ' + gensim.__version__)
     LOG.info('pandas: ' + pd.__version__)
+
+
+def memstr():
+    rss = "RSS: {:.2f} GB".format(process.memory_info().rss / (2**30))
+    vms = "VMS: {:.2f} GB".format(process.memory_info().vms / (2**30))
+    return rss + ' | ' + vms
+
+
+def logmem():
+    LOG.info(memstr())
 
 
 def init_callbacks(
@@ -354,22 +372,26 @@ def main():
     dataset, cb_logger, param_ids, nbs_topics, nbfiles, epochs = parse_args()
     init_logging(dataset)
     LOG.info(param_ids)
+    logmem()
 
     file_name = '{}_{}_nouns_{}'.format(dataset, 'fullset', 'bow')
 
     LOG.info('Loading dictionary')
     dict_path = join(ETL_PATH, 'LDAmodel', file_name + '.dict')
     dictionary = Dictionary.load(dict_path)
+    logmem()
 
     LOG.info('Loading texts')
     doc_path = join(ETL_PATH, 'LDAmodel', file_name[:-3] + 'texts.json')
     with open(doc_path, 'r') as fp:
         texts = json.load(fp)
+    logmem()
 
     LOG.info('Loading corpus')
     corpus_path = join(ETL_PATH, 'LDAmodel', file_name + '.mm')
     corpus = MmCorpus(corpus_path)
     training_corpus, test_corpus = split_corpus(corpus)
+    logmem()
 
     topn = 20
     model = 'LDAmodel'
@@ -386,6 +408,7 @@ def main():
                 training_corpus=training_corpus,
                 test_corpus=test_corpus,
             )
+            logmem()
             kwargs = get_parameterset(
                 training_corpus,
                 dictionary,
@@ -396,6 +419,7 @@ def main():
             )
             LOG.info('Running ' + model)
             ldamodel = LdaModel(**kwargs)
+            logmem()
             gc.collect()
 
             model_dir = join(ETL_PATH, model, params)
@@ -412,6 +436,7 @@ def main():
             df_lda = pd.DataFrame(topics, columns=['dataset'] + ['term' + str(i) for i in range(topn)])
             LOG.info('Saving topics to ' + model_name + '.csv')
             df_lda.to_csv(model_name + '.csv')
+            logmem()
 
             # save metrics
             current_metrics = ldamodel.metrics
@@ -427,11 +452,13 @@ def main():
                         serializable_metrics[k] = [float(x) for x in v]
                 LOG.info('Saving metrics to ' + model_name + '_metrics.json')
                 json.dump(serializable_metrics, fp)
+            logmem()
 
             # save model
             LOG.info('Saving LDAmodel to ' + model_name)
             ldamodel.callbacks = None
             ldamodel.save(model_name)
+            logmem()
             LOG.info('')
 
             gc.collect()

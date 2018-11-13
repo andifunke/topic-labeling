@@ -8,23 +8,28 @@ doc2vec and word2vec models and normalise them to unit vector. There are a coupl
 pickle files namely doc2vec_indices and word2vec_indices  which restrict the search of
 word2vec and doc2vec labels. These pickle files are in support_files.
 """
-import argparse
+from functools import partial
 from os.path import join
-from time import time
 
 import pandas as pd
-from numpy import sqrt, newaxis, dot
-from gensim import matutils
 from gensim.models import Word2Vec, Doc2Vec
+from numpy import float32, sqrt, newaxis, dot
+from gensim import matutils
+import argparse
 
+from constants import ETL_PATH
 from train_w2v import EpochLogger, EpochSaver
-from constants import ETL_PATH, DATASETS
 from utils import tprint
+import multiprocessing as mp
 
 
-def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
+def get_labels(topic_kv, d2v, w2v, w2v_indexed, d_indices, w_indices):
     # TODO: simplify
+    print(topic_kv)
+    topic_num, topic = topic_kv
     topic_len = len(topic)
+    print("Processing Topic number", topic_num)
+    print(topic)
 
     val_d2v = 0.0
     val_w2v = 0.0
@@ -33,11 +38,12 @@ def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
         try:
             # The word2vec value of topic word from doc2vec trained model
             temp_d2v = d2v.wv.vectors_norm[d2v.wv.vocab[term].index]
+            # print(term, 'in d2v.wv')
         except KeyError:
             pass
         else:
             # Getting the unit vector
-            mean_d2v = matutils.unitvec(temp_d2v)
+            mean_d2v = matutils.unitvec(temp_d2v).astype(float32)
             # The dot product of all labels in doc2vec with the unit vector of topic word
             dists_d2v = dot(d2v.docvecs.vectors_docs_norm, mean_d2v)
             val_d2v += dists_d2v
@@ -45,11 +51,12 @@ def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
         try:
             temp_w2v = w2v.wv.vectors_norm[w2v.wv.vocab[term].index]
             # The word2vec value of topic word from word2vec trained model
+            # print(term, 'in w2v.wv')
         except KeyError:
             pass
         else:
             # Unit vector
-            mean_w2v = matutils.unitvec(temp_w2v)
+            mean_w2v = matutils.unitvec(temp_w2v).astype(float32)
             # dot product of all possible labels in word2vec vocab with the unit vector of the topic term
             dists_w2v = dot(w2v_indexed, mean_w2v)
             """
@@ -124,7 +131,9 @@ def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
             if k == k2:
                 v3 = v + v2
                 new_score.append((k2, v3))
-    new_score = sorted(new_score, key=lambda x: x[1], reverse=True)[:nb_labels]
+    new_score = sorted(new_score, key=lambda x: x[1], reverse=True)
+
+    print(new_score)
     return new_score
 
 
@@ -133,23 +142,26 @@ def load_embeddings(d2v_path, w2v_path):
     d2v = Doc2Vec.load(d2v_path)
     print('vocab size:', len(d2v.wv.vocab))
     print('docvecs size:', len(d2v.docvecs.vectors_docs))
-
     print("Word2Vec loading", w2v_path)
     w2v = Word2Vec.load(w2v_path)
     print('vocab size:', len(w2v.wv.vocab))
-
+    print("models loaded")
     return d2v, w2v
 
 
-def get_phrases(max_title_length, min_doc_length, lemmatized_only=False):
+def get_phrases(max_title_length, min_doc_length):
     dewiki_phrases_lemmatized = 'dewiki_phrases_lemmatized.pickle'
-    phrases = pd.read_pickle(join(ETL_PATH, dewiki_phrases_lemmatized))
+    dpl = pd.read_pickle(join(ETL_PATH, dewiki_phrases_lemmatized))
     # creating a list containing original and lemmatized phrases
-    phrases = phrases.query(f"doc_len >= {min_doc_length} and title_len <= {max_title_length}")
-    if lemmatized_only:
-        phrases = phrases.token.unique()
-    else:
-        phrases = phrases.token.append(phrases.text).unique()
+    print(max_title_length, min_doc_length)
+    print(len(dpl))
+    dpl = dpl.query(f"doc_len >= {min_doc_length} and title_len <= {max_title_length}")
+    print(len(dpl))
+    phrases = dpl.text.append(dpl.token).tolist()
+    print('phrases len', len(phrases))
+    phrases = set(phrases)
+    print('phrases len', len(phrases))
+    print(sorted(phrases)[:100])
     return phrases
 
 
@@ -184,17 +196,29 @@ def index_embeddings(d2v, w2v, d_indices, w_indices):
 
     # Models normalised in unit vectord from the indices given above in pickle files.
     d2v.wv.vectors_norm = (
-        d2v.wv.vectors / sqrt((d2v.wv.vectors ** 2).sum(-1))[..., newaxis]
+        (
+                d2v.wv.vectors /
+                sqrt((d2v.wv.vectors ** 2).sum(-1))[..., newaxis]
+        )
+        .astype(float32)
     )
     d2v.docvecs.vectors_docs_norm = (
-        d2v.docvecs.vectors_docs / sqrt((d2v.docvecs.vectors_docs ** 2).sum(-1))[..., newaxis]
-    )[d_indices]
+        (
+                d2v.docvecs.vectors_docs /
+                sqrt((d2v.docvecs.vectors_docs ** 2).sum(-1))[..., newaxis]
+        )
+        .astype(float32)[d_indices]
+    )
     print('d2v.wv.vectors_norm', len(d2v.wv.vectors_norm))
     print('d2v.docvecs.vectors_docs_norm', len(d2v.docvecs.vectors_docs_norm))
     print("doc2vec normalized")
 
     w2v.wv.vectors_norm = (
-        w2v.wv.vectors / sqrt((w2v.wv.vectors ** 2).sum(-1))[..., newaxis]
+        (
+                w2v.wv.vectors /
+                sqrt((w2v.wv.vectors ** 2).sum(-1))[..., newaxis]
+        )
+        .astype(float32)
     )
     w2v_indexed = w2v.wv.vectors_norm[w_indices]
     print('w2v.wv.vectors_norm', len(w2v.wv.vectors_norm))
@@ -203,81 +227,82 @@ def index_embeddings(d2v, w2v, d_indices, w_indices):
     return w2v_indexed
 
 
-def load_topics(topics_path, metrics, params, nbtopics, print_sample=False):
+def load_topics(topics_path, print_sample=False):
+    # Loading the data file
     print("Loading topics", topics_path)
-    topics = (
-        pd
-        .read_csv(topics_path, index_col=[0, 1, 2, 3, 4])
-        .query('metric in @metrics and param_id in @params and nb_topics in @nbtopics')
-        .reset_index(drop=True)
-    )
+    topics = pd.read_csv(topics_path)
     if print_sample:
-        tprint(topics)
-    else:
-        print('number of topics', len(topics))
-    return topics
+        tprint(topics, 10)
+    try:
+        new_frame = topics.drop('domain', 1)
+        topic_list = new_frame.set_index('topic_id').T.to_dict('list')
+    except:
+        topic_list = topics.set_index('topic_id').T.to_dict('list')
+    print('number of topics', len(topic_list))
+    print(topic_list)
+    return topic_list
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--dataset", type=str, required=True)
-    parser.add_argument("--topics_file", type=str, required=False)
-    parser.add_argument("--labels_file", type=str, required=False)
+    parser.add_argument("--dataset", type=str, required=False)
+    parser.add_argument("--topics_file", type=str, required=False, default=join(ETL_PATH))
+    parser.add_argument("--labels_file", type=str, required=True)
 
     emb_path = join(ETL_PATH, 'embeddings')
     parser.add_argument("--d2v_path", type=str, required=False, default=join(emb_path, 'd2v', 'd2v'))
     parser.add_argument("--w2v_path", type=str, required=False, default=join(emb_path, 'w2v', 'w2v'))
 
-    parser.add_argument("--metrics", nargs='*', type=str, required=False, default=['c_npmi'])
-    parser.add_argument("--params", nargs='*', type=str, required=False, default=['e42'])
-    parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=[100])
+    parser.add_argument('--cacheinmem', dest='cache_in_memory', action='store_true', required=False)
+    parser.add_argument('--no-cacheinmem', dest='cache_in_memory', action='store_false', required=False)
+    parser.set_defaults(cache_in_memory=False)
+
     parser.add_argument("--max_title_length", type=int, required=False, default=4)
     parser.add_argument("--min_doc_length", type=int, required=False, default=40)
     parser.add_argument("--cores", type=int, required=False, default=1)
-    parser.add_argument("--nblabels", type=int, required=False, default=20)
 
     args = parser.parse_args()
-
-    dataset = DATASETS.get(args.dataset, args.dataset)
-    if args.topics_file is None:
-        topics_file = join(ETL_PATH, 'LDAmodel', 'Reranker', f'{dataset}_topic-candidates.csv')
-    else:
-        topics_file = args.topics_file
-    if args.labels_file is None:
-        labels_file = join(ETL_PATH, 'LDAmodel', 'Reranker', f'{dataset}_labales-candidates.csv')
-    else:
-        labels_file = args.topics_file
-
     return (
-        topics_file, labels_file, args.d2v_path, args.w2v_path,
-        args.metrics, args.params, args.nbtopics,
-        args.max_title_length, args.min_doc_length, args.cores, args.nblabels
+        join(ETL_PATH, args.topics_file), join(ETL_PATH, args.labels_file),
+        args.d2v_path, args.w2v_path,
+        args.max_title_length, args.min_doc_length, args.cores
     )
 
 
 def main():
-    (
-        topics_file, labels_file, d2v_path, w2v_path,
-        metrics, params, nb_topics,
-        max_title_length, min_doc_length, cores, nb_labels
-    ) = parse_args()
+    topics_file, labels_file, d2v_path, w2v_path, max_title_length, min_doc_length, cores = parse_args()
 
-    topics = load_topics(topics_file, metrics, params, nb_topics, print_sample=True)
     d2v, w2v = load_embeddings(d2v_path, w2v_path)
     d_indices, w_indices = get_indices(d2v, w2v, max_title_length, min_doc_length)
     w2v_indexed = index_embeddings(d2v, w2v, d_indices, w_indices)
+    topics_list = load_topics(topics_file)
 
-    t0 = time()
-    labels = topics.apply(
-        lambda row: get_labels(row, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices),
-        axis=1
+    labels = partial(
+        get_labels,
+        d2v=d2v, w2v=w2v, w2v_indexed=w2v_indexed, d_indices=d_indices, w_indices=w_indices
     )
-    tprint(labels)
-    print("Writing labels to", labels_file)
-    labels.to_csv(labels_file)
-    t1 = int(time() - t0)
-    print(f"done in {t1//3600:02d}:{(t1//60) % 60:02d}:{t1 % 60:02d}")
+
+    # *** Error in `/home/andreas/bin/anaconda3/envs/gensim2/bin/python':
+    # corrupted double-linked list (not small): 0x0000559234a9d0a0 ***
+    # > try single-threaded
+    if cores > 1:
+        pool = mp.Pool(processes=cores)
+        result = pool.map(labels, topics_list.items())
+    else:
+        result = map(labels, topics_list.items())
+
+    # Write output candidates
+    # TODO: convert to pandas
+    with open(labels_file, 'w') as fp:
+        for i, elem in enumerate(result):
+            val = ""
+            for item in elem:
+                val = val + " " + item[0]
+            fp.write(val + "\n")
+
+    print("Candidate labels written to", labels_file)
+    print("\n")
 
 
 if __name__ == '__main__':

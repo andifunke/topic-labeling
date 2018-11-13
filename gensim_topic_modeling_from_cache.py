@@ -434,6 +434,7 @@ def main():
                 for i in range(nbtopics)
             ]
             df_lda = pd.DataFrame(topics, columns=['dataset'] + ['term' + str(i) for i in range(topn)])
+            LOG.info('Saving topics to ' + model_name + '.csv')
             df_lda.to_csv(model_name + '.csv')
             logmem()
 
@@ -449,16 +450,17 @@ def main():
                         serializable_metrics[k] = [x.tolist() for x in v]
                     else:
                         serializable_metrics[k] = [float(x) for x in v]
+                LOG.info('Saving metrics to ' + model_name + '_metrics.json')
                 json.dump(serializable_metrics, fp)
             logmem()
 
             # save model
-            LOG.info('saving to ' + model_name)
+            LOG.info('Saving LDAmodel to ' + model_name)
             ldamodel.callbacks = None
             ldamodel.save(model_name)
+            logmem()
             LOG.info('')
 
-            logmem()
             gc.collect()
 
 

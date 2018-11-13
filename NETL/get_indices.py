@@ -50,9 +50,9 @@ def get_word(word):
 
 # Load the trained doc2vec and word2vec models.
 print('loading d2v')
-d2v_model = Doc2Vec.load(doc2vec_model)
+d2v = Doc2Vec.load(doc2vec_model)
 print('loading w2v')
-w2v_model = Word2Vec.load(word2vec_model)
+w2v = Word2Vec.load(word2vec_model)
 print("Models loaded")
 
 # Loading the pruned tiles and making a set of it
@@ -91,7 +91,7 @@ for elem in islice(doc_labels, 100):
     status, item = get_word(elem)
     if status:
         try:
-            val = d2v_model.docvecs.doctags[elem].offset
+            val = d2v.docvecs.doctags[elem].offset
             print(val)
             doc_indices.append(val)
         except Exception as e:
@@ -102,7 +102,7 @@ print('w2v_labels')
 for elem in islice(word2vec_labels, 100):
     print(elem)
     try:
-        val = w2v_model.wv.vocab[elem].index
+        val = w2v.wv.vocab[elem].index
         print(val)
         word_indices.append(val)
     except Exception as e:

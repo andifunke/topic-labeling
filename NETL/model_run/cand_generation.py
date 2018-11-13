@@ -21,9 +21,9 @@ from utils import tprint
 # import multiprocessing as mp
 
 
-d2v_model = None
-w2v_model = None
-w2v_model_indexed = None
+d2v = None
+w2v = None
+w2v_indexed = None
 w_indices = None
 d_indices = None
 args = None
@@ -55,7 +55,7 @@ def get_labels(topic_kv):
     for term in topic:
         try:
             # The word2vec value of topic word from doc2vec trained model
-            temp_d2v = d2v_model.wv.vectors_norm[d2v_model.wv.vocab[term].index]
+            temp_d2v = d2v.wv.vectors_norm[d2v.wv.vocab[term].index]
             # print(term, 'in d2v.wv')
         except KeyError:
             print(term, 'not in d2v.wv')
@@ -64,11 +64,11 @@ def get_labels(topic_kv):
             # Getting the unit vector
             mean_d2v = matutils.unitvec(temp_d2v).astype(float32)
             # The dot product of all labels in doc2vec with the unit vector of topic word
-            dists_d2v = dot(d2v_model.docvecs.vectors_docs_norm, mean_d2v)
+            dists_d2v = dot(d2v.docvecs.vectors_docs_norm, mean_d2v)
             val_d2v = val_d2v + dists_d2v
 
         try:
-            temp_w2v = w2v_model.wv.vectors_norm[w2v_model.wv.vocab[term].index]
+            temp_w2v = w2v.wv.vectors_norm[w2v.wv.vocab[term].index]
             # The word2vec value of topic word from word2vec trained model
             # print(term, 'in w2v.wv')
         except KeyError:
@@ -78,7 +78,7 @@ def get_labels(topic_kv):
             # Unit vector
             mean_w2v = matutils.unitvec(temp_w2v).astype(float32)
             # dot product of all possible labels in word2vec vocab with the unit vector of the topic term
-            dists_w2v = dot(w2v_model_indexed, mean_w2v)
+            dists_w2v = dot(w2v_indexed, mean_w2v)
 
             """
             This next section of code checks if the topic word is also a potential label in trained 
@@ -86,8 +86,8 @@ def get_labels(topic_kv):
             topic word is not taken into account.Hence we make that zero and further down the code 
             also exclude it in taking average of that label over all topic words. 
             """
-            if w2v_model.wv.vocab[term].index in w_indices:
-                i_val = w_indices.index(w2v_model.wv.vocab[term].index)
+            if w2v.wv.vocab[term].index in w_indices:
+                i_val = w_indices.index(w2v.wv.vocab[term].index)
                 store_indices.append(i_val)
                 dists_w2v[i_val] = 0.0
 
@@ -112,7 +112,7 @@ def get_labels(topic_kv):
     # Get the doc2vec labels from indices
     for element in best_d2v:
         ind = d_indices[element]
-        temp = d2v_model.docvecs.index_to_doctag(ind)
+        temp = d2v.docvecs.index_to_doctag(ind)
         result_d2v.append((temp, float(avg_d2v[element])))
 
     # Get the word2vec labels from indices
@@ -120,7 +120,7 @@ def get_labels(topic_kv):
     for element in best_w2v:
         # print('* in best_w2v', element)
         ind = w_indices[element]
-        temp = w2v_model.wv.index2word[ind]
+        temp = w2v.wv.index2word[ind]
         result_w2v.append((temp, float(avg_w2v[element])))
 
     # Get the combined set of both doc2vec labels and word2vec labels
@@ -133,10 +133,10 @@ def get_labels(topic_kv):
     for elem in comb_labels:
         print(elem)
         try:
-            newlist_d2v.append(d_indices.index(d2v_model.docvecs.doctags[elem].offset))
+            newlist_d2v.append(d_indices.index(d2v.docvecs.doctags[elem].offset))
             temp = get_word(elem)
             print(temp)
-            newlist_w2v.append(w_indices.index(w2v_model.wv.vocab[temp].index))
+            newlist_w2v.append(w_indices.index(w2v.wv.vocab[temp].index))
         except:
             print('!> except')
             pass
@@ -147,11 +147,11 @@ def get_labels(topic_kv):
 
     # Finally again get the labels from indices. We searched for the score from both d2v and w2v models.
     resultlist_d2v_new = [
-        (d2v_model.docvecs.index_to_doctag(d_indices[elem_]), float(avg_d2v[elem_]))
+        (d2v.docvecs.index_to_doctag(d_indices[elem_]), float(avg_d2v[elem_]))
         for elem_ in newlist_d2v
     ]
     resultlist_w2v_new = [
-        (w2v_model.wv.index2word[w_indices[elem_]], float(avg_w2v[elem_]))
+        (w2v.wv.index2word[w_indices[elem_]], float(avg_w2v[elem_]))
         for elem_ in newlist_w2v
     ]
 
@@ -174,7 +174,7 @@ def get_labels(topic_kv):
 
 
 def main():
-    global args, d_indices, w_indices, d2v_model, w2v_model, w2v_model_indexed
+    global args, d_indices, w_indices, d2v, w2v, w2v_indexed
 
     # Arguments
     parser = argparse.ArgumentParser()

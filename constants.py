@@ -21,14 +21,6 @@ TMP_PATH  = join(DATA_BASE, tmp_base)
 SPCY_PATH = join(NLP_PATH, 'spacy_model')
 VOC_PATH  = join(SPCY_PATH, 'vocab')
 
-CORPORA = {
-    'P': 'PoliticalSpeeches',
-    'E': 'Europarl',
-    'O': 'OnlineParticipation',
-    'FA': 'FAZ',
-    'FO': 'FOCUS',
-}
-
 ## data scheme
 DATASET   = 'dataset'
 SUBSET    = 'subset'
@@ -42,7 +34,8 @@ TITLE     = 'title'
 META = [DATASET, SUBSET, TIME, ID, ID2, TITLE]
 
 TEXT      = 'text'
-# The DESCRIPTION and LINKS fields were introduced with dewiki and are so far unused in the other datasets.
+# The DESCRIPTION and LINKS fields were introduced with dewiki and are so far unused in the other
+# datasets.
 # DESCRIPTION: Would be nice to add this especially to the news sites datasets.
 # In dewiki it contains rather a subtitle than a description.
 DESCR     = 'description'
@@ -104,12 +97,13 @@ NOUN_PHRASE = 'noun_phrase'
 
 DATASETS = {
     'E': 'Europarl',
-    'FA': 'FAZ_combined',
-    'FO': 'FOCUS_cleansed',
+    'FA': 'FAZ',
+    'FO': 'FOCUS',
     'O': 'OnlineParticipation',
     'P': 'PoliticalSpeeches',
     'dewi': 'dewiki',
     'dewa': 'dewac',
+    'dewa1': 'dewac_nbfiles01',
 }
 
 # --- filter lookup table
@@ -149,4 +143,9 @@ BAD_TOKENS = set(chain(*BAD_TOKENS_DICT.values()))
 BAD_FIRST_PHRASE_TOKEN = {
     'ab', 'seit', 'in', 'der', 'die', 'das', 'an', 'am', 'diese', 'bis', 'ein', 'es', 'mit', 'im',
     'für', 'zur', 'auf', '!', '(', 'ich', 'so', 'auch', 'wir', 'auch', 'mich', 'du',
+}
+
+GOOD_IDS = {
+    'dewac': join(ETL_PATH, 'dewac_good_ids.pickle'),
+    'dewiki': join(ETL_PATH, 'dewiki_good_ids.pickle'),
 }

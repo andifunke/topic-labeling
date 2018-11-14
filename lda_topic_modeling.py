@@ -1,5 +1,5 @@
 import gc
-from os import makedirs, getpid
+from os import makedirs
 from os.path import join, exists, dirname
 import sys
 import pandas as pd
@@ -14,8 +14,6 @@ import json
 import numpy as np
 import argparse
 from topic_reranking import NBTOPICS, PARAMS
-import psutil
-process = psutil.Process(getpid())
 np.set_printoptions(precision=3, threshold=11, formatter={'float': '{: 0.3f}'.format})
 LOG = None
 
@@ -31,10 +29,10 @@ class EpochLogger(Metric):
         self.additional_logger = additional_logger
 
     def get_value(self, **kwargs):
-        logmem()
         if self.additional_logger is not None:
             self.additional_logger.info(
-                "----- Epoch #{:02d} {} [{}] -----".format(self.epoch, self.message, self.title)
+                "----- {} ----- Epoch #{:02d} --- {} -----"
+                .format(self.title, self.epoch, self.message)
             )
         self.epoch += 1
         gc.collect()
@@ -55,14 +53,13 @@ class PerplexityMetric(Metric):
 
     def get_value(self, **kwargs):
         super(PerplexityMetric, self).set_parameters(**kwargs)
-        logmem()
         if self.additional_logger is not None:
-            self.additional_logger.info('   %s' % self.title)
+            self.additional_logger.info('  %s' % self.title)
         corpus_words = sum(cnt for document in self.corpus for _, cnt in document)
         perwordbound = self.model.bound(self.corpus) / corpus_words
         value = np.exp2(-perwordbound)
         if self.additional_logger is not None:
-            self.additional_logger.info('   %r' % value)
+            self.additional_logger.info('    %r' % value)
         return value
 
 
@@ -71,7 +68,7 @@ class CoherenceMetric(Metric):
     def __init__(
             self, corpus=None, texts=None, dictionary=None, coherence=None,
             window_size=None, topn=10, logger=None, viz_env=None, title=None,
-            additional_logger=None
+            additional_logger=None, processes=-1
     ):
         self.corpus = corpus
         self.dictionary = dictionary
@@ -84,21 +81,21 @@ class CoherenceMetric(Metric):
         self.title = title
         self.model = None
         self.topics = None
+        self.processes=processes
         self.additional_logger = additional_logger
 
     def get_value(self, **kwargs):
         super(CoherenceMetric, self).set_parameters(**kwargs)
-        logmem()
         if self.additional_logger is not None:
-            self.additional_logger.info('   %s' % self.title)
+            self.additional_logger.info('  %s' % self.title)
         cm = gensim.models.CoherenceModel(
             model=self.model, topics=self.topics, texts=self.texts, corpus=self.corpus,
             dictionary=self.dictionary, window_size=self.window_size,
-            coherence=self.coherence, topn=self.topn
+            coherence=self.coherence, topn=self.topn, processes=self.processes
         )
         value = cm.get_coherence()
         if self.additional_logger is not None:
-            self.additional_logger.info('   %r' % value)
+            self.additional_logger.info('    %r' % value)
         return value
 
 
@@ -128,9 +125,8 @@ class DiffMetric(Metric):
 
     def get_value(self, **kwargs):
         super(DiffMetric, self).set_parameters(**kwargs)
-        logmem()
         if self.additional_logger is not None:
-            self.additional_logger.info('   %s' % self.title)
+            self.additional_logger.info('  %s' % self.title)
         diff_diagonal, _ = self.diff(
             self.distance, self.num_words, self.n_ann_terms,
             self.diagonal, self.annotation, self.normed
@@ -141,9 +137,9 @@ class DiffMetric(Metric):
             value = diff_diagonal
         if self.additional_logger is not None:
             if isinstance(value, np.ndarray):
-                self.additional_logger.info('   %r' % value[:5])
+                self.additional_logger.info('    %r' % value[:5])
             else:
-                self.additional_logger.info('   %s' % value)
+                self.additional_logger.info('    %s' % value)
 
         self.set_prev_topics()
         return value
@@ -228,62 +224,9 @@ class DiffMetric(Metric):
         return z, annotation_terms
 
 
-def parse_args():
-    # --- arguments ---
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, required=True)
-    parser.add_argument("--logger", type=str, required=False, default='shell')
-    parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
-    parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)
-    parser.add_argument("--nbfiles", type=int, required=False, default=None)
-    parser.add_argument("--epochs", type=int, required=False, default=20)
-    args = parser.parse_args()
-    return DATASETS[args.dataset], args.logger, args.params, args.nbtopics, args.nbfiles, args.epochs
-
-
-def init_logging(dataset):
-    global LOG
-
-    # --- logging ---
-    log_path = './../logs/LDA_{}.log'.format(dataset)
-    makedirs(dirname(log_path), exist_ok=True)
-    LOG = logging.getLogger('LDA')
-    LOG.setLevel(logging.DEBUG)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    # file logger
-    fh = logging.FileHandler(log_path)
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(formatter)
-    LOG.addHandler(fh)
-
-    # stdout logger
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.DEBUG)
-    ch.setFormatter(formatter)
-    LOG.addHandler(ch)
-
-    # log environment
-    LOG.info('python: ' + sys.version)
-    LOG.info('gensim: ' + gensim.__version__)
-    LOG.info('pandas: ' + pd.__version__)
-
-
-def memstr():
-    rss = "RSS: {:.2f} GB".format(process.memory_info().rss / (2**30))
-    vms = "VMS: {:.2f} GB".format(process.memory_info().vms / (2**30))
-    return rss + ' | ' + vms
-
-
-def logmem():
-    LOG.info(memstr())
-
-
 def init_callbacks(
-        dataset, callback_logger,
-        training_corpus, test_corpus, documents, viz_env=None, title_suffix='',
+        dataset, callback_logger, training_corpus, test_corpus, documents,
+        viz_env=None, title_suffix='', processes=-1
 ):
     return [
         EpochLogger(
@@ -301,13 +244,13 @@ def init_callbacks(
             corpus=training_corpus, coherence="u_mass", topn=10,
             logger=callback_logger, viz_env=viz_env,
             title="Coherence (u_mass)" + title_suffix,
-            additional_logger=LOG
+            additional_logger=LOG, processes=processes
         ),
         CoherenceMetric(
             corpus=training_corpus, texts=documents, coherence="c_v", topn=10,
             logger=callback_logger, viz_env=viz_env,
             title="Coherence (c_v)" + title_suffix,
-            additional_logger=LOG
+            additional_logger=LOG, processes=processes
         ),
         DiffMetric(
             distance="kullback_leibler",
@@ -334,10 +277,6 @@ def get_parameterset(
         corpus, dictionary, callbacks=None, nbtopics=100, parametrization='a42',
         eval_every=None, epochs=20
 ):
-    LOG.info(
-        'building LDA model "{}" with {} number of topics'
-        .format(parametrization, nbtopics)
-    )
     default = dict(
         random_state=42, corpus=corpus, id2word=dictionary, num_topics=nbtopics,
         eval_every=eval_every, callbacks=callbacks, chunksize=20000, dtype=np.float64
@@ -354,49 +293,126 @@ def get_parameterset(
     return ldamodels[parametrization]
 
 
-def split_corpus(corpus):
+def split_corpus(corpus, max_test_size_rel=0.1, max_test_size_abs=5000):
     length = len(corpus)
-    max_test_size_rel = 0.1
-    max_test_size_abs = 5000
     if length * max_test_size_rel < max_test_size_abs:
         split_idx = int(length * (1 - max_test_size_rel))
     else:
         split_idx = length - max_test_size_abs
+    train, test = corpus[:split_idx], corpus[split_idx:]
     LOG.info(
-        'split dataset. size of: train_set={:d}, test_set={:d}'.format(split_idx, length-split_idx)
+        'size of... train_set={:d}, test_set={:d}'.format(len(train), len(test))
     )
-    return corpus[:split_idx], corpus[split_idx:]
+    return train, test
+
+
+def init_logging(name='', basic=True, to_stdout=False, to_file=False):
+    global LOG
+
+    if basic:
+        logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+
+    # --- logging ---
+    log_path = './../logs/LDA_{}.log'.format(name)
+    makedirs(dirname(log_path), exist_ok=True)
+    LOG = logging.getLogger('LDA')
+    LOG.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    if to_file:
+        # file logger
+        fh = logging.FileHandler(log_path)
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(formatter)
+        LOG.addHandler(fh)
+    if to_stdout:
+        # stdout logger
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setLevel(logging.DEBUG)
+        ch.setFormatter(formatter)
+        LOG.addHandler(ch)
+
+    # log environment
+    LOG.info('')
+    LOG.info('#' * 50)
+    LOG.info('----- %s -----' % name.upper())
+    LOG.info('----- start -----')
+    LOG.info('python: ' + sys.version)
+    LOG.info('gensim: ' + gensim.__version__)
+    LOG.info('pandas: ' + pd.__version__)
+
+
+def parse_args():
+    # --- arguments ---
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", type=str, required=True)
+    parser.add_argument("--version", type=str, required=False, default='noun')
+    parser.add_argument("--logger", type=str, required=False, default='shell')
+    parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
+    parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)
+    parser.add_argument("--nbfiles", type=int, required=False, default=None)
+    parser.add_argument("--epochs", type=int, required=False, default=20)
+    parser.add_argument("--cores", type=int, required=False, default=4)
+
+    parser.add_argument('--cacheinmem', dest='cache_in_memory', action='store_true', required=False)
+    parser.add_argument('--no-cacheinmem', dest='cache_in_memory', action='store_false', required=False)
+    parser.set_defaults(cache_in_memory=False)
+
+    args = parser.parse_args()
+    return (
+        DATASETS[args.dataset], args.version, args.logger, args.params,
+        args.nbtopics, args.nbfiles, args.epochs, args.cores,
+        args.cache_in_memory
+    )
 
 
 def main():
-    dataset, cb_logger, param_ids, nbs_topics, nbfiles, epochs = parse_args()
-    init_logging(dataset)
-    LOG.info(param_ids)
-    logmem()
+    (
+        dataset, version, cb_logger, param_ids,
+        nbs_topics, nbfiles, epochs, cores,
+        cache_in_memory
+    ) = parse_args()
 
-    file_name = '{}_{}_nouns_{}'.format(dataset, 'fullset', 'bow')
+    init_logging(name=dataset, basic=False, to_stdout=True, to_file=True)
+    LOG.info('version %r' % version)
+    LOG.info('params %r' % param_ids)
+    LOG.info('nbs_topics %r' % nbs_topics)
+    LOG.info('nbfiles %r' % nbfiles)
+    LOG.info('epochs %r' % epochs)
+    LOG.info('cores %r' % cores)
+
+    directory = join(ETL_PATH, 'LDAmodel', version)
+    file_name = '{}_{}_{}'.format(dataset, version, 'bow')
 
     LOG.info('Loading dictionary')
-    dict_path = join(ETL_PATH, 'LDAmodel', file_name + '.dict')
-    dictionary = Dictionary.load(dict_path)
-    logmem()
+    file_path = join(directory, file_name + '.dict')
+    dictionary = Dictionary.load(file_path)
 
     LOG.info('Loading texts')
-    doc_path = join(ETL_PATH, 'LDAmodel', file_name[:-3] + 'texts.json')
-    with open(doc_path, 'r') as fp:
+    file_path = join(directory, file_name + '_texts.json')
+    with open(file_path, 'r') as fp:
         texts = json.load(fp)
-    logmem()
 
     LOG.info('Loading corpus')
-    corpus_path = join(ETL_PATH, 'LDAmodel', file_name + '.mm')
-    corpus = MmCorpus(corpus_path)
-    training_corpus, test_corpus = split_corpus(corpus)
-    logmem()
+    file_path = join(directory, file_name + '.mm')
+    corpus = MmCorpus(file_path)
+    if cache_in_memory:
+        LOG.info('Reading corpus into RAM')
+        corpus = list(corpus)
+    train_corpus, test_corpus = split_corpus(corpus)
+
+    vis = None
+    if cb_logger == 'visdom':
+        import visdom
+        vis = visdom.Visdom()
 
     topn = 20
     model = 'LDAmodel'
     metrics = []
     for params in param_ids:
+        env_id = f"{dataset}-{model}"
         for nbtopics in nbs_topics:
             gc.collect()
 
@@ -405,27 +421,34 @@ def main():
                 dataset=dataset,
                 callback_logger=cb_logger,
                 documents=texts,
-                training_corpus=training_corpus,
+                training_corpus=train_corpus,
                 test_corpus=test_corpus,
+                processes=cores
             )
-            logmem()
             kwargs = get_parameterset(
-                training_corpus,
+                train_corpus,
                 dictionary,
                 callbacks=callbacks,
                 nbtopics=nbtopics,
                 parametrization=params,
                 epochs=epochs
             )
-            LOG.info('Running ' + model)
+            LOG.info(
+                'Running {} "{}" with {} number of topics'
+                .format(model, params, nbtopics)
+            )
             ldamodel = LdaModel(**kwargs)
-            logmem()
             gc.collect()
 
-            model_dir = join(ETL_PATH, model, params)
+            model_dir = join(ETL_PATH, model, version, params)
             if not exists(model_dir):
                 makedirs(model_dir)
-            model_name = join(model_dir, '{}_{}_{}_{}'.format(dataset, model, params, nbtopics))
+
+            nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles is not None else ''
+            model_name = join(
+                model_dir,
+                '{}{}_{}_{}_{}'.format(dataset, nbfiles_str, model, params, nbtopics)
+            )
 
             # save topics
             topics = [
@@ -436,7 +459,6 @@ def main():
             df_lda = pd.DataFrame(topics, columns=['dataset'] + ['term' + str(i) for i in range(topn)])
             LOG.info('Saving topics to ' + model_name + '.csv')
             df_lda.to_csv(model_name + '.csv')
-            logmem()
 
             # save metrics
             current_metrics = ldamodel.metrics
@@ -452,16 +474,21 @@ def main():
                         serializable_metrics[k] = [float(x) for x in v]
                 LOG.info('Saving metrics to ' + model_name + '_metrics.json')
                 json.dump(serializable_metrics, fp)
-            logmem()
 
             # save model
             LOG.info('Saving LDAmodel to ' + model_name)
             ldamodel.callbacks = None
             ldamodel.save(model_name)
-            logmem()
             LOG.info('')
+            if vis is not None:
+                vis.save([env_id])
 
             gc.collect()
+
+    LOG.info('----- end -----')
+    LOG.info('----- %s -----' % dataset.upper())
+    LOG.info('#' * 50)
+    LOG.info('')
 
 
 if __name__ == '__main__':

@@ -27,19 +27,21 @@ placeholder = '[[PLACEHOLDER]]'
 
 class TopicsLoader(object):
 
-    def __init__(self, dataset, param_ids: list, nbs_topics: list, topn=20):
+    def __init__(self, dataset, param_ids: list, nbs_topics: list,
+                 version=None, nbfiles=None, corpus_type='bow', topn=20):
         self.topn = topn
         self.dataset = dataset
+        self.version = version
         self.param_ids = param_ids
         self.nb_topics_list = nbs_topics
         self.nb_topics = sum(nbs_topics) * len(param_ids)
-        split_type = 'fullset'
-        self.corpus_type = 'bow'
-        self.data_filename = f'{dataset}_{split_type}_nouns_{self.corpus_type}'
+        self.corpus_type = corpus_type
+        self.directory = join(ETL_PATH, 'LDAmodel', self.version)
+        self.nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles else ''
+        self.data_filename = f'{dataset}{self.nbfiles_str}_{version}_{self.corpus_type}'
         self.dict_from_corpus = self._load_dict()
         self.corpus = self._load_corpus()
         self.texts = self._load_texts()
-        # self.ldamodels = []
         self.topics = self._topn_topics()
 
     def _topn_topics(self):
@@ -86,11 +88,10 @@ class TopicsLoader(object):
         """
         Load an LDA model.
         """
-        model_filename = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}'
-        path = join(ETL_PATH, 'LDAmodel', param_id, model_filename)
+        model_filename = f'{self.dataset}{self.nbfiles_str}_LDAmodel_{param_id}_{nb_topics}'
+        path = join(self.directory, param_id, model_filename)
         print('Loading model from', path)
         ldamodel = LdaModel.load(path)
-        # self.ldamodels.append((self.dataset, param_id, nb_topics, ldamodel))
         return ldamodel
 
     def _load_dict(self):
@@ -98,7 +99,7 @@ class TopicsLoader(object):
         This dictionary is a different from the model's dict with a different word<->id mapping,
         but from the same corpus and will be used for the Coherence Metrics.
         """
-        dict_path = join(ETL_PATH, 'LDAmodel', self.data_filename + '.dict')
+        dict_path = join(self.directory, self.data_filename + '.dict')
         print('loading dictionary from', dict_path)
         dict_from_corpus: Dictionary = Dictionary.load(dict_path)
         dict_from_corpus.add_documents([[placeholder]])
@@ -109,7 +110,7 @@ class TopicsLoader(object):
         """
         load corpus (for u_mass scores)
         """
-        corpus_path = join(ETL_PATH, 'LDAmodel', self.data_filename + '.mm')
+        corpus_path = join(self.directory, self.data_filename + '.mm')
         print('loading corpus from', corpus_path)
         corpus = MmCorpus(corpus_path)
         corpus = list(corpus)
@@ -120,10 +121,7 @@ class TopicsLoader(object):
         """
         load texts (for c_... scores using sliding window)
         """
-        doc_path = join(
-            ETL_PATH, 'LDAmodel',
-            self.data_filename.rstrip(f'{self.corpus_type}') + 'texts.json'
-        )
+        doc_path = join(self.directory, self.data_filename + '_texts.json')
         with open(doc_path, 'r') as fp:
             print('loading texts from', doc_path)
             texts = json.load(fp)
@@ -157,17 +155,27 @@ class Reranker(object):
         self.nb_top_terms = nb_top_terms
         self.processes = processes
         self.dataset = topics.dataset
+        self.version = topics.version
+        self.nbfiles_str = topics.nbfiles_str
 
         if nb_candidate_terms is None:
             self.nb_candidate_terms = topics.topn
         else:
             self.nb_candidate_terms = nb_candidate_terms
 
+        # this method is only needed for the fast rerank algorithm
+        # once other algorithms are implemented it should be removed from the constructor
         self.shifted_topics = self._shift_topics()
         self.topic_candidates = None
+        self.eval_scores = None
+
+        # generate some statistics
         self._statistics_ = dict()
         self._statistics_['dataset'] = topics.dataset
-        self.eval_scores = None
+        self._statistics_['version'] = topics.version
+        self._statistics_['nbfiles'] = (
+            int(topics.nbfiles_str.strip('_nbfiles')) if topics.nbfiles_str else None
+        )
 
     def _shift_topics(self):
         """
@@ -497,24 +505,25 @@ class Reranker(object):
 
     def save_results(self, directory=None, topics=True, scores=True, stats=True):
         if directory is None:
-            directory = join(ETL_PATH, 'LDAmodel', 'Reranker')
+            directory = join(ETL_PATH, 'LDAmodel', self.version, 'Reranker')
         if not exists(directory):
             makedirs(directory)
-        filename = join(directory, self.dataset)
+        model_name = self.dataset + self.nbfiles_str
+        file_path = join(directory, model_name)
 
         if topics and self.topic_candidates is not None:
-            fcsv = f'{filename}_topic-candidates.csv'
+            fcsv = f'{file_path}_topic-candidates.csv'
             print(f"Writing topic candidates to {fcsv}")
             self.topic_candidates.to_csv(fcsv)
 
         if stats:
-            fjson = f'{filename}_reranker-statistics.json'
+            fjson = f'{file_path}_reranker-statistics.json'
             with open(fjson, 'w') as fp:
                 print(f"Writing Reranker statistics to {fjson}")
                 json.dump(self.reranking_statistics(), fp, ensure_ascii=False, indent=2)
 
         if scores and self.eval_scores is not None:
-            self.save_scores(self.eval_scores, self.dataset, directory)
+            self.save_scores(self.eval_scores, model_name, directory)
 
     def plot(self):
         Reranker.plot_scores(self.eval_scores)
@@ -565,6 +574,7 @@ class Reranker(object):
 
 
 SAVE = True
+PLOT = False
 TOPN = 20
 CORES = 4
 METRICS = ('u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote')
@@ -576,12 +586,17 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--dataset", type=str, required=True)
+    parser.add_argument("--version", type=str, required=False, default='default')
+    parser.add_argument("--nbfiles", type=int, required=False, default=None)
 
     parser.add_argument("--topn", type=int, required=False, default=TOPN)
     parser.add_argument("--cores", type=int, required=False, default=CORES)
     parser.add_argument('--save', dest='save', action='store_true', required=False)
     parser.add_argument('--no-save', dest='save', action='store_false', required=False)
     parser.set_defaults(save=SAVE)
+    parser.add_argument('--plot', dest='save', action='store_true', required=False)
+    parser.add_argument('--no-plot', dest='save', action='store_false', required=False)
+    parser.set_defaults(plot=PLOT)
 
     parser.add_argument("--metrics", nargs='*', type=str, required=False,
                         default=METRICS)
@@ -590,40 +605,52 @@ def parse_args():
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False,
                         default=NBTOPICS)
 
-    args = vars(parser.parse_args())
+    args = parser.parse_args()
     return args
 
 
 def rerank(
-        dataset,
-        topn=TOPN, save=SAVE, cores=CORES,
+        dataset, version=None, nbfiles=None,
+        topn=TOPN, save=SAVE, plot=PLOT, cores=CORES,
         metrics=METRICS, param_ids=PARAMS, nbs_topics=NBTOPICS
 ):
-    topics_loader = TopicsLoader(dataset, param_ids, nbs_topics, topn=topn)
+    topics_loader = TopicsLoader(
+        dataset=dataset,
+        param_ids=param_ids,
+        nbs_topics=nbs_topics,
+        version=version,
+        nbfiles=nbfiles,
+        topn=topn
+    )
     reranker = Reranker(topics_loader, processes=cores)
     topic_candidates = reranker.rerank_fast(metrics)
     reranker.evaluate(topic_candidates)
     if save:
         reranker.save_results()
-    reranker.plot()
+    if plot:
+        reranker.plot()
 
     return reranker
 
 
 def main():
     args = parse_args()
+    print(args)
 
     reranker = rerank(
-        dataset=DATASETS[args['dataset']],
-        topn=args['topn'],
-        param_ids=args['params'],
-        nbs_topics=args['nbtopics'],
-        metrics=args['metrics'],
-        save=args['save'],
-        cores=args['cores']
+        dataset=DATASETS.get(args.dataset, args.dataset),
+        version=args.version,
+        nbfiles=args.nbfiles,
+        topn=args.topn,
+        param_ids=args.params,
+        nbs_topics=args.nbtopics,
+        metrics=args.metrics,
+        save=args.save,
+        plot=args.plot,
+        cores=args.cores
     )
-    # topics = reranker.topic_candidates
-    # scores = reranker.eval_scores
+    topics = reranker.topic_candidates
+    scores = reranker.eval_scores
 
 
 if __name__ == '__main__':

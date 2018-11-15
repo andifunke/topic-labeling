@@ -306,14 +306,15 @@ def split_corpus(corpus, max_test_size_rel=0.1, max_test_size_abs=5000):
     return train, test
 
 
-def init_logging(name='', basic=True, to_stdout=False, to_file=False):
+def init_logging(name='', basic=True, to_stdout=False, to_file=False, log_path=None):
     global LOG
 
     if basic:
         logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
     # --- logging ---
-    log_path = './../logs/LDA_{}.log'.format(name)
+    if log_path is None:
+        log_path = './../logs/LDA_{}.log'.format(name)
     makedirs(dirname(log_path), exist_ok=True)
     LOG = logging.getLogger('LDA')
     LOG.setLevel(logging.DEBUG)
@@ -339,7 +340,7 @@ def init_logging(name='', basic=True, to_stdout=False, to_file=False):
     LOG.info('#' * 50)
     LOG.info('----- %s -----' % name.upper())
     LOG.info('----- start -----')
-    LOG.info('python: ' + sys.version)
+    LOG.info('python: ' + sys.version.replace('\n', ' '))
     LOG.info('gensim: ' + gensim.__version__)
     LOG.info('pandas: ' + pd.__version__)
 
@@ -348,7 +349,7 @@ def parse_args():
     # --- arguments ---
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, required=True)
-    parser.add_argument("--version", type=str, required=False, default='noun')
+    parser.add_argument("--version", type=str, required=False, default='default')
     parser.add_argument("--logger", type=str, required=False, default='shell')
     parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)
@@ -359,12 +360,16 @@ def parse_args():
     parser.add_argument('--cacheinmem', dest='cache_in_memory', action='store_true', required=False)
     parser.add_argument('--no-cacheinmem', dest='cache_in_memory', action='store_false', required=False)
     parser.set_defaults(cache_in_memory=False)
+    parser.add_argument('--callbacks', dest='use_callbacks', action='store_true', required=False)
+    parser.add_argument('--no-callbacks', dest='use_callbacks', action='store_false', required=False)
+    parser.set_defaults(use_callbacks=True)
 
     args = parser.parse_args()
+    args.dataset = DATASETS.get(args.dataset, args.dataset)
     return (
-        DATASETS[args.dataset], args.version, args.logger, args.params,
+        args.dataset, args.version, args.logger, args.params,
         args.nbtopics, args.nbfiles, args.epochs, args.cores,
-        args.cache_in_memory
+        args.cache_in_memory, args.use_callbacks, args
     )
 
 
@@ -372,19 +377,15 @@ def main():
     (
         dataset, version, cb_logger, param_ids,
         nbs_topics, nbfiles, epochs, cores,
-        cache_in_memory
+        cache_in_memory, use_callbacks, args
     ) = parse_args()
 
-    init_logging(name=dataset, basic=False, to_stdout=True, to_file=True)
-    LOG.info('version %r' % version)
-    LOG.info('params %r' % param_ids)
-    LOG.info('nbs_topics %r' % nbs_topics)
-    LOG.info('nbfiles %r' % nbfiles)
-    LOG.info('epochs %r' % epochs)
-    LOG.info('cores %r' % cores)
+    nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles is not None else ''
+    init_logging(name=f'{dataset}{nbfiles_str}_{version}', basic=False, to_stdout=True, to_file=True)
+    LOG.info(vars(args))
 
     directory = join(ETL_PATH, 'LDAmodel', version)
-    file_name = '{}_{}_{}'.format(dataset, version, 'bow')
+    file_name = '{}{}_{}_{}'.format(dataset, nbfiles_str, version, 'bow')
 
     LOG.info('Loading dictionary')
     file_path = join(directory, file_name + '.dict')
@@ -425,6 +426,8 @@ def main():
                 test_corpus=test_corpus,
                 processes=cores
             )
+            if not use_callbacks:
+                callbacks = callbacks[-1:]
             kwargs = get_parameterset(
                 train_corpus,
                 dictionary,
@@ -444,7 +447,6 @@ def main():
             if not exists(model_dir):
                 makedirs(model_dir)
 
-            nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles is not None else ''
             model_name = join(
                 model_dir,
                 '{}{}_{}_{}_{}'.format(dataset, nbfiles_str, model, params, nbtopics)

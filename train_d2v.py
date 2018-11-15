@@ -14,12 +14,16 @@ from train_w2v import EpochSaver, EpochLogger, init_logging, parse_args
 
 class Documents(object):
 
-    def __init__(self, input_dir, logger):
+    def __init__(self, input_dir, logger, lowercase=False):
         self.input_dir = input_dir
         self.logger = logger
+        self.lowercase = lowercase
         self.files = sorted([f for f in listdir(input_dir) if isfile(join(input_dir, f))])
         self.goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
         self.titles = pd.read_pickle(join(ETL_PATH, 'dewiki_phrases_lemmatized.pickle'))
+        if lowercase:
+            self.titles.token = self.titles.token.str.lower()
+            self.titles.text = self.titles.text.str.lower()
 
     def __iter__(self):
         for name in self.files[:]:
@@ -39,8 +43,10 @@ class Documents(object):
             df.loc[mask_punct, POS] = PUNCT
             # remove punctuation only for doc2vec
             df = df[df.POS != PUNCT]
-
+            if self.lowercase:
+                df.token = df.token.str.lower()
             df = df.groupby([HASH], sort=False)[TOKEN].agg(self.docs_to_lists)
+
             for doc_id, doc in df.iteritems():
                 # The conversion of the hash_id to str is necessary since gensim trys to allocate an
                 # array for ids of size 2^64 if int values are too big. 2nd tag is the lemmatized token,
@@ -50,7 +56,6 @@ class Documents(object):
                     self.titles.loc[doc_id, TOKEN],
                     self.titles.loc[doc_id, TEXT]
                 ])
-                yield TaggedDocument(doc, [str(doc_id)])
 
     @staticmethod
     def docs_to_lists(token_series):
@@ -64,6 +69,7 @@ def main():
     cores = args.get('cores', multiprocessing.cpu_count())
     epochs = args.get('epochs', 20)
     checkpoint_every = args.get('checkpoint_every', 5)
+    lowercase = args.get('lowercase')
     model_name = args.get('model_name', 'd2v')
 
     # --- init logging ---
@@ -76,6 +82,8 @@ def main():
     logger.info('epochs: %d' % epochs)
     logger.info('save checkpoint every %d epochs' % checkpoint_every)
     logger.info('cache in memory: %r' % cache_in_memory)
+    logger.info('lowercase: %r' % lowercase)
+    logger.info('model name: ' + model_name)
 
     input_dir = join(SMPL_PATH, 'dewiki')
     model_dir = join(ETL_PATH, 'embeddings', model_name)
@@ -84,7 +92,7 @@ def main():
     logger.info('model dir: ' + model_dir)
 
     t0 = time()
-    documents = Documents(input_dir=input_dir, logger=logger)
+    documents = Documents(input_dir=input_dir, logger=logger, lowercase=lowercase)
     if cache_in_memory:
         documents = list(documents)
     gc.collect()

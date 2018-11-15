@@ -48,7 +48,7 @@ class EpochSaver(CallbackAny2Vec):
 
 class Sentences(object):
     """this is a memory friendly approach that streams data from disk."""
-    def __init__(self, input_dir, logger, use_file_cache=False):
+    def __init__(self, input_dir, logger, use_file_cache=False, lowercase=False):
         self.input_dir = input_dir
         self.cache_dir = join(input_dir, 'cache')
         self.logger = logger
@@ -56,6 +56,7 @@ class Sentences(object):
         self.files = sorted([f for f in listdir(input_dir) if isfile(join(input_dir, f))])
         self.cached_files = None
         self.goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
+        self.lowercase = lowercase
         if use_file_cache:
             self.init_file_cache()
 
@@ -85,6 +86,8 @@ class Sentences(object):
         df.loc[mask_punct, POS] = PUNCT
         # remove punctuation only for doc2vec
         df = df[df.POS != PUNCT]
+        if self.lowercase:
+            df.token = df.token.str.lower()
         df = df.groupby([HASH, SENT_IDX], sort=False)[TOKEN].agg(self.docs_to_lists)
         return df
 
@@ -138,6 +141,9 @@ def parse_args():
     parser.add_argument('--cacheinmem', dest='cache_in_memory', action='store_true', required=False)
     parser.add_argument('--no-cacheinmem', dest='cache_in_memory', action='store_false', required=False)
     parser.set_defaults(cache_in_memory=False)
+    parser.add_argument('--lowercase', dest='lowercase', action='store_true', required=False)
+    parser.add_argument('--no-lowercase', dest='lowercase', action='store_false', required=False)
+    parser.set_defaults(lowercase=False)
 
     parser.add_argument("--cores", type=int, required=False)
     parser.add_argument("--epochs", type=int, required=False)
@@ -159,6 +165,7 @@ def main():
     min_count = args.get('min_count', 20)
     checkpoint_every = args.get('checkpoint_every', epochs//10)
     model_name = args.get('model_name', 'w2v')
+    lowercase = args.get('lowercase')
 
     # --- init logging ---
     logger = init_logging(name='w2v', to_file=True, log_file='w2v.log')
@@ -171,6 +178,7 @@ def main():
     logger.info('min_count: %d' % min_count)
     logger.info('save checkpoint every %d epochs' % checkpoint_every)
     logger.info('cache in memory: %r' % cache_in_memory)
+    logger.info('lowercase: %r' % lowercase)
     logger.info('model name: ' + model_name)
 
     input_dir = join(SMPL_PATH, 'dewiki')
@@ -183,9 +191,9 @@ def main():
     if cache_in_memory:
         # needs approx. 25GB of RAM
         logger.info('cache data in memory')
-        sentences = [s for s in Sentences(input_dir, logger)]
+        sentences = [s for s in Sentences(input_dir, logger, lowercase=lowercase)]
     else:
-        sentences = Sentences(input_dir, logger, use_file_cache=True)
+        sentences = Sentences(input_dir, logger, use_file_cache=True, lowercase=lowercase)
     gc.collect()
 
     # Model initialization

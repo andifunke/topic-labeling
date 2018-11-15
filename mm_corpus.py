@@ -12,7 +12,7 @@ from gensim.models import TfidfModel
 from train_w2v import init_logging
 from constants import (
     ETL_PATH, SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS,
-    GOOD_IDS)
+    GOOD_IDS, NER, NPHRASE, VERB, ADJ, ADV)
 
 
 def docs_to_lists(token_series):
@@ -100,17 +100,27 @@ def make_texts(dataset, nbfiles, pos_tags, logger):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, required=True)
-    parser.add_argument("--version", type=str, required=True)
+    parser.add_argument("--version", type=str, required=False, default='default')
     parser.add_argument("--nbfiles", type=int, required=False, default=None)
-    parser.add_argument("--pos_tags", nargs='*', type=str, required=False,
-                        default=[NOUN, PROPN, 'NER', 'NPHRASE'])
+    parser.add_argument("--pos_tags", nargs='*', type=str, required=False)
     parser.add_argument('--use_tfidf', dest='use_tfidf', action='store_true', required=False)
     parser.add_argument('--no-use_tfidf', dest='use_tfidf', action='store_false', required=False)
     parser.set_defaults(use_tfidf=False)
     args = parser.parse_args()
 
-    dataset = DATASETS.get(args.dataset, args.dataset)
-    return dataset, args.version, args.nbfiles, set(args.pos_tags), args.use_tfidf
+    args.dataset = DATASETS.get(args.dataset, args.dataset)
+    if args.pos_tags is None:
+        if args.version == 'noun':
+            args.pos = [NOUN, PROPN, NER, NPHRASE]
+        elif args.version == 'noun-verb':
+            args.pos = [NOUN, PROPN, NER, NPHRASE, VERB]
+        elif args.version == 'noun-verb-adj':
+            args.pos = [NOUN, PROPN, NER, NPHRASE, VERB, ADJ, ADV]
+        else:
+            args.pos = [NOUN, PROPN, NER, NPHRASE]
+    args.pos_tags = set(args.pos_tags)
+
+    return args.dataset, args.version, args.nbfiles, args.pos_tags, args.use_tfidf
 
 
 def main():

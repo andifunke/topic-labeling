@@ -73,8 +73,11 @@ PUNCT = 'PUNCT'
 SYM = 'SYM'
 X = 'X'
 
+# additional
 SPACE = 'SPACE'
 PHRASE = 'PHRASE'
+NER = 'NER'
+NPHRASE = 'NPHRASE'
 
 # keys
 IWNLP = 'IWNLP'

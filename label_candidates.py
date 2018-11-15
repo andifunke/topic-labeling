@@ -1,13 +1,5 @@
-"""
-Author:         Shraey Bhatia
-Date:           October 2016
-File:           candidate_gen.py
+# coding: utf-8
 
-This file generates label candidates and save the output in a file. It uses both
-doc2vec and word2vec models and normalise them to unit vector. There are a couple of
-pickle files namely doc2vec_indices and word2vec_indices  which restrict the search of
-word2vec and doc2vec labels. These pickle files are in support_files.
-"""
 import argparse
 from os.path import join
 from time import time
@@ -20,6 +12,8 @@ from gensim.models import Word2Vec, Doc2Vec
 from train_w2v import EpochLogger, EpochSaver
 from constants import ETL_PATH, DATASETS
 from utils import tprint
+from tqdm import tqdm
+tqdm.pandas()
 
 
 def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
@@ -141,7 +135,7 @@ def load_embeddings(d2v_path, w2v_path):
     return d2v, w2v
 
 
-def get_phrases(max_title_length, min_doc_length, lemmatized_only=False):
+def get_phrases(max_title_length, min_doc_length, lemmatized_only=True):
     dewiki_phrases_lemmatized = 'dewiki_phrases_lemmatized.pickle'
     phrases = pd.read_pickle(join(ETL_PATH, dewiki_phrases_lemmatized))
     # creating a list containing original and lemmatized phrases
@@ -222,6 +216,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--dataset", type=str, required=True)
+    parser.add_argument("--nbfiles", type=int, required=False, default=None)
+    parser.add_argument("--version", type=str, required=False, default='noun')
     parser.add_argument("--topics_file", type=str, required=False)
     parser.add_argument("--labels_file", type=str, required=False)
 
@@ -229,30 +225,36 @@ def parse_args():
     parser.add_argument("--d2v_path", type=str, required=False, default=join(emb_path, 'd2v', 'd2v'))
     parser.add_argument("--w2v_path", type=str, required=False, default=join(emb_path, 'w2v', 'w2v'))
 
-    parser.add_argument("--metrics", nargs='*', type=str, required=False, default=['c_npmi'])
+    parser.add_argument("--metrics", nargs='*', type=str, required=False, default=['ref'])
     parser.add_argument("--params", nargs='*', type=str, required=False, default=['e42'])
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=[100])
     parser.add_argument("--max_title_length", type=int, required=False, default=4)
     parser.add_argument("--min_doc_length", type=int, required=False, default=40)
-    parser.add_argument("--cores", type=int, required=False, default=1)
     parser.add_argument("--nblabels", type=int, required=False, default=20)
 
     args = parser.parse_args()
 
     dataset = DATASETS.get(args.dataset, args.dataset)
+    nbfiles_str = f'_{args.nbfiles:02d}' if args.nbfiles else ''
     if args.topics_file is None:
-        topics_file = join(ETL_PATH, 'LDAmodel', 'Reranker', f'{dataset}_topic-candidates.csv')
+        topics_file = join(
+            ETL_PATH, 'LDAmodel', args.version, 'Reranker',
+            f'{dataset}{nbfiles_str}_topic-candidates.csv'
+        )
     else:
         topics_file = args.topics_file
     if args.labels_file is None:
-        labels_file = join(ETL_PATH, 'LDAmodel', 'Reranker', f'{dataset}_labales-candidates.csv')
+        labels_file = join(
+            ETL_PATH, 'LDAmodel', args.version, 'Reranker',
+            f'{dataset}{nbfiles_str}_label-candidates.csv'
+        )
     else:
         labels_file = args.topics_file
 
     return (
         topics_file, labels_file, args.d2v_path, args.w2v_path,
         args.metrics, args.params, args.nbtopics,
-        args.max_title_length, args.min_doc_length, args.cores, args.nblabels
+        args.max_title_length, args.min_doc_length, args.nblabels
     )
 
 
@@ -260,7 +262,7 @@ def main():
     (
         topics_file, labels_file, d2v_path, w2v_path,
         metrics, params, nb_topics,
-        max_title_length, min_doc_length, cores, nb_labels
+        max_title_length, min_doc_length, nb_labels
     ) = parse_args()
 
     topics = load_topics(topics_file, metrics, params, nb_topics, print_sample=True)
@@ -269,7 +271,7 @@ def main():
     w2v_indexed = index_embeddings(d2v, w2v, d_indices, w_indices)
 
     t0 = time()
-    labels = topics.apply(
+    labels = topics.progress_apply(
         lambda row: get_labels(row, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices),
         axis=1
     )

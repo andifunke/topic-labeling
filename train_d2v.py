@@ -66,7 +66,7 @@ def main():
     # --- argument parsing ---
     (
         model_name, epochs, min_count, cores, checkpoint_every,
-        cache_in_memory, lowercase, args
+        cache_in_memory, lowercase, _, args
     ) = parse_args(default_model_name='d2v', default_epochs=20)
 
     # --- init logging ---
@@ -106,7 +106,7 @@ def main():
 
     # Model Training
     epoch_saver = EpochSaver(model_name, model_dir, checkpoint_every)
-    epoch_logger = EpochLogger()
+    epoch_logger = EpochLogger(logger)
 
     logger.info('Training {:d} epochs'.format(epochs))
     model.train(
@@ -114,12 +114,13 @@ def main():
         total_examples=model.corpus_count,
         epochs=model.epochs,
         report_delay=60,
-        # callbacks=[epoch_logger, epoch_saver],
+        callbacks=[epoch_logger, epoch_saver],
     )
 
     # saving model
     file_path = join(model_dir, model_name)
     logger.info('Writing model to ' + file_path)
+    model.callbacks = ()
     model.save(file_path)
 
     t1 = int(time() - t0)

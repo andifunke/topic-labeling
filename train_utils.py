@@ -54,6 +54,9 @@ def parse_args(default_model_name='x2v', default_epochs=20):
     parser.add_argument('--lowercase', dest='lowercase', action='store_true', required=False)
     parser.add_argument('--no-lowercase', dest='lowercase', action='store_false', required=False)
     parser.set_defaults(lowercase=False)
+    parser.add_argument('--fasttext', dest='fasttext', action='store_true', required=False)
+    parser.add_argument('--no-fasttext', dest='fasttext', action='store_false', required=False)
+    parser.set_defaults(lowercase=False)
 
     parser.add_argument("--model_name", type=str, required=False, default=default_model_name)
     parser.add_argument("--epochs", type=int, required=False, default=default_epochs)
@@ -64,7 +67,7 @@ def parse_args(default_model_name='x2v', default_epochs=20):
     args = parser.parse_args()
     return (
         args.model_name, args.epochs, args.min_count, args.cores, args.checkpoint_every,
-        args.cache_in_memory, args.lowercase, args
+        args.cache_in_memory, args.lowercase, args.fasttext, args
     )
 
 

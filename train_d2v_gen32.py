@@ -65,7 +65,7 @@ def main():
     # --- argument parsing ---
     (
         model_name, epochs, min_count, cores, checkpoint_every,
-        cache_in_memory, lowercase, args
+        cache_in_memory, lowercase, _, args
     ) = parse_args(default_model_name='d2v_gen32', default_epochs=20)
 
     # --- init logging ---

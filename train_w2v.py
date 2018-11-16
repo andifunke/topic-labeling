@@ -5,21 +5,25 @@ import gc
 from time import time
 import pandas as pd
 from gensim.models.callbacks import CallbackAny2Vec
-from gensim.models import Word2Vec
+from gensim.models import Word2Vec, FastText
 from constants import SMPL_PATH, ETL_PATH, TOKEN, POS, PUNCT, HASH, SENT_IDX
 from train_utils import parse_args, init_logging, log_args
 
 
 class EpochLogger(CallbackAny2Vec):
-    """Callback to log information about training"""
-    def __init__(self):
+    """
+    Callback to log information about training.
+    Not serializable -> remove before saving the model.
+    """
+    def __init__(self, logger):
         self.epoch = 1
+        self.logger = logger
 
     def on_epoch_begin(self, model):
-        print("Epoch #{:02d} start".format(self.epoch))
+        self.logger.info("Epoch #{:02d} start".format(self.epoch))
 
     def on_epoch_end(self, model):
-        print("Epoch #{:02d} end".format(self.epoch))
+        self.logger.info("Epoch #{:02d} end".format(self.epoch))
         self.epoch += 1
 
 
@@ -38,7 +42,10 @@ class EpochSaver(CallbackAny2Vec):
             file = '{}_epoch{:02d}'.format(self.model_name, self.epoch)
             filepath = join(self.directory, file)
             print('Saving checkpoint to ' + filepath)
+            callbacks = model.callbacks
+            model.callbacks = ()
             model.save(filepath)
+            model.callbacks = callbacks
         self.epoch += 1
 
 
@@ -102,8 +109,8 @@ def main():
     # --- argument parsing ---
     (
         model_name, epochs, min_count, cores, checkpoint_every,
-        cache_in_memory, lowercase, args
-    ) = parse_args(default_model_name='w2v', default_epochs=100)
+        cache_in_memory, lowercase, fasttext, args
+    ) = parse_args(default_model_name='w2v_default', default_epochs=100)
 
     # --- init logging ---
     logger = init_logging(name=model_name, to_file=True)
@@ -126,23 +133,38 @@ def main():
 
     # Model initialization
     logger.info('Initializing new model')
-    model = Word2Vec(
-        size=300,
-        window=5,
-        min_count=min_count,
-        sample=1e-5,
-        negative=5,
-        sg=1,
-        seed=42,
-        iter=epochs,
-        workers=cores,
-    )
+    if fasttext:
+        model = FastText(
+            size=300,
+            window=5,
+            min_count=min_count,
+            sample=1e-5,
+            negative=5,
+            sg=1,
+            seed=42,
+            iter=epochs,
+            workers=cores,
+            min_n=3,
+            max_n=6,
+        )
+    else:
+        model = Word2Vec(
+            size=300,
+            window=5,
+            min_count=min_count,
+            sample=1e-5,
+            negative=5,
+            sg=1,
+            seed=42,
+            iter=epochs,
+            workers=cores,
+        )
     logger.info('Building vocab')
     model.build_vocab(sentences, progress_per=100_000)
 
     # Model Training
     epoch_saver = EpochSaver(model_name, model_dir, checkpoint_every)
-    epoch_logger = EpochLogger()
+    epoch_logger = EpochLogger(logger)
 
     logger.info('Training {:d} epochs'.format(epochs))
     model.train(
@@ -150,12 +172,13 @@ def main():
         total_examples=model.corpus_count,
         epochs=model.epochs,
         report_delay=60,
-        # callbacks=[epoch_logger, epoch_saver],
+        callbacks=[epoch_logger, epoch_saver],
     )
 
     # saving model
     file_path = join(model_dir, model_name)
     logger.info('Writing model to ' + file_path)
+    model.callbacks = ()
     model.save(file_path)
 
     t1 = int(time() - t0)

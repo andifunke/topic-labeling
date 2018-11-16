@@ -1,6 +1,7 @@
 # coding: utf-8
 
 import argparse
+import re
 from os.path import join
 from time import time
 
@@ -140,10 +141,13 @@ def get_phrases(max_title_length, min_doc_length, lemmatized_only=True):
     phrases = pd.read_pickle(join(ETL_PATH, dewiki_phrases_lemmatized))
     # creating a list containing original and lemmatized phrases
     phrases = phrases.query(f"doc_len >= {min_doc_length} and title_len <= {max_title_length}")
+
     if lemmatized_only:
         phrases = phrases.token.unique()
     else:
         phrases = phrases.token.append(phrases.text).unique()
+    pat = re.compile(r'^[a-zA-ZÄÖÜäöü]+.*')
+    phrases = filter(lambda x: pat.match(x), phrases)
     return phrases
 
 
@@ -272,7 +276,10 @@ def main():
 
     t0 = time()
     labels = topics.progress_apply(
-        lambda row: get_labels(row, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices),
+        lambda row: get_labels(
+            topic=row, nb_labels=nb_labels, d2v=d2v, w2v=w2v, w2v_indexed=w2v_indexed,
+            d_indices=d_indices, w_indices=w_indices
+        ),
         axis=1
     )
     tprint(labels)

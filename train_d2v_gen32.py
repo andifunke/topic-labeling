@@ -6,8 +6,7 @@ from time import time
 import pandas as pd
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from constants import ETL_PATH, SMPL_PATH, POS, PUNCT, TOKEN, HASH, TEXT
-from train_utils import parse_args, init_logging, log_args
-from train_w2v import EpochSaver, EpochLogger
+from train_utils import init_logging, parse_args, log_args
 
 
 class Documents(object):
@@ -38,9 +37,9 @@ class Documents(object):
 
             if self.lowercase:
                 df.token = df.token.str.lower()
-            df = df.groupby([HASH], sort=False)[TOKEN].agg(self.docs_to_lists)
+            ser = df.groupby([HASH], sort=False)[TOKEN].agg(self.docs_to_lists)
 
-            for doc_id, doc in df.iteritems():
+            for doc_id, doc in ser.iteritems():
                 # replacing the first token with the title is needed due to a bug caused by
                 # wrong NER and noun chunk detection in spacy. Spacy sometimes detects NERs beyond line
                 # breaks. The following phrase detection may concatenate these NERs, resulting in
@@ -67,7 +66,7 @@ def main():
     (
         model_name, epochs, min_count, cores, checkpoint_every,
         cache_in_memory, lowercase, args
-    ) = parse_args(default_model_name='d2v', default_epochs=20)
+    ) = parse_args(default_model_name='d2v_gen32', default_epochs=20)
 
     # --- init logging ---
     logger = init_logging(name=model_name, to_file=True)
@@ -88,9 +87,9 @@ def main():
     # Model initialization
     logger.info('Initializing new model')
     model = Doc2Vec(
-        vector_size=300,
+        size=300,
         window=15,
-        min_count=20,
+        min_count=min_count,
         sample=1e-5,
         negative=5,
         hs=0,
@@ -98,23 +97,19 @@ def main():
         dbow_words=1,
         dm_concat=0,
         seed=42,
-        epochs=epochs,
+        iter=epochs,
         workers=cores,
     )
     logger.info('Building vocab')
     model.build_vocab(documents)
 
     # Model Training
-    epoch_saver = EpochSaver(model_name, model_dir, checkpoint_every)
-    epoch_logger = EpochLogger()
-
     logger.info('Training {:d} epochs'.format(epochs))
     model.train(
         documents,
         total_examples=model.corpus_count,
-        epochs=model.epochs,
+        epochs=model.iter,
         report_delay=60,
-        # callbacks=[epoch_logger, epoch_saver],
     )
 
     # saving model

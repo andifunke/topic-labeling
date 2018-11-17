@@ -226,5 +226,5 @@ NETL/dataset
 *support_files
 *_debug.py
 *Copy*
-NETL/model_run/output_candidates_de
+NETL/model_run/output*
 

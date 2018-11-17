@@ -14,8 +14,6 @@ from gensim.models import Word2Vec, Doc2Vec
 from train_utils import init_logging, log_args
 from train_w2v import EpochLogger, EpochSaver
 from constants import ETL_PATH, DATASETS
-from tqdm import tqdm
-tqdm.pandas()
 LOG = None
 
 
@@ -34,7 +32,6 @@ def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
     valdoc2vec = 0.0
     valword2vec = 0.0
     store_indices = []
-    topic = list(topic)
     topic_len = len(topic)
     for item in topic:
         try:
@@ -132,9 +129,11 @@ def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
             if k == k3:
                 v3 = v + v2
                 new_score.append((k2, v3))
-    new_score = sorted(new_score, key=lambda x: x[1], reverse=True)
-    new_score = new_score[:nb_labels]
-    return new_score
+
+    resultlist_doc2vecnew = sorted(resultlist_doc2vecnew, key=lambda x: x[1], reverse=True)[:nb_labels]
+    resultlist_word2vecnew = sorted(resultlist_word2vecnew, key=lambda x: x[1], reverse=True)[:nb_labels]
+    new_score = sorted(new_score, key=lambda x: x[1], reverse=True)[:nb_labels]
+    return [resultlist_doc2vecnew, resultlist_word2vecnew, new_score]
 
 
 def load_embeddings(d2v_path, w2v_path):
@@ -188,11 +187,10 @@ def index_embeddings(d2v, w2v, d2v_indices, w2v_indices):
     Also reduces the number of d2v docvecs.
     """
     # Models normalised in unit vectord from the indices given above in pickle files.
-    d2v.wv.syn0norm = (d2v.wv.syn0 / sqrt((d2v.wv.syn0 ** 2).sum(-1))[..., newaxis]).astype(
-        REAL)
+    d2v.wv.syn0norm = (d2v.wv.syn0 / sqrt((d2v.wv.syn0 ** 2).sum(-1))[..., newaxis]).astype(REAL)
     d2v.docvecs.vectors_docs_norm = \
         (d2v.docvecs.doctag_syn0 / sqrt((d2v.docvecs.doctag_syn0 ** 2).sum(-1))[..., newaxis]) \
-            .astype(REAL)[d2v_indices]
+        .astype(REAL)[d2v_indices]
     LOG.info("doc2vec normalized")
 
     w2v.wv.syn0norm = (w2v.wv.syn0 / sqrt((w2v.wv.syn0 ** 2).sum(-1))[..., newaxis]).astype(
@@ -320,7 +318,7 @@ def main():
     )
 
     t0 = time()
-    labels = topics.progress_apply(
+    labels = topics.apply(
         lambda row: get_labels(
             topic=row, nb_labels=nb_labels,
             d2v=d2v, w2v=w2v, w2v_indexed=w2v_indexed,
@@ -328,10 +326,27 @@ def main():
         ),
         axis=1
     )
-    logger.info(f'Writing labels to {labels_file}')
-    labels.to_csv(labels_file)
     t1 = int(time() - t0)
     logger.info(f"done in {t1//3600:02d}:{(t1//60) % 60:02d}:{t1 % 60:02d}")
+
+    # reformatting output files
+    full = (
+        labels
+        .apply(pd.Series)
+        .rename(columns={0: 'd2v', 1: 'w2v', 2: 'comb'})
+        .stack()
+        .apply(pd.Series)
+        .rename(columns=lambda x: f'label{x}')
+    )
+    simple = (
+        full[full.index.get_level_values(1) == 'comb']
+        .reset_index(drop=True)
+        .applymap(lambda x: x[0])
+    )
+
+    logger.info(f'Writing labels to {labels_file}')
+    full.to_csv(labels_file + '_full.csv')
+    simple.to_csv(labels_file + '_simple.csv')
 
 
 if __name__ == '__main__':

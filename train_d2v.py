@@ -6,8 +6,7 @@ from time import time
 import pandas as pd
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from constants import ETL_PATH, SMPL_PATH, POS, PUNCT, TOKEN, HASH, TEXT
-from train_utils import parse_args, init_logging, log_args
-from train_w2v import EpochSaver, EpochLogger
+from train_utils import parse_args, init_logging, log_args, EpochSaver, EpochLogger
 
 
 class Documents(object):
@@ -70,7 +69,7 @@ def main():
     ) = parse_args(default_model_name='d2v', default_epochs=20)
 
     # --- init logging ---
-    logger = init_logging(name=model_name, to_file=True)
+    logger = init_logging(name=model_name, basic=True, to_file=True, to_stdout=False)
     log_args(logger, args)
 
     input_dir = join(SMPL_PATH, 'dewiki')

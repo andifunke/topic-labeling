@@ -4,49 +4,9 @@ from os.path import isfile, join, exists
 import gc
 from time import time
 import pandas as pd
-from gensim.models.callbacks import CallbackAny2Vec
 from gensim.models import Word2Vec, FastText
-from constants import SMPL_PATH, ETL_PATH, TOKEN, POS, PUNCT, HASH, SENT_IDX
-from train_utils import parse_args, init_logging, log_args
-
-
-class EpochLogger(CallbackAny2Vec):
-    """
-    Callback to log information about training.
-    Not serializable -> remove before saving the model.
-    """
-    def __init__(self, logger):
-        self.epoch = 1
-        self.logger = logger
-
-    def on_epoch_begin(self, model):
-        self.logger.info("Epoch #{:02d} start".format(self.epoch))
-
-    def on_epoch_end(self, model):
-        self.logger.info("Epoch #{:02d} end".format(self.epoch))
-        self.epoch += 1
-
-
-class EpochSaver(CallbackAny2Vec):
-    """Callback to save model after each epoch."""
-    def __init__(self, model_name, directory, checkpoint_every=5):
-        self.model_name = model_name
-        self.directory = join(directory, 'checkpoints')
-        if not exists(self.directory):
-            makedirs(self.directory)
-        self.epoch = 1
-        self.checkpoint_every = checkpoint_every
-
-    def on_epoch_end(self, model):
-        if self.epoch % self.checkpoint_every == 0:
-            file = '{}_epoch{:02d}'.format(self.model_name, self.epoch)
-            filepath = join(self.directory, file)
-            print('Saving checkpoint to ' + filepath)
-            callbacks = model.callbacks
-            model.callbacks = ()
-            model.save(filepath)
-            model.callbacks = callbacks
-        self.epoch += 1
+from constants import SMPL_PATH, ETL_PATH, TOKEN, HASH, SENT_IDX
+from train_utils import parse_args, init_logging, log_args, EpochSaver, EpochLogger
 
 
 class Sentences(object):
@@ -113,7 +73,7 @@ def main():
     ) = parse_args(default_model_name='w2v_default', default_epochs=100)
 
     # --- init logging ---
-    logger = init_logging(name=model_name, to_file=True)
+    logger = init_logging(name=model_name, basic=True, to_file=True, to_stdout=False)
     log_args(logger, args)
 
     input_dir = join(SMPL_PATH, 'dewiki')

@@ -10,7 +10,7 @@ from html import unescape
 from datetime import datetime
 from constants import DATA_BASE, ETL_PATH, \
     META, DATASET, SUBSET, ID, ID2, TITLE, TAGS, TIME, DESCR, TEXT, LINKS, DATA, HASH
-from utils import hms_string, tprint
+from utils import hms_string
 
 locale.setlocale(locale.LC_ALL, '')
 
@@ -44,7 +44,7 @@ class DataFrameWriter(object):
         self.fields = fields
         self.count = 0
 
-    def writerows(self, rows):
+    def write_rows(self, rows):
         if rows:
             df = pd.DataFrame(rows, columns=self.fields)
             df.set_index(HASH, drop=True, inplace=True)
@@ -52,13 +52,6 @@ class DataFrameWriter(object):
             fname = "{}_{:02d}.pickle".format(self.outfile, self.count)
             print('saving to', fname)
             df.to_pickle(fname)
-
-            # link_list = []
-            # for doc_id, links in df[LINKS].iteritems():
-            #     for link in links:
-            #         link_list.append((doc_id, *link))
-            # df = pd.DataFrame(link_list, columns=['doc_id', 'link', 'norm', 'category'])
-            # tprint(df, 100)
 
 
 def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000):
@@ -71,7 +64,7 @@ def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000)
     :return:
     """
     print("reading", infile)
-    with open(infile, 'r') as fr:  #, open(outfile, 'w') as fw:
+    with open(infile, 'r') as fr:
 
         batch_writer = DataFrameWriter(outfile, FIELDS)
 
@@ -130,7 +123,7 @@ def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000)
                         rows.append(row)
                         # write to csv or update dataframe every m articles
                         if (article_count % batch_size) == 0:
-                            batch_writer.writerows(rows)
+                            batch_writer.write_rows(rows)
                             # reset rows
                             rows = []
                         # print status every n articles
@@ -145,7 +138,7 @@ def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000)
             if article_count == iterations:
                 break
 
-    batch_writer.writerows(rows)
+    batch_writer.write_rows(rows)
 
 
 ### --- Regex patterns for the following Markdown parser ---
@@ -206,9 +199,10 @@ def parse_markdown(text):
     categories = re_category.findall(text)
 
     # remove formatting tags and ref/math tags with content
-    # This regex is actually working way better than the w3lib.remove_tags[_with_content] implementations.
-    # It's ~1.5x faster and keeps all wanted content, while the w3lib methods introduce problems with some
-    # self-closing xml-tags. Of course lxml/beautifulsoup would be another option.
+    # This regex is actually working way better than the w3lib.remove_tags[_with_content]
+    # implementations. # It's ~1.5x faster and keeps all wanted content, while the w3lib methods
+    # introduce problems with some self-closing xml-tags. Of course lxml/beautifulsoup would be
+    # another option.
     text = re_tags.sub('', text)
 
     # remove tables

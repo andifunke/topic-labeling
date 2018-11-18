@@ -11,9 +11,11 @@ from numpy import dot, float32 as REAL, sqrt, newaxis
 from gensim import matutils
 from gensim.models import Word2Vec, Doc2Vec
 
+from topic_reranking import METRICS
 from train_utils import init_logging, log_args
 from train_w2v import EpochLogger, EpochSaver
-from constants import ETL_PATH, DATASETS
+from constants import ETL_PATH, DATASETS, PARAMS, NBTOPICS
+
 LOG = None
 
 
@@ -29,6 +31,8 @@ def get_word(word):
 
 
 def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
+    LOG.info(topic)
+
     valdoc2vec = 0.0
     valword2vec = 0.0
     store_indices = []
@@ -139,7 +143,7 @@ def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
 def load_embeddings(d2v_path, w2v_path):
     LOG.info(f'Doc2Vec loading {d2v_path}')
     d2v = Doc2Vec.load(d2v_path)
-    LOG.info(f'vocab size: len(d2v.wv.vocab)')
+    LOG.info(f'vocab size: {len(d2v.wv.vocab)}')
     LOG.info(f'docvecs size: {len(d2v.docvecs.vectors_docs)}')
 
     LOG.info(f'Word2Vec loading {w2v_path}')
@@ -209,15 +213,11 @@ def load_topics(topics_path, metrics, params, nbtopics, print_sample=False):
         topics = topics[topics.param_id.isin(params)]
     if nbtopics and 'nb_topics' in topics.columns:
         topics = topics[topics.nb_topics.isin(nbtopics)]
-    topics = (
-        topics.drop(
-            ['dataset', 'metric', 'param_id', 'nb_topics', 'topic_idx', 'topic_id', 'domain'],
-            axis=1, errors='ignore'
-        )
-        .reset_index(drop=True)
-    )
+    for key in ['dataset', 'metric', 'param_id', 'nb_topics', 'topic_idx', 'topic_id', 'domain']:
+        if key in topics.columns:
+            topics = topics.set_index(key, append=True)
     if print_sample:
-        LOG.info('\n' + topics.head(10))
+        LOG.info(f'\n{topics.head(10)}')
     LOG.info(f'number of topics {len(topics)}')
     return topics
 
@@ -240,12 +240,20 @@ def parse_args():
     parser.add_argument("--metrics", nargs='*', type=str, required=False, default=['ref'])
     parser.add_argument("--params", nargs='*', type=str, required=False, default=['e42'])
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=[100])
+    parser.add_argument("--total_num_topics", type=int, required=False, default=None)
 
     parser.add_argument("--nblabels", type=int, required=False, default=20)
     parser.add_argument("--max_title_length", type=int, required=False, default=4)
     parser.add_argument("--min_doc_length", type=int, required=False, default=41)
 
     args = parser.parse_args()
+
+    if 'all' in args.metrics:
+        args.metrics = METRICS
+    if 'all' in args.params:
+        args.params = PARAMS
+    if -1 in args.nbtopics:
+        args.nbtopics = NBTOPICS
 
     dataset = DATASETS.get(args.dataset, args.dataset)
     nbfiles_str = f'_nbfiles{args.nbfiles:02d}' if args.nbfiles else ''
@@ -260,22 +268,24 @@ def parse_args():
         )
     if args.labels_file is None:
         if topics_file_is_given:
-            args.labels_file = args.topics_file.strip('.csv') + '_label-candidates.csv'
+            args.labels_file = args.topics_file.strip('.csv') + '_label-candidates'
         else:
             args.labels_file = join(
                 ETL_PATH, 'LDAmodel', args.version, 'Reranker',
-                f'{dataset}{nbfiles_str}_label-candidates.csv'
+                f'{dataset}{nbfiles_str}_label-candidates'
             )
 
     if args.d2v_indices and args.w2v_indices:
         args.max_title_length = None
         args.min_doc_length = None
 
+    print_sample = True
+
     return (
         args.topics_file, args.labels_file, args.d2v_indices, args.w2v_indices,
         args.d2v_path, args.w2v_path,
-        args.metrics, args.params, args.nbtopics,
-        args.max_title_length, args.min_doc_length, args.nblabels, args
+        args.dataset, args.metrics, args.params, args.nbtopics, args.total_num_topics,
+        args.max_title_length, args.min_doc_length, args.nblabels, print_sample, args
     )
 
 
@@ -284,19 +294,23 @@ def main():
     (
         topics_file, labels_file, d2v_indices_file, w2v_indices_file,
         d2v_path, w2v_path,
-        metrics, params, nb_topics,
-        max_title_length, min_doc_length, nb_labels, args
+        dataset, metrics, params, nb_topics, total_num_topics,
+        max_title_length, min_doc_length, nb_labels, print_sample, args
     ) = parse_args()
 
-    LOG = logger = init_logging(name='label_candidates')
+    LOG = logger = init_logging(name=f'labelgen_{dataset}')
     log_args(logger, args)
 
     topics = load_topics(
-        topics_path=topics_file, metrics=metrics, params=params, nbtopics=nb_topics, print_sample=False
+        topics_path=topics_file,
+        metrics=metrics,
+        params=params,
+        nbtopics=nb_topics,
+        print_sample=print_sample
     )
-
     d2v, w2v = load_embeddings(
-        d2v_path=d2v_path, w2v_path=w2v_path
+        d2v_path=d2v_path,
+        w2v_path=w2v_path
     )
 
     if d2v_indices_file and w2v_indices_file:
@@ -318,7 +332,7 @@ def main():
     )
 
     t0 = time()
-    labels = topics.apply(
+    labels = topics[:total_num_topics].apply(
         lambda row: get_labels(
             topic=row, nb_labels=nb_labels,
             d2v=d2v, w2v=w2v, w2v_indexed=w2v_indexed,
@@ -328,6 +342,8 @@ def main():
     )
     t1 = int(time() - t0)
     logger.info(f"done in {t1//3600:02d}:{(t1//60) % 60:02d}:{t1 % 60:02d}")
+    if print_sample:
+        LOG.info(f'\n{labels.head(10)}')
 
     # reformatting output files
     full = (
@@ -338,14 +354,18 @@ def main():
         .apply(pd.Series)
         .rename(columns=lambda x: f'label{x}')
     )
+    if print_sample:
+        LOG.info(f'\n{full.head(10)}')
+    logger.info(f'Writing labels to {labels_file}')
+    full.to_csv(labels_file + '_full.csv')
+
     simple = (
-        full[full.index.get_level_values(1) == 'comb']
+        full[full.index.get_level_values(-1) == 'comb']
         .reset_index(drop=True)
         .applymap(lambda x: x[0])
     )
-
-    logger.info(f'Writing labels to {labels_file}')
-    full.to_csv(labels_file + '_full.csv')
+    if print_sample:
+        LOG.info(f'\n{simple.head(10)}')
     simple.to_csv(labels_file + '_simple.csv')
 
 

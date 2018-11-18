@@ -12,8 +12,9 @@ makedirs(dirname(LOG_PATH), exist_ok=True)
 # create logger
 logger = logging.getLogger('Topic_labeling')
 logger.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s | %(message)s',
-                              datefmt='%Y-%m-%d %H:%M:%S')
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # logging to file
 if LOG or HPC:

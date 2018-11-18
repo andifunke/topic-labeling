@@ -8,12 +8,11 @@ from gensim.corpora import Dictionary, MmCorpus
 from gensim.matutils import kullback_leibler, hellinger, jaccard_distance, jensen_shannon
 from gensim.models import LdaModel
 from gensim.models.callbacks import Metric
-from constants import ETL_PATH, DATASETS
+from constants import ETL_PATH, DATASETS, NBTOPICS, PARAMS
 import logging
 import json
 import numpy as np
 import argparse
-from topic_reranking import NBTOPICS, PARAMS
 np.set_printoptions(precision=3, threshold=11, formatter={'float': '{: 0.3f}'.format})
 LOG = None
 
@@ -300,9 +299,6 @@ def split_corpus(corpus, max_test_size_rel=0.1, max_test_size_abs=5000):
     else:
         split_idx = length - max_test_size_abs
     train, test = corpus[:split_idx], corpus[split_idx:]
-    LOG.info(
-        'size of... train_set={:d}, test_set={:d}'.format(len(train), len(test))
-    )
     return train, test
 
 
@@ -402,7 +398,11 @@ def main():
     if cache_in_memory:
         LOG.info('Reading corpus into RAM')
         corpus = list(corpus)
-    train_corpus, test_corpus = split_corpus(corpus)
+    if use_callbacks:
+        train, test = split_corpus(corpus)
+    else:
+        train, test = corpus, []
+    LOG.info(f'size of... train_set={train}, test_set={test}')
 
     vis = None
     if cb_logger == 'visdom':
@@ -422,14 +422,14 @@ def main():
                 dataset=dataset,
                 callback_logger=cb_logger,
                 documents=texts,
-                training_corpus=train_corpus,
-                test_corpus=test_corpus,
+                training_corpus=train,
+                test_corpus=test,
                 processes=cores
             )
             if not use_callbacks:
                 callbacks = callbacks[-1:]
             kwargs = get_parameterset(
-                train_corpus,
+                train,
                 dictionary,
                 callbacks=callbacks,
                 nbtopics=nbtopics,

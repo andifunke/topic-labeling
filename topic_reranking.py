@@ -11,14 +11,14 @@ from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import CoherenceModel, LdaModel
 from pandas.core.common import SettingWithCopyWarning
 
-from constants import ETL_PATH, BAD_TOKENS, DATASETS
+from constants import ETL_PATH, BAD_TOKENS, DATASETS, METRICS, PARAMS, NBTOPICS
 import warnings
 warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 
 pd.options.display.precision = 3
 np.set_printoptions(precision=3, threshold=None, edgeitems=None, linewidth=800, suppress=None)
 
-placeholder = '[[PLACEHOLDER]]'
+PLACEHOLDER = '[[PLACEHOLDER]]'
 
 
 # --------------------------------------------------------------------------------------------------
@@ -37,6 +37,7 @@ class TopicsLoader(object):
         self.nb_topics = sum(nbs_topics) * len(param_ids)
         self.corpus_type = corpus_type
         self.directory = join(ETL_PATH, 'LDAmodel', self.version)
+        self.nbfiles = nbfiles
         self.nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles else ''
         self.data_filename = f'{dataset}{self.nbfiles_str}_{version}_{self.corpus_type}'
         self.dict_from_corpus = self._load_dict()
@@ -67,7 +68,7 @@ class TopicsLoader(object):
                 model_topics = (
                     pd.DataFrame(topics, columns=['term' + str(i) for i in range(self.topn)])
                     .assign(
-                        dataset=self.dataset,
+                        dataset=f'{self.dataset}{self.nbfiles}' if self.nbfiles else self.dataset,
                         param_id=param_id,
                         nb_topics=nb_topics
                     )
@@ -102,7 +103,7 @@ class TopicsLoader(object):
         dict_path = join(self.directory, self.data_filename + '.dict')
         print('loading dictionary from', dict_path)
         dict_from_corpus: Dictionary = Dictionary.load(dict_path)
-        dict_from_corpus.add_documents([[placeholder]])
+        dict_from_corpus.add_documents([[PLACEHOLDER]])
         _ = dict_from_corpus[0]  # init dictionary
         return dict_from_corpus
 
@@ -114,7 +115,7 @@ class TopicsLoader(object):
         print('loading corpus from', corpus_path)
         corpus = MmCorpus(corpus_path)
         corpus = list(corpus)
-        corpus.append([(self.dict_from_corpus.token2id[placeholder], 1.0)])
+        corpus.append([(self.dict_from_corpus.token2id[PLACEHOLDER], 1.0)])
         return corpus
 
     def _load_texts(self):
@@ -125,7 +126,7 @@ class TopicsLoader(object):
         with open(doc_path, 'r') as fp:
             print('loading texts from', doc_path)
             texts = json.load(fp)
-        texts.append([placeholder])
+        texts.append([PLACEHOLDER])
         return texts
 
 
@@ -146,7 +147,7 @@ class Reranker(object):
         :param processes:           number of processes used for the calculations.
         """
         self.dict_from_corpus = topics.dict_from_corpus
-        self.placeholder_id = topics.dict_from_corpus.token2id[placeholder]
+        self.placeholder_id = topics.dict_from_corpus.token2id[PLACEHOLDER]
         self.corpus = topics.corpus
         self.texts = topics.texts
         self.nb_topics = topics.nb_topics
@@ -173,9 +174,7 @@ class Reranker(object):
         self._statistics_ = dict()
         self._statistics_['dataset'] = topics.dataset
         self._statistics_['version'] = topics.version
-        self._statistics_['nbfiles'] = (
-            int(topics.nbfiles_str.strip('_nbfiles')) if topics.nbfiles_str else None
-        )
+        self._statistics_['nbfiles'] = topics.nbfiles
 
     def _shift_topics(self):
         """
@@ -385,7 +384,7 @@ class Reranker(object):
                  str must be in {'u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote'}.
         :return  DataFrame containing all topic candidates
         """
-        available_metrics = ['u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote']
+        available_metrics = METRICS
         if metrics is None:
             metrics = available_metrics
 
@@ -577,9 +576,6 @@ SAVE = True
 PLOT = False
 TOPN = 20
 CORES = 4
-METRICS = ('u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote')
-PARAMS = ('a42', 'b42', 'c42', 'd42', 'e42')
-NBTOPICS = (10, 25, 50, 100)
 
 
 def parse_args():

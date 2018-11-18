@@ -4,7 +4,6 @@ from spacy.tokens import Token
 from iwnlp.iwnlp_wrapper import IWNLPWrapper
 from constants import ADJ, ADV, INTJ, NOUN, PROPN, VERB, ADP, AUX, CCONJ, CONJ, DET, NUM, \
     PART, PRON, SCONJ, PUNCT, SYM, X, SPACE, PHRASE
-# from preprocess import parse_street_names, parse_dependencies
 
 
 class LemmatizerPlus(object):
@@ -32,7 +31,8 @@ class LemmatizerPlus(object):
         :param token: white space stripped single token (str)
         :return: str # TODO: tuple of type (str, bool)
                value[0]: The lemma of the token if a lemma can be derived, else None.
-               # TODO: value[1]: True if the token can be retrieved from the Wiktionary database as is, else False.
+               # TODO: value[1]: True if the token can be retrieved from the Wiktionary database as is,
+               # else False.
         """
         text = token.text.strip()
         pos = token.pos_

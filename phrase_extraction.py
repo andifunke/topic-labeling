@@ -15,8 +15,8 @@ import pandas as pd
 import re
 from constants import (
     NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, TEXT, TOKEN, TOK_IDX, POS, ENT_IOB,
-    ETL_PATH, SPACE, SMPL_PATH, BAD_FIRST_PHRASE_TOKEN,
-    PUNCT)
+    ETL_PATH, SPACE, SMPL_PATH, BAD_FIRST_PHRASE_TOKEN, PUNCT
+)
 from project_logging import log
 from tqdm import tqdm
 tqdm.pandas()

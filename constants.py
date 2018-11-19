@@ -108,9 +108,18 @@ DATASETS = {
     'dewa': 'dewac',
     'dewa1': 'dewac_nbfiles01',
 }
+# TODO: add the following keys to DATASETS, but needs testing if that would break anything.
+DATASETS_X = DATASETS.copy()
+DATASETS_X.update({
+    'dewiki': 'dewiki',
+    'dewac1': 'dewac_nbfiles01',
+})
+
+
 METRICS = ('ref', 'u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote')
 PARAMS = ('a42', 'b42', 'c42', 'd42', 'e42')
 NBTOPICS = (10, 25, 50, 100)
+VERSIONS = ('noun', 'noun-verb', 'noun-verb-adj')
 
 # --- filter lookup table
 # the follwoing tokens are filtered befor applying LDA training

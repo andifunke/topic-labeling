@@ -15,6 +15,9 @@ from topic_reranking import METRICS
 from train_utils import init_logging, log_args
 from train_w2v import EpochLogger, EpochSaver
 from constants import ETL_PATH, DATASETS, PARAMS, NBTOPICS
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.simplefilter(action='ignore', category=UserWarning)
 
 LOG = None
 
@@ -31,7 +34,7 @@ def get_word(word):
 
 
 def get_labels(topic, nb_labels, d2v, w2v, w2v_indexed, d_indices, w_indices):
-    LOG.info(topic)
+    LOG.info(f'Generating labels for topic {topic.name[0]}')
 
     valdoc2vec = 0.0
     valword2vec = 0.0
@@ -279,7 +282,7 @@ def parse_args():
         args.max_title_length = None
         args.min_doc_length = None
 
-    print_sample = True
+    print_sample = False
 
     return (
         args.topics_file, args.labels_file, args.d2v_indices, args.w2v_indices,
@@ -298,7 +301,7 @@ def main():
         max_title_length, min_doc_length, nb_labels, print_sample, args
     ) = parse_args()
 
-    LOG = logger = init_logging(name=f'labelgen_{dataset}')
+    LOG = logger = init_logging(name=f'labelgen_{dataset}', to_file=False)
     log_args(logger, args)
 
     topics = load_topics(
@@ -354,19 +357,23 @@ def main():
         .apply(pd.Series)
         .rename(columns=lambda x: f'label{x}')
     )
+    full.index = full.index.droplevel(0).rename(names='label_method', level=-1)
     if print_sample:
         LOG.info(f'\n{full.head(10)}')
     logger.info(f'Writing labels to {labels_file}')
     full.to_csv(labels_file + '_full.csv')
 
+    # reducing results to default values and metrics
+    if print_sample:
+        LOG.info(f'\n{full.head(10)}')
     simple = (
-        full[full.index.get_level_values(-1) == 'comb']
+        full.query('label_method == "comb"')
         .reset_index(drop=True)
         .applymap(lambda x: x[0])
     )
     if print_sample:
         LOG.info(f'\n{simple.head(10)}')
-    simple.to_csv(labels_file + '_simple.csv')
+    simple.to_csv(labels_file + '_simple.csv', index=None)
 
 
 if __name__ == '__main__':

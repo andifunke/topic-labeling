@@ -36,14 +36,15 @@ if __name__ == "__main__":
         fname = join(FULL_PATH, name)
         for i in range(1, batches+1):
             log('>>> batch: {:d} >>>'.format(i))
-            processor.read_process_store(fname, corpus,
-                                         start=start,
-                                         stop=(start+batch_size) if batch_size else None,
-                                         store=STORE,
-                                         # vocab_to_disk=STORE,
-                                         # print=True,
-                                         # head=1000,
-                                         )
+            processor.read_process_store(
+                fname, corpus,
+                start=start,
+                stop=(start+batch_size) if batch_size else None,
+                store=STORE,
+                # vocab_to_disk=STORE,
+                # print=True,
+                # head=1000,
+            )
             if batch_size:
                 start += batch_size
             else:

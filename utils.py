@@ -55,11 +55,13 @@ def load(*args):
         'phrases': join(ETL_PATH, 'dewiki_phrases_lemmatized.pickle'),
         'links': join(ETL_PATH, 'dewiki_links.pickle'),
         'categories': join(ETL_PATH, 'dewiki_categories.pickle'),
+        'disamb': join(ETL_PATH, 'dewiki_disambiguation.pickle'),
     }
     dataset = None
     purposes = {
         'goodids', 'etl', 'nlp', 'simple', 'smpl', 'wiki_phrases', 'embedding',
-        'topic', 'topics', 'label', 'labels', 'lda', 'ldamodel', 'score', 'scores'
+        'topic', 'topics', 'label', 'labels', 'lda', 'ldamodel', 'score', 'scores',
+        'lemmap', 'disamb'
     }
     purpose = None
     version = None
@@ -114,12 +116,14 @@ def load(*args):
         pass
     elif purpose == 'goodids' and dataset in ['dewac', 'dewiki']:
         file = join(ETL_PATH, f'{dataset}_good_ids.pickle')
+    elif purpose == 'lemmap':
+        file = join(ETL_PATH, f'{dataset}_lemmatization_map.pickle')
     elif purpose == 'embedding':
         file = join(ETL_PATH, 'embeddings', dataset, dataset)
     elif purpose == 'nlp':
-        file = join(NLP_PATH, f'{dataset}_nlp.pickle')
+        file = join(NLP_PATH, f'{dataset.replace("nbfiles", "")}_nlp.pickle')
     elif purpose in {'simple', 'smpl'}:
-        file = join(SMPL_PATH, f'{dataset}_simple.pickle')
+        file = join(SMPL_PATH, f'{dataset.replace("nbfiles", "")}_simple.pickle')
     elif purpose == 'wiki_phrases':
         file = join(SMPL_PATH, 'wiki_phrases', f'{dataset}_simple_wiki_phrases.pickle')
     elif purpose in {'topic', 'topics'}:
@@ -129,7 +133,7 @@ def load(*args):
     elif purpose in {'label', 'labels'}:
         file = join(ETL_PATH, 'LDAmodel', version, 'Reranker', f'{dataset}_label-candidates_full.csv')
     else:
-        file = join(ETL_PATH, f'{dataset}.pickle')
+        file = join(ETL_PATH, f'{dataset.replace("nbfiles", "")}.pickle')
 
     try:
         print('Reading', file)
@@ -177,7 +181,7 @@ def load(*args):
 
 
 def main():
-    print(load('labels', 'O', 100, 'e42', 'ref', 'small').head())
+    print(load('labels', 'O', 100, 'e42', 'ref', 'minimal').head())
 
 
 if __name__ == '__main__':

@@ -111,8 +111,14 @@ DATASETS = {
 # TODO: add the following keys to DATASETS, but needs testing if that would break anything.
 DATASETS_X = DATASETS.copy()
 DATASETS_X.update({
+    'e': 'Europarl',
+    'fa': 'FAZ',
+    'fo': 'FOCUS',
+    'o': 'OnlineParticipation',
+    'p': 'PoliticalSpeeches',
     'dewiki': 'dewiki',
     'dewac1': 'dewac_nbfiles01',
+    'wikt': 'wiktionary'
 })
 
 

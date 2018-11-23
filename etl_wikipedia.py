@@ -95,8 +95,8 @@ def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000)
                         row[ID] = int(elem.text)
                         row[ID2] = 0
                 elif tag == 'timestamp':
-                    row[TIME] = datetime.strptime(elem.text.replace('Z', 'UTC'),
-                                                  '%Y-%m-%dT%H:%M:%S%Z')  # 2018-07-29T18:22:20Z
+                    row[TIME] = datetime.strptime(elem.text.replace('Z', 'UTC'), '%Y-%m-%dT%H:%M:%S%Z')
+                    # 2018-07-29T18:22:20Z
                 elif tag == 'redirect':
                     is_redirect = True
                     row[SUBSET] = "REDIRECT"

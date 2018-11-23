@@ -4,6 +4,7 @@ import json
 from os import makedirs
 from os.path import join, exists
 from time import time
+import re
 
 import numpy as np
 import pandas as pd
@@ -40,6 +41,7 @@ class TopicsLoader(object):
         self.nbfiles = nbfiles
         self.nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles else ''
         self.data_filename = f'{dataset}{self.nbfiles_str}_{version}_{self.corpus_type}'
+        self.pat = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöü].*')
         self.dict_from_corpus = self._load_dict()
         self.corpus = self._load_corpus()
         self.texts = self._load_texts()
@@ -59,10 +61,13 @@ class TopicsLoader(object):
                     topic = []
                     for term in ldamodel.get_topic_terms(i, topn=self.topn+10):
                         token = ldamodel.id2word[term[0]]
-                        if token not in BAD_TOKENS:
+                        if token not in BAD_TOKENS and self.pat.match(token):
                             topic.append(token)
                             if len(topic) == self.topn:
                                 break
+                        else:
+                            # print(token)
+                            pass
                     topics.append(topic)
 
                 model_topics = (

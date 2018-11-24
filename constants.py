@@ -20,6 +20,9 @@ tmp_base  = "preprocessed/tmp"
 TMP_PATH  = join(DATA_BASE, tmp_base)
 SPCY_PATH = join(NLP_PATH, 'spacy_model')
 VOC_PATH  = join(SPCY_PATH, 'vocab')
+LDA_PATH  = join(ETL_PATH, 'LDAmodel')
+EMB_PATH  = join(ETL_PATH, 'embeddings')
+TPX_PATH  = join(LDA_PATH, 'noun', 'topics')
 
 ## data scheme
 DATASET   = 'dataset'
@@ -107,6 +110,8 @@ DATASETS = {
     'dewi': 'dewiki',
     'dewa': 'dewac',
     'dewa1': 'dewac_nbfiles01',
+    'F': 'news',
+    'S': 'speeches',
 }
 # TODO: add the following keys to DATASETS, but needs testing if that would break anything.
 DATASETS_X = DATASETS.copy()
@@ -118,7 +123,11 @@ DATASETS_X.update({
     'p': 'PoliticalSpeeches',
     'dewiki': 'dewiki',
     'dewac1': 'dewac_nbfiles01',
-    'wikt': 'wiktionary'
+    'wikt': 'wiktionary',
+    'f': 'news',
+    'n': 'news',
+    'N': 'news',
+    's': 'speeches',
 })
 
 

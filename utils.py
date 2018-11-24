@@ -1,10 +1,21 @@
+import json
+import logging
 import re
+import sys
+from genericpath import exists
+from os import makedirs
+from os.path import join
+from pprint import pformat
 
+import gensim
 import pandas as pd
+from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import Doc2Vec, Word2Vec, FastText
 
-from constants import ETL_PATH, NLP_PATH, SMPL_PATH, DATASETS_X, PARAMS, NBTOPICS, METRICS, VERSIONS
-from os.path import join
+from constants import (
+    ETL_PATH, NLP_PATH, SMPL_PATH, LDA_PATH, DATASETS_X, PARAMS, NBTOPICS, METRICS, VERSIONS,
+    EMB_PATH
+)
 
 try:
     from tabulate import tabulate
@@ -40,13 +51,20 @@ def hms_string(sec_elapsed):
     return "{}:{:>02}:{:>05.2f}".format(h, m, s)
 
 
-def load(*args):
+def load(*args, logger=None):
     """
     work in progress: may not work for all cases, especially not yet for reading distributed
     datsets like dewiki and dewac.
     """
+
+    def log(msg):
+        if logger:
+            logger.info(msg)
+        else:
+            print(msg)
+
     if not args:
-        print('no arguments, no load')
+        log('no arguments, no load')
         return
 
     single = {
@@ -61,7 +79,7 @@ def load(*args):
     purposes = {
         'goodids', 'etl', 'nlp', 'simple', 'smpl', 'wiki_phrases', 'embedding',
         'topic', 'topics', 'label', 'labels', 'lda', 'ldamodel', 'score', 'scores',
-        'lemmap', 'disamb'
+        'lemmap', 'disamb', 'dict', 'corpus', 'texts', 'wiki_scores', 'x2v_scores'
     }
     purpose = None
     version = None
@@ -72,8 +90,8 @@ def load(*args):
 
     if isinstance(args, str):
         args = [args]
-    # args = [x.lower() if isinstance(x, str) else x for x in args]
-    # print(args)
+    args = [arg.replace('-', '_') if isinstance(arg, str) else arg for arg in args]
+    # log(args)
 
     # parse args
     for arg in args:
@@ -82,8 +100,10 @@ def load(*args):
             file = single[arg]
             dataset = True
             break
-        elif not dataset and arg in DATASETS_X:
+        elif not dataset and arg.lower() in DATASETS_X:
             dataset = DATASETS_X[arg]
+        elif not dataset and arg in DATASETS_X.values():
+            dataset = arg
         elif not purpose and arg.lower() in purposes:
             purpose = arg.lower()
         elif any([s in arg for s in ['d2v', 'w2v', 'ftx'] if isinstance(arg, str)]):
@@ -108,8 +128,8 @@ def load(*args):
     # if not metrics:
     #     metrics.append('ref')
 
-    # print(purpose)
-    # print(dataset)
+    # log('purpose', purpose)
+    # log('dataset', dataset)
 
     # combine args
     if purpose == 'single':
@@ -119,24 +139,69 @@ def load(*args):
     elif purpose == 'lemmap':
         file = join(ETL_PATH, f'{dataset}_lemmatization_map.pickle')
     elif purpose == 'embedding':
-        file = join(ETL_PATH, 'embeddings', dataset, dataset)
-    elif purpose == 'nlp':
-        file = join(NLP_PATH, f'{dataset.replace("nbfiles", "")}_nlp.pickle')
-    elif purpose in {'simple', 'smpl'}:
-        file = join(SMPL_PATH, f'{dataset.replace("nbfiles", "")}_simple.pickle')
-    elif purpose == 'wiki_phrases':
-        file = join(SMPL_PATH, 'wiki_phrases', f'{dataset}_simple_wiki_phrases.pickle')
+        file = join(EMB_PATH, dataset, dataset)
     elif purpose in {'topic', 'topics'}:
-        file = join(ETL_PATH, 'LDAmodel', version, 'Reranker', f'{dataset}_topic-candidates.csv')
+        file = join(LDA_PATH, version, 'topics', f'{dataset}_topic-candidates.csv')
     elif purpose in {'score', 'scores'}:
-        file = join(ETL_PATH, 'LDAmodel', version, 'Reranker', f'{dataset}_evaluation-scores.csv')
+        file = join(LDA_PATH, version, 'topics', f'{dataset}_topic-scores.csv')
+    elif purpose == 'wiki_scores':
+        file = join(LDA_PATH, version, 'topics', f'{dataset}_topic-wiki-scores.csv')
+    elif purpose == 'x2v_scores':
+        file = join(LDA_PATH, version, 'topics', f'{dataset}_topic-x2v-scores.csv')
     elif purpose in {'label', 'labels'}:
-        file = join(ETL_PATH, 'LDAmodel', version, 'Reranker', f'{dataset}_label-candidates_full.csv')
-    else:
-        file = join(ETL_PATH, f'{dataset.replace("nbfiles", "")}.pickle')
+        file = join(LDA_PATH, version, 'topics', f'{dataset}_label-candidates_full.csv')
+    elif purpose == 'dict':
+        if dataset == 'dewiki' and 'unfiltered' in args:
+            dict_path = join(LDA_PATH, version, f'dewiki_noun_bow_unfiltered.dict')
+        else:
+            dict_path = join(LDA_PATH, version, f'{dataset}_{version}_bow.dict')
+        log(f'loading dict from {dict_path}')
+        dict_from_corpus = Dictionary.load(dict_path)
+        _ = dict_from_corpus[0]  # init dictionary
+        return dict_from_corpus
+    elif purpose == 'corpus':
+        corpus_path = join(LDA_PATH, version, f'{dataset}_{version}_bow.mm')
+        log(f'loading corpus from {corpus_path}')
+        corpus = MmCorpus(corpus_path)
+        corpus = list(corpus)
+        return corpus
+    elif purpose == 'texts':
+        doc_path = join(LDA_PATH, version, f'{dataset}_{version}_bow_texts.json')
+        with open(doc_path, 'r') as fp:
+            log(f'loading texts from {doc_path}')
+            texts = json.load(fp)
+        return texts
+    elif purpose in {'nlp', 'simple', 'smpl', 'wiki', 'wiki_phrases', 'phrases', 'etl', None}:
+        if purpose in {'etl', None}:
+            directory = ETL_PATH
+            suffix = ''
+        elif purpose == 'nlp':
+            directory = NLP_PATH
+            suffix = '_nlp'
+        elif purpose in {'simple', 'smpl'}:
+            directory = SMPL_PATH
+            suffix = '_simple'
+        elif purpose in {'wiki', 'wiki_phrases', 'phrases'}:
+            directory = join(SMPL_PATH, 'wiki_phrases')
+            suffix = '_simple_wiki_phrases'
+        else:
+            log('oops')
+            return
+        if dataset.lower() in {'s', 'speeches'}:
+            file = [
+                join(directory, f'{DATASETS_X["E"]}{suffix}.pickle'),
+                join(directory, f'{DATASETS_X["P"]}{suffix}.pickle')
+            ]
+        elif dataset.lower() in {'news', 'n', 'f'}:
+            file = [
+                join(directory, f'{DATASETS_X["FA"]}{suffix}.pickle'),
+                join(directory, f'{DATASETS_X["FO"]}{suffix}.pickle')
+            ]
+        else:
+            file = join(directory, f'{dataset.replace("nbfiles", "")}{suffix}.pickle')
 
     try:
-        print('Reading', file)
+        log(f'Reading {file}')
         if purpose == 'embedding':
             if 'd2v' in dataset:
                 return Doc2Vec.load(file)
@@ -144,20 +209,26 @@ def load(*args):
                 return Word2Vec.load(file)
             if 'ftx' in dataset:
                 return FastText.load(file)
-        elif file.endswith('.pickle'):
+        elif isinstance(file, str) and file.endswith('.pickle'):
             df = pd.read_pickle(file)
             if purpose == 'single' and 'phrases' in args and 'minimal' in args:
                 pat = re.compile(r'^[a-zA-ZÄÖÜäöü]+.*')
                 df = df.set_index('token').text
                 df = df[df.str.match(pat)]
             return df
-        elif file.endswith('.csv'):
+        elif isinstance(file, str) and file.endswith('.csv'):
             index = None
+            header = 1
             if purpose in {'label', 'labels'}:
                 index = [0, 1, 2, 3, 4, 5]
-            elif purpose in {'topic', 'topics', 'score', 'scores'}:
+            elif purpose in {'topic', 'topics', 'score', 'scores', 'x2v_scores'}:
                 index = [0, 1, 2, 3, 4]
-            df = pd.read_csv(file, index_col=index)
+            elif purpose in {'wiki_scores'}:
+                index = [0, 1, 2, 3, 4]
+                header = 2
+
+            df = pd.read_csv(file, index_col=index, header=header)
+
             if len(metrics) > 0:
                 df = df.query('metric in @metrics')
             if len(params) > 0:
@@ -172,17 +243,82 @@ def load(*args):
                         .reset_index(drop=True)
                         .applymap(lambda x: x[0])
                     )
-            if purpose in {'topic', 'topics', 'score', 'scores'}:
+            if purpose in {'topic', 'topics', 'score', 'scores', 'wiki_scores', 'x2v_scores'}:
                 if 'minimal' in args:
                     df = df.reset_index(drop=True)
             return df
+        else:
+            df = pd.concat([pd.read_pickle(f) for f in file])
+            return df
     except Exception as e:
-        print(e)
+        log(e)
 
 
 def main():
-    print(load('labels', 'O', 100, 'e42', 'ref', 'minimal').head())
+    data = load('news', 'texts')
+    print(data)
 
 
 if __name__ == '__main__':
     main()
+
+
+def init_logging(name='', basic=True, to_stdout=False, to_file=True, log_file=None, log_dir='../logs'):
+
+    if log_file is None:
+        log_file = name+'.log' if name else 'train.log'
+
+    if basic:
+        if to_file:
+            if not exists(log_dir):
+                makedirs(log_dir)
+            file_path = join(log_dir, log_file)
+            logging.basicConfig(
+                filename=file_path,
+                format='%(asctime)s - %(name)s - %(levelname)s | %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S',
+                level=logging.INFO
+            )
+        else:
+            logging.basicConfig(
+                format='%(asctime)s - %(name)s - %(levelname)s | %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S',
+                level=logging.INFO
+            )
+        logger = logging.getLogger()
+
+    else:
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.DEBUG)
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s | %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        )
+        if to_file:
+            # create path if necessary
+            if not exists(log_dir):
+                makedirs(log_dir)
+            file_path = join(log_dir, log_file)
+            fh = logging.FileHandler(file_path)
+            fh.setLevel(logging.DEBUG)
+            fh.setFormatter(formatter)
+            logger.addHandler(fh)
+        if to_stdout:
+            ch = logging.StreamHandler(sys.stdout)
+            ch.setLevel(logging.DEBUG)
+            ch.setFormatter(formatter)
+            logger.addHandler(ch)
+
+    logger.info('')
+    logger.info('#' * 50)
+    logger.info('----- %s -----' % name.upper())
+    logger.info('----- start -----')
+    logger.info('python: ' + sys.version.replace('\n', ' '))
+    logger.info('pandas: ' + pd.__version__)
+    logger.info('gensim: ' + gensim.__version__)
+
+    return logger
+
+
+def log_args(logger, args):
+    logger.info('\n' + pformat(vars(args)))

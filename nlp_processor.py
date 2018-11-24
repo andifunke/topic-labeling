@@ -12,7 +12,6 @@ from constants import (
     TOKEN, SENT_IDX, HASH, NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, TITLE, DESCR, ETL_PATH
 )
 from lemmatizer_plus import LemmatizerPlus
-from project_logging import log
 from utils import tprint
 
 FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
@@ -20,7 +19,12 @@ FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE,
 
 class NLPProcessor(object):
 
-    def __init__(self, spacy_path, lemmatizer_path='../data/IWNLP.Lemmatizer_20170501.json'):
+    def __init__(self, spacy_path, lemmatizer_path='../data/IWNLP.Lemmatizer_20170501.json', log=None):
+        if log is not None:
+            self.log = log
+        else:
+            self.log = print
+
         # ------ load spacy and iwnlp ------
         log("loading spacy")
         self.nlp = spacy.load(spacy_path)  # <-- load with dependency parser (slower)
@@ -37,6 +41,7 @@ class NLPProcessor(object):
 
     def read_process_store(self, file_path, corpus_name, store=True, vocab_to_disk=False,
                            start=0, stop=None, **kwargs):
+        log = self.log
         log("*** start new corpus: " + corpus_name)
         t0 = time()
 
@@ -93,7 +98,7 @@ class NLPProcessor(object):
             # log progress
             if i % percent == 0:
                 if i > 0:
-                    log("  {:d}%: {:d} documents processed".format(done, i))
+                    self.log("  {:d}%: {:d} documents processed".format(done, i))
                 done += step_len
 
             key, title, descr, text = kv
@@ -118,6 +123,23 @@ class NLPProcessor(object):
             docs += attr
 
         return self.df_from_docs(docs)
+
+    def store(self, corpus, df, suffix=''):
+        """returns the file path where the dataframe was stores"""
+        makedirs(NLP_PATH, exist_ok=True)
+        fname = join(NLP_PATH, corpus + suffix + '.pickle')
+        self.log(corpus + ': saving to ' + fname)
+        df.to_pickle(fname)
+
+    def read(self, f, start=0, stop=None):
+        """ reads a dataframe from pickle format """
+        df = pd.read_pickle(f)[[TITLE, DESCR, TEXT]].iloc[start:stop]
+        # lazy hack for dewiki_new
+        if 'dewiki' in f:
+            goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
+            df = df[df.index.isin(goodids.index)]
+        self.log('using {:d} documents'.format(len(df)))
+        return df.copy()
 
     @staticmethod
     def df_from_docs(docs):
@@ -147,22 +169,3 @@ class NLPProcessor(object):
         df[ENT_IOB] = df[ENT_IOB].astype("category")
         df[ENT_TYPE] = df[ENT_TYPE].astype("category")
         return df[FIELDS]
-
-    @staticmethod
-    def store(corpus, df, suffix=''):
-        """returns the file path where the dataframe was stores"""
-        makedirs(NLP_PATH, exist_ok=True)
-        fname = join(NLP_PATH, corpus + suffix + '.pickle')
-        log(corpus + ': saving to ' + fname)
-        df.to_pickle(fname)
-
-    @staticmethod
-    def read(f, start=0, stop=None):
-        """ reads a dataframe from pickle format """
-        df = pd.read_pickle(f)[[TITLE, DESCR, TEXT]].iloc[start:stop]
-        # lazy hack for dewiki_new
-        if 'dewiki' in f:
-            goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
-            df = df[df.index.isin(goodids.index)]
-        log('using {:d} documents'.format(len(df)))
-        return df.copy()

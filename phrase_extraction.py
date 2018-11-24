@@ -9,6 +9,9 @@ from os import listdir, getpid
 from os.path import join, isfile
 from time import time
 import psutil
+
+from utils import init_logging
+
 process = psutil.Process(getpid())
 import numpy as np
 import pandas as pd
@@ -17,7 +20,6 @@ from constants import (
     NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, TEXT, TOKEN, TOK_IDX, POS, ENT_IOB,
     ETL_PATH, SPACE, SMPL_PATH, BAD_FIRST_PHRASE_TOKEN, PUNCT
 )
-from project_logging import log
 from tqdm import tqdm
 tqdm.pandas()
 
@@ -31,6 +33,11 @@ SPECIAL_CHAR = re.compile(r'[^\w&/]+')
 GOOD_IDS_DEWAC = None
 GOOD_IDS_DEWIKI = None
 PS = None
+LOG_FUNC = print
+
+
+def log(msg):
+    LOG_FUNC(msg)
 
 
 def memstr():
@@ -335,11 +342,10 @@ if __name__ == "__main__":
     from options import update_from_args
     update_from_args()
     from options import CORPUS_PREFIXES
+    logger = init_logging('Phrase_extraction')
+    LOG_FUNC = logger.info
 
     t_0 = time()
-
-    # ------ run ------
-    log("##### START #####")
 
     # filter files for certain prefixes
     prefixes = r'^(' + '|'.join(CORPUS_PREFIXES) + r').'

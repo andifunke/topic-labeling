@@ -8,8 +8,10 @@ import locale
 import xml.etree.ElementTree as et
 from html import unescape
 from datetime import datetime
-from constants import DATA_BASE, ETL_PATH, \
-    META, DATASET, SUBSET, ID, ID2, TITLE, TAGS, TIME, DESCR, TEXT, LINKS, DATA, HASH
+from constants import (
+    DATA_BASE, ETL_PATH, META, DATASET, SUBSET, ID, ID2, TITLE,
+    TAGS, TIME, DESCR, TEXT, LINKS, DATA, HASH
+)
 from utils import hms_string
 
 locale.setlocale(locale.LC_ALL, '')

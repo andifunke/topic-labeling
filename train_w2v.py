@@ -3,10 +3,13 @@ from os import listdir, makedirs
 from os.path import isfile, join, exists
 import gc
 from time import time
+
 import pandas as pd
 from gensim.models import Word2Vec, FastText
-from constants import SMPL_PATH, ETL_PATH, TOKEN, HASH, SENT_IDX
-from train_utils import parse_args, init_logging, log_args, EpochSaver, EpochLogger
+
+from constants import SMPL_PATH, ETL_PATH, TOKEN, HASH, SENT_IDX, EMB_PATH
+from train_utils import parse_args, EpochSaver, EpochLogger
+from utils import init_logging, log_args
 
 
 class Sentences(object):
@@ -77,7 +80,7 @@ def main():
     log_args(logger, args)
 
     input_dir = join(SMPL_PATH, 'dewiki')
-    model_dir = join(ETL_PATH, 'embeddings', model_name)
+    model_dir = join(EMB_PATH, model_name)
     if not exists(model_dir):
         makedirs(model_dir)
     logger.info('model dir: ' + model_dir)

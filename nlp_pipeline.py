@@ -6,26 +6,34 @@ from os.path import isfile, join
 from time import time
 
 import options
+from utils import init_logging
+
 options.update_from_args()
 from options import CORPUS_PREFIXES, DE, STORE, START, BATCH_SIZE, BATCHES
 
 from constants import FULL_PATH
 from nlp_processor import NLPProcessor
-from project_logging import log
 
 
 if __name__ == "__main__":
     t0 = time()
 
     ### --- run ---
+    logger = init_logging('NLP')
+
+    def log(msg):
+        logger.info(msg)
+
     log("##### START #####")
 
     # filter files for certain prefixes
     prefixes = r'^(' + '|'.join(CORPUS_PREFIXES) + r').'
     pattern = re.compile(prefixes)
-    files = sorted([f for f in listdir(FULL_PATH)
-                    if (isfile(join(FULL_PATH, f)) and pattern.match(f))])
-    processor = NLPProcessor(spacy_path=DE)
+    files = sorted([
+        f for f in listdir(FULL_PATH)
+        if (isfile(join(FULL_PATH, f)) and pattern.match(f))
+    ])
+    processor = NLPProcessor(spacy_path=DE, log=log)
 
     start = START  # 550_000
     batch_size = BATCH_SIZE  # 50_000

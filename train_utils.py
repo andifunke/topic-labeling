@@ -1,14 +1,9 @@
 # coding: utf-8
 import multiprocessing as mp
-import sys
 from os import makedirs
 from os.path import join, exists
-from pprint import pformat
 
-import pandas as pd
-import gensim
 from gensim.models.callbacks import CallbackAny2Vec
-import logging
 import argparse
 
 
@@ -51,56 +46,6 @@ class EpochSaver(CallbackAny2Vec):
         self.epoch += 1
 
 
-def init_logging(name='', basic=True, to_stdout=False, to_file=True, log_file=None, log_dir='../logs'):
-
-    if log_file is None:
-        log_file = name+'.log' if name else 'train.log'
-    if basic:
-        if to_file:
-            if not exists(log_dir):
-                makedirs(log_dir)
-            file_path = join(log_dir, log_file)
-            logging.basicConfig(
-                filename=file_path,
-                format='%(asctime)s - %(name)s - %(levelname)s | %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
-                level=logging.INFO
-            )
-        else:
-            logging.basicConfig(
-                format='%(asctime)s - %(name)s - %(levelname)s | %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
-                level=logging.INFO
-            )
-        logger = logging.getLogger()
-    else:
-        logger = logging.getLogger(name)
-        logger.setLevel(logging.DEBUG)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s | %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S',
-        )
-        if to_file:
-            # create path if necessary
-            if not exists(log_dir):
-                makedirs(log_dir)
-            file_path = join(log_dir, log_file)
-            fh = logging.FileHandler(file_path)
-            fh.setLevel(logging.DEBUG)
-            fh.setFormatter(formatter)
-            logger.addHandler(fh)
-        if to_stdout:
-            ch = logging.StreamHandler(sys.stdout)
-            ch.setLevel(logging.DEBUG)
-            ch.setFormatter(formatter)
-            logger.addHandler(ch)
-
-    logger.info('pandas: ' + pd.__version__)
-    logger.info('gensim: ' + gensim.__version__)
-    logger.info('python: ' + sys.version.replace('\n', ' '))
-    return logger
-
-
 def parse_args(default_model_name='x2v', default_epochs=20):
     parser = argparse.ArgumentParser()
 
@@ -127,5 +72,3 @@ def parse_args(default_model_name='x2v', default_epochs=20):
     )
 
 
-def log_args(logger, args):
-    logger.info('\n' + pformat(vars(args)))

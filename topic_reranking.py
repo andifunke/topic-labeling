@@ -3,6 +3,7 @@ import argparse
 import json
 from os import makedirs
 from os.path import join, exists
+from pprint import pformat
 from time import time
 import re
 
@@ -12,7 +13,7 @@ from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import CoherenceModel, LdaModel
 from pandas.core.common import SettingWithCopyWarning
 
-from constants import ETL_PATH, BAD_TOKENS, DATASETS, METRICS, PARAMS, NBTOPICS
+from constants import BAD_TOKENS, DATASETS, METRICS, PARAMS, NBTOPICS, LDA_PATH
 import warnings
 warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 
@@ -37,7 +38,7 @@ class TopicsLoader(object):
         self.nb_topics_list = nbs_topics
         self.nb_topics = sum(nbs_topics) * len(param_ids)
         self.corpus_type = corpus_type
-        self.directory = join(ETL_PATH, 'LDAmodel', self.version)
+        self.directory = join(LDA_PATH, self.version)
         self.nbfiles = nbfiles
         self.nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles else ''
         self.data_filename = f'{dataset}{self.nbfiles_str}_{version}_{self.corpus_type}'
@@ -509,7 +510,7 @@ class Reranker(object):
 
     def save_results(self, directory=None, topics=True, scores=True, stats=True):
         if directory is None:
-            directory = join(ETL_PATH, 'LDAmodel', self.version, 'Reranker')
+            directory = join(LDA_PATH, self.version, 'topics')
         if not exists(directory):
             makedirs(directory)
         model_name = self.dataset + self.nbfiles_str
@@ -535,9 +536,9 @@ class Reranker(object):
     @classmethod
     def save_scores(cls, scores, dataset, directory=None):
         if directory is None:
-            directory = join(ETL_PATH, 'LDAmodel', 'Reranker')
+            directory = join(LDA_PATH, 'topics')
         filename = join(directory, dataset)
-        fcsv = f'{filename}_evaluation-scores.csv'
+        fcsv = f'{filename}_topic-scores.csv'
         print(f"Writing evaluation scores to {fcsv}")
         scores.to_csv(fcsv)
 
@@ -549,11 +550,11 @@ class Reranker(object):
     @classmethod
     def load_topics_and_scores(cls, dataset, directory=None, joined=False, topics_only=False):
         if directory is None:
-            directory = join(ETL_PATH, 'LDAmodel', 'Reranker')
+            directory = join(LDA_PATH, 'topics')
         topics = cls._load(join(directory, f'{dataset}_topic-candidates.csv'))
         if topics_only:
             return topics
-        scores = cls._load(join(directory, f'{dataset}_evaluation-scores.csv'))
+        scores = cls._load(join(directory, f'{dataset}_topic-scores.csv'))
         if joined:
             return topics.join(scores)
         else:
@@ -636,7 +637,7 @@ def rerank(
 
 def main():
     args = parse_args()
-    print(args)
+    print(pformat(vars(args)))
 
     reranker = rerank(
         dataset=DATASETS.get(args.dataset, args.dataset),
@@ -650,8 +651,8 @@ def main():
         plot=args.plot,
         cores=args.cores
     )
-    topics = reranker.topic_candidates
-    scores = reranker.eval_scores
+    # topics = reranker.topic_candidates
+    # scores = reranker.eval_scores
 
 
 if __name__ == '__main__':

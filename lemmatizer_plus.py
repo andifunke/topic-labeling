@@ -2,8 +2,10 @@
 
 from spacy.tokens import Token
 from iwnlp.iwnlp_wrapper import IWNLPWrapper
-from constants import ADJ, ADV, INTJ, NOUN, PROPN, VERB, ADP, AUX, CCONJ, CONJ, DET, NUM, \
+from constants import (
+    ADJ, ADV, INTJ, NOUN, PROPN, VERB, ADP, AUX, CCONJ, CONJ, DET, NUM,
     PART, PRON, SCONJ, PUNCT, SYM, X, SPACE, PHRASE
+)
 
 
 class LemmatizerPlus(object):

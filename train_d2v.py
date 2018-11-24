@@ -5,8 +5,9 @@ import gc
 from time import time
 import pandas as pd
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
-from constants import ETL_PATH, SMPL_PATH, POS, PUNCT, TOKEN, HASH, TEXT
-from train_utils import parse_args, init_logging, log_args, EpochSaver, EpochLogger
+from constants import ETL_PATH, SMPL_PATH, TOKEN, HASH, TEXT, EMB_PATH
+from train_utils import parse_args, EpochSaver, EpochLogger
+from utils import init_logging, log_args
 
 
 class Documents(object):
@@ -73,7 +74,7 @@ def main():
     log_args(logger, args)
 
     input_dir = join(SMPL_PATH, 'dewiki')
-    model_dir = join(ETL_PATH, 'embeddings', model_name)
+    model_dir = join(EMB_PATH, model_name)
     if not exists(model_dir):
         makedirs(model_dir)
     logger.info('model dir: ' + model_dir)

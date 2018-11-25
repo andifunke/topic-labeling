@@ -32,7 +32,7 @@ class TopicsLoader(object):
     def __init__(self, dataset, param_ids: list, nbs_topics: list,
                  version=None, nbfiles=None, corpus_type='bow', topn=20):
         self.topn = topn
-        self.dataset = dataset
+        self.dataset = DATASETS.get(dataset, dataset)
         self.version = version
         self.param_ids = param_ids
         self.nb_topics_list = nbs_topics
@@ -41,7 +41,7 @@ class TopicsLoader(object):
         self.directory = join(LDA_PATH, self.version)
         self.nbfiles = nbfiles
         self.nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles else ''
-        self.data_filename = f'{dataset}{self.nbfiles_str}_{version}_{self.corpus_type}'
+        self.data_filename = f'{self.dataset}{self.nbfiles_str}_{version}_{self.corpus_type}'
         self.pat = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöü].*')
         self.dict_from_corpus = self._load_dict()
         self.corpus = self._load_corpus()

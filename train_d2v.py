@@ -3,6 +3,8 @@ from os import listdir, makedirs
 from os.path import isfile, join, exists
 import gc
 from time import time
+
+import numpy
 import pandas as pd
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from constants import ETL_PATH, SMPL_PATH, TOKEN, HASH, TEXT, EMB_PATH
@@ -129,3 +131,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+    numpy.random.randn()

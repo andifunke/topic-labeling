@@ -229,5 +229,6 @@ NETL/dataset
 NETL/model_run/output*
 /NETL
 /AnnotationMask
+/WikipediaPageRank
 *todo*
 

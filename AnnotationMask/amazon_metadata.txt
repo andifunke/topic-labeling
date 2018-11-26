@@ -1,8 +1,0 @@
-TITLE
-Labels bewerten (deutsche Sprache)
-
-DESCRIPTION
-Dieses Projekt richtet sich an Worker, die der deutschen Sprache mächtig sind. Für eine Liste von Wörtern werden verschiedene Oberbegriffe (Labels) angezeigt. Aufgabe ist es, diese Labels auf einer Skala von 0-3 zu bewerten.
-
-KEYWORDS
-deutsch deutsche Sprache bewertung labels

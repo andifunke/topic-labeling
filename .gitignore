@@ -227,4 +227,7 @@ NETL/dataset
 *_debug.py
 *Copy*
 NETL/model_run/output*
+/NETL
+/AnnotationMask
 *todo*
+

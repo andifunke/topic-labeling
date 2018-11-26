@@ -11,7 +11,7 @@ from gensim.matutils import kullback_leibler, hellinger, jaccard_distance, jense
 from gensim.models import LdaModel, CoherenceModel
 from gensim.models.callbacks import Metric
 
-from constants import ETL_PATH, DATASETS, NBTOPICS, PARAMS, LDA_PATH
+from constants import DATASETS, NBTOPICS, PARAMS, LDA_PATH
 from utils import init_logging, log_args
 
 np.set_printoptions(precision=3, threshold=11, formatter={'float': '{: 0.3f}'.format})
@@ -31,7 +31,7 @@ class EpochLogger(Metric):
     def get_value(self, **kwargs):
         if self.additional_logger is not None:
             self.additional_logger.info(
-                "----- {} ----- Epoch #{:02d} --- {} -----"
+                "--- {} --- Epoch #{:02d} --- {} ---"
                 .format(self.title, self.epoch, self.message)
             )
         self.epoch += 1
@@ -225,12 +225,14 @@ class DiffMetric(Metric):
 
 def init_callbacks(
         dataset, callback_logger, training_corpus, test_corpus, documents,
-        viz_env=None, title_suffix='', processes=-1
+        viz_env=None, title_suffix='', processes=-1,
+        version=None, param=None, nbtopics=None, tfidf=None,
 ):
     return [
         EpochLogger(
             title=dataset,
-            message='calculating metrics',
+            message=f'[{version}, {param}, {nbtopics}, {"tfidf" if tfidf else "bow"}]'
+                    f' calculating metrics',
             additional_logger=LOG
         ),
         PerplexityMetric(
@@ -266,7 +268,8 @@ def init_callbacks(
         ),
         EpochLogger(
             title=dataset,
-            message='epoch finished',
+            message=f'[{version}, {param}, {nbtopics}, {"tfidf" if tfidf else "bow"}]'
+                    f' epoch finished',
             additional_logger=LOG
         ),
     ]
@@ -303,8 +306,8 @@ def split_corpus(corpus, max_test_size_rel=0.1, max_test_size_abs=5000):
 
 
 def parse_args():
-    # --- arguments ---
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--version", type=str, required=False, default='default')
     parser.add_argument("--logger", type=str, required=False, default='shell')
@@ -320,41 +323,51 @@ def parse_args():
     parser.add_argument('--callbacks', dest='use_callbacks', action='store_true', required=False)
     parser.add_argument('--no-callbacks', dest='use_callbacks', action='store_false', required=False)
     parser.set_defaults(use_callbacks=True)
+    parser.add_argument('--tfidf', dest='tfidf', action='store_true', required=False)
+    parser.add_argument('--no-tfidf', dest='tfidf', action='store_false', required=False)
+    parser.set_defaults(tfidf=False)
 
     args = parser.parse_args()
+
     args.dataset = DATASETS.get(args.dataset, args.dataset)
+
     return (
         args.dataset, args.version, args.logger, args.params,
         args.nbtopics, args.nbfiles, args.epochs, args.cores,
-        args.cache_in_memory, args.use_callbacks, args
+        args.cache_in_memory, args.use_callbacks, args.tfidf, args
     )
 
 
 def main():
     global LOG
     (
-        dataset, version, cb_logger, param_ids,
+        dataset, version, cb_logger, params,
         nbs_topics, nbfiles, epochs, cores,
-        cache_in_memory, use_callbacks, args
+        cache_in_memory, use_callbacks, tfidf, args
     ) = parse_args()
 
-    nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles is not None else ''
+    directory = join(LDA_PATH, version)
+    file_name = f'{dataset}{nbfiles if nbfiles else ""}_{version}'
+
     LOG = init_logging(
-        name=f'{dataset}{nbfiles_str}_{version}', basic=False, to_stdout=True, to_file=True
+        name=file_name.replace('_', ' ') + '_params',
+        basic=False, to_stdout=True, to_file=True
     )
     log_args(LOG, args)
 
-    directory = join(LDA_PATH, version)
-    file_name = '{}{}_{}_{}'.format(dataset, nbfiles_str, version, 'bow')
+    if use_callbacks:
+        LOG.info('Loading texts')
+        file_path = join(directory, file_name + '_texts.json')
+        with open(file_path, 'r') as fp:
+            texts = json.load(fp)
+    else:
+        texts = []
+
+    file_name += f'_{"tfidf" if tfidf else "bow"}'
 
     LOG.info('Loading dictionary')
     file_path = join(directory, file_name + '.dict')
     dictionary = Dictionary.load(file_path)
-
-    LOG.info('Loading texts')
-    file_path = join(directory, file_name + '_texts.json')
-    with open(file_path, 'r') as fp:
-        texts = json.load(fp)
 
     LOG.info('Loading corpus')
     file_path = join(directory, file_name + '.mm')
@@ -376,7 +389,7 @@ def main():
     topn = 20
     model = 'LDAmodel'
     metrics = []
-    for params in param_ids:
+    for param in params:
         env_id = f"{dataset}-{model}"
         for nbtopics in nbs_topics:
             gc.collect()
@@ -388,7 +401,11 @@ def main():
                 documents=texts,
                 training_corpus=train,
                 test_corpus=test,
-                processes=cores
+                processes=cores,
+                version=version,
+                param=param,
+                nbtopics=nbtopics,
+                tfidf=tfidf
             )
             if not use_callbacks:
                 callbacks = callbacks[-1:]
@@ -397,26 +414,27 @@ def main():
                 dictionary,
                 callbacks=callbacks,
                 nbtopics=nbtopics,
-                parametrization=params,
+                parametrization=param,
                 epochs=epochs
             )
             LOG.info(
                 'Running {} "{}" with {} number of topics'
-                .format(model, params, nbtopics)
+                .format(model, param, nbtopics)
             )
             ldamodel = LdaModel(**kwargs)
             gc.collect()
 
-            model_dir = join(ETL_PATH, model, version, params)
+            model_dir = join(LDA_PATH, version, f'{param}{"_split" if use_callbacks else ""}')
             if not exists(model_dir):
                 makedirs(model_dir)
 
             model_name = join(
                 model_dir,
-                '{}{}_{}_{}_{}'.format(dataset, nbfiles_str, model, params, nbtopics)
+                f'{dataset}{nbfiles if nbfiles else ""}_LDAmodel_'
+                f'{param}{"_split" if use_callbacks else ""}_{nbtopics}'
             )
 
-            # save topics
+            # --- save topics ---
             topics = [
                 [dataset] +
                 [dictionary[term[0]] for term in ldamodel.get_topic_terms(i, topn=topn)]
@@ -426,7 +444,7 @@ def main():
             LOG.info('Saving topics to ' + model_name + '.csv')
             df_lda.to_csv(model_name + '.csv')
 
-            # save metrics
+            # --- save metrics ---
             current_metrics = ldamodel.metrics
             metrics.append(('env_id', current_metrics))
             with open(model_name + '_metrics.json', 'w') as fp:
@@ -441,7 +459,7 @@ def main():
                 LOG.info('Saving metrics to ' + model_name + '_metrics.json')
                 json.dump(serializable_metrics, fp)
 
-            # save model
+            # --- save model ---
             LOG.info('Saving LDAmodel to ' + model_name)
             ldamodel.callbacks = None
             ldamodel.save(model_name)

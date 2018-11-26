@@ -10,7 +10,7 @@ import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import TfidfModel
 
-from utils import init_logging
+from utils import init_logging, log_args
 from constants import (
     SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS,
     GOOD_IDS, NER, NPHRASE, VERB, ADJ, ADV, LDA_PATH
@@ -21,7 +21,11 @@ def docs_to_lists(token_series):
     return tuple(token_series.tolist())
 
 
-def texts2corpus(documents, tfidf=True, stopwords=None, filter_below=5, filter_above=0.5):
+def texts2corpus(
+        documents, tfidf=False, stopwords=None, filter_below=5, filter_above=0.5, log=print
+):
+    log(f'generating {"tfidf" if tfidf else "bow"} corpus and dictionary')
+
     dictionary = Dictionary(documents)
     dictionary.filter_extremes(no_below=filter_below, no_above=filter_above)
 
@@ -40,7 +44,7 @@ def texts2corpus(documents, tfidf=True, stopwords=None, filter_below=5, filter_a
     return corpus, dictionary
 
 
-def make_texts(dataset, nbfiles, pos_tags, logger):
+def make_texts(dataset, nbfiles, pos_tags, log=print):
     sub_dir = 'dewiki' if dataset.startswith('dewi') else 'wiki_phrases'
     dir_path = join(SMPL_PATH, sub_dir)
 
@@ -61,7 +65,7 @@ def make_texts(dataset, nbfiles, pos_tags, logger):
         goodids = pd.read_pickle(GOOD_IDS[dataset])
 
     if nbfiles is not None:
-        logger.info(f'processing {nbfiles} files')
+        log(f'processing {nbfiles} files')
 
     nb_words = 0
     texts = []
@@ -71,9 +75,9 @@ def make_texts(dataset, nbfiles, pos_tags, logger):
         if not isfile(full_path):
             continue
 
-        logger.info(f'reading {filename}')
+        log(f'reading {filename}')
         df = pd.read_pickle(join(dir_path, filename))
-        logger.info(f'    initial number of words: {len(df)}')
+        log(f'    initial number of words: {len(df)}')
         if goodids is not None:
             # some datasets have already been filtered so you may not see a difference in any case
             df = df[df.hash.isin(goodids.index)]
@@ -88,12 +92,12 @@ def make_texts(dataset, nbfiles, pos_tags, logger):
         df = df[df.token.str.len() > 1]
         df = df[~df.token.isin(BAD_TOKENS)]
         nb_words += len(df)
-        logger.info(f'    remaining number of words: {len(df)}')
+        log(f'    remaining number of words: {len(df)}')
 
         # groupby sorts the documents by hash-id
         # which is equal to shuffeling the dataset before building the model
         df = df.groupby([HASH])[TOKEN].agg(docs_to_lists)
-        logger.info(f'    number of documents: {len(df)}')
+        log(f'    number of documents: {len(df)}')
         texts += df.values.tolist()
 
     # re-shuffle documents
@@ -103,24 +107,28 @@ def make_texts(dataset, nbfiles, pos_tags, logger):
         nbfiles = min(nbfiles, len(files))
 
     nb_docs = len(texts)
-    logger.info(f'total number of documents: {nb_docs}')
-    logger.info(f'total number of words: {nb_words}')
+    log(f'total number of documents: {nb_docs}')
+    log(f'total number of words: {nb_words}')
     stats = dict(dataset=dataset, pos_set=sorted(pos_tags), nb_docs=nb_docs, nb_words=nb_words)
     return texts, stats, nbfiles
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--version", type=str, required=False, default='default')
     parser.add_argument("--nbfiles", type=int, required=False, default=None)
     parser.add_argument("--pos_tags", nargs='*', type=str, required=False)
-    parser.add_argument('--use_tfidf', dest='use_tfidf', action='store_true', required=False)
-    parser.add_argument('--no-use_tfidf', dest='use_tfidf', action='store_false', required=False)
-    parser.set_defaults(use_tfidf=False)
+
+    parser.add_argument('--tfidf', dest='tfidf', action='store_true', required=False)
+    parser.add_argument('--no-tfidf', dest='tfidf', action='store_false', required=False)
+    parser.set_defaults(tfidf=False)
+
     args = parser.parse_args()
 
     args.dataset = DATASETS.get(args.dataset, args.dataset)
+
     if args.pos_tags is None:
         if args.version == 'noun':
             args.pos_tags = [NOUN, PROPN, NER, NPHRASE]
@@ -132,54 +140,58 @@ def parse_args():
             args.pos_tags = [NOUN, PROPN, NER, NPHRASE]
     args.pos_tags = set(args.pos_tags)
 
-    return args.dataset, args.version, args.nbfiles, args.pos_tags, args.use_tfidf
+    return args.dataset, args.version, args.nbfiles, args.pos_tags, args.tfidf, args
 
 
 def main():
-    dataset, version, nbfiles, pos_tags, use_tfidf = parse_args()
+    dataset, version, nbfiles, pos_tags, tfidf, args = parse_args()
 
     logger = init_logging(
         name=dataset, basic=False, to_stdout=True, to_file=True, log_file=f'MM_{dataset}.log'
     )
-    logger.info(dataset)
-    logger.info(f'version {version}')
-    logger.info(f'nbfiles {nbfiles}')
-    logger.info(f'use_tfidf {use_tfidf}')
-    logger.info(pos_tags)
+    log_args(logger, args)
 
-    texts, stats, nbfiles = make_texts(dataset, nbfiles, pos_tags, logger)
+    def log(msg):
+        if logger:
+            logger.info(msg)
+        else:
+            print(msg)
+
+    texts, stats, nbfiles = make_texts(dataset, nbfiles, pos_tags, log=log)
     gc.collect()
 
-    # generate and save the dataset as bow or tfidf corpus in Matrix Market format,
-    # including dictionary, texts (json) and some stats about corpus size (json)
-    corpus, dictionary = texts2corpus(texts, tfidf=use_tfidf, filter_below=5, filter_above=0.5)
-
-    # --- saving data ---
+    file_name = f'{dataset}{nbfiles if nbfiles else ""}_{version}'
     directory = join(LDA_PATH, version)
     if not exists(directory):
         makedirs(directory)
 
-    corpus_str = 'tfidf' if use_tfidf else 'bow'
-    nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles else ''
-    file_name = f'{dataset}{nbfiles_str}_{version}_{corpus_str}'
-
-    file_path = join(directory, f'{file_name}.mm')
-    logger.info(f'Saving {file_path}')
-    MmCorpus.serialize(file_path, corpus)
-
-    file_path = join(directory, f'{file_name}.dict')
-    logger.info(f'Saving {file_path}')
-    dictionary.save(file_path)
-
+    # --- saving texts ---
     file_path = join(directory, f'{file_name}_texts.json')
-    logger.info(f'Saving {file_path}')
+    log(f'Saving {file_path}')
     with open(file_path, 'w') as fp:
         json.dump(texts, fp, ensure_ascii=False)
 
+    # --- saving stats ---
     file_path = join(directory, f'{file_name}_stats.json')
-    logger.info(f'Saving {file_path}')
+    log(f'Saving {file_path}')
     with open(file_path, 'w') as fp:
         json.dump(stats, fp)
+
+    # generate and save the dataset as bow or tfidf corpus in Matrix Market format,
+    # including dictionary, texts (json) and some stats about corpus size (json)
+    corpus, dictionary = texts2corpus(texts, tfidf=tfidf, filter_below=5, filter_above=0.5, log=log)
+
+    file_name += f'_{"tfidf" if tfidf else "bow"}'
+
+    # --- saving corpus ---
+    file_path = join(directory, f'{file_name}.mm')
+    log(f'Saving {file_path}')
+    MmCorpus.serialize(file_path, corpus)
+
+    # --- saving dictionary ---
+    file_path = join(directory, f'{file_name}.dict')
+    log(f'Saving {file_path}')
+    dictionary.save(file_path)
 
 
 if __name__ == '__main__':

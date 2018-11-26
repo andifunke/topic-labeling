@@ -101,32 +101,33 @@ NOUN_PHRASE = 'noun_phrase'
 
 ### --- for LDA modeling
 
+# available datasets (unique)
 DATASETS = {
+    'dewac': 'dewac',
+    'dewac1': 'dewac1',
+    'dewiki': 'dewiki',
     'E': 'Europarl',
     'FA': 'FAZ',
     'FO': 'FOCUS',
+    'N': 'news',
     'O': 'OnlineParticipation',
     'P': 'PoliticalSpeeches',
-    'dewi': 'dewiki',
-    'dewa': 'dewac',
-    'dewa1': 'dewac_nbfiles01',
-    'F': 'news',
     'S': 'speeches',
 }
-# TODO: add the following keys to DATASETS, but needs testing if that would break anything.
-DATASETS_X = DATASETS.copy()
-DATASETS_X.update({
+# additional keys for available datasets
+DSETS = DATASETS.copy()
+DSETS.update({
+    'dewi': 'dewiki',
+    'dewa': 'dewac',
+    'dewa1': 'dewac1',
     'e': 'Europarl',
     'fa': 'FAZ',
     'fo': 'FOCUS',
     'o': 'OnlineParticipation',
     'p': 'PoliticalSpeeches',
-    'dewiki': 'dewiki',
-    'dewac1': 'dewac_nbfiles01',
-    'wikt': 'wiktionary',
-    'f': 'news',
     'n': 'news',
-    'N': 'news',
+    'f': 'news',
+    'F': 'news',
     's': 'speeches',
 })
 

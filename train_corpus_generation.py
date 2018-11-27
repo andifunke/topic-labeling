@@ -146,16 +146,11 @@ def parse_args():
 def main():
     dataset, version, nbfiles, pos_tags, tfidf, args = parse_args()
 
-    logger = init_logging(
-        name=dataset, basic=False, to_stdout=True, to_file=True, log_file=f'MM_{dataset}.log'
-    )
-    log_args(logger, args)
+    _tfidf_ = "tfidf" if tfidf else "bow"
 
-    def log(msg):
-        if logger:
-            logger.info(msg)
-        else:
-            print(msg)
+    logger = init_logging(name=f'MM_{dataset}_{_tfidf_}', basic=False, to_stdout=True, to_file=True)
+    log = logger.info if logger else print
+    log_args(logger, args)
 
     texts, stats, nbfiles = make_texts(dataset, nbfiles, pos_tags, log=log)
     gc.collect()
@@ -181,7 +176,8 @@ def main():
     # including dictionary, texts (json) and some stats about corpus size (json)
     corpus, dictionary = texts2corpus(texts, tfidf=tfidf, filter_below=5, filter_above=0.5, log=log)
 
-    file_name += f'_{"tfidf" if tfidf else "bow"}'
+    file_name += f'_{_tfidf_}'
+    directory = join(directory, _tfidf_)
 
     # --- saving corpus ---
     file_path = join(directory, f'{file_name}.mm')

@@ -36,7 +36,7 @@ PS = None
 LOG_FUNC = print
 
 
-def log(msg):
+def logg(msg):
     LOG_FUNC(msg)
 
 
@@ -183,7 +183,7 @@ def insert_wikipedia_phrases(df):
 
 
 def process_subset(df):
-    log("extracting spacy NER")
+    logg("extracting spacy NER")
     # phrases have an ent-index > 0 and we don't care about whitespace
     df_ent = df.query('ent_idx > 0 & POS != "SPACE"')
     df_ent = (
@@ -201,10 +201,10 @@ def process_subset(df):
             ENT_TYPE: "category"
         })
     )
-    log('collect: %d' % gc.collect())
-    log(memstr())
+    logg('collect: %d' % gc.collect())
+    logg(memstr())
 
-    log("extracting spacy noun chunks")
+    logg("extracting spacy noun chunks")
     df_np = df.query('noun_phrase > 0 & POS not in ["SPACE", "NUM", "DET", "SYM"]')
     df_np = (
         df_np[df_np.groupby(NOUN_PHRASE).noun_phrase.transform(len) > 1]
@@ -220,14 +220,14 @@ def process_subset(df):
             ENT_TYPE: "category"
         })
     )
-    log('collect: %d' % gc.collect())
-    log(memstr())
+    logg('collect: %d' % gc.collect())
+    logg(memstr())
 
-    log("intersecting both extraction methods")
+    logg("intersecting both extraction methods")
     df_phrases = df_ent.append(df_np)
     del df_ent, df_np
-    log('collect: %d' % gc.collect())
-    log(memstr())
+    logg('collect: %d' % gc.collect())
+    logg(memstr())
 
     mask = df_phrases.duplicated([HASH, SENT_IDX, TOK_IDX])
     df_phrases = df_phrases[mask]
@@ -235,7 +235,7 @@ def process_subset(df):
     df_phrases['tok_set'] = df_phrases[TOK_IDX]
     df_phrases[TOK_IDX] = df_phrases[TOK_IDX].apply(lambda x: x[0])
 
-    log("extracting streets")
+    logg("extracting streets")
     df_loc = (
         df
         .loc[(df[ENT_IDX] > 0) & (df.POS != SPACE)]
@@ -255,17 +255,17 @@ def process_subset(df):
             ENT_TYPE: "category"
         })
     )
-    log('collect: %d' % gc.collect())
-    log(memstr())
+    logg('collect: %d' % gc.collect())
+    logg(memstr())
 
-    log("insert phrases to original tokens")
+    logg("insert phrases to original tokens")
     df_glued = insert_phrases(df, df_phrases)
     del df_phrases, df
-    log("insert locations / streets")
+    logg("insert locations / streets")
     df_glued = insert_phrases(df_glued, df_loc)
     del df_loc
-    log('collect: %d' % gc.collect())
-    log(memstr())
+    logg('collect: %d' % gc.collect())
+    logg(memstr())
 
     # simplify dataframe and store
     df_glued = (
@@ -278,13 +278,13 @@ def process_subset(df):
             TOK_IDX: np.int32,
         })
     )
-    log('collect: %d' % gc.collect())
-    log(memstr())
+    logg('collect: %d' % gc.collect())
+    logg(memstr())
 
-    log("insert wikipedia phrases")
+    logg("insert wikipedia phrases")
     df_glued = insert_wikipedia_phrases(df_glued)
-    log('collect: %d' % gc.collect())
-    log(memstr())
+    logg('collect: %d' % gc.collect())
+    logg(memstr())
     return df_glued
 
 
@@ -292,9 +292,9 @@ def main(corpus, batch_size=None):
     t0 = time()
 
     fpath = join(NLP_PATH, corpus + '_nlp.pickle')
-    log("reading from " + fpath)
+    logg("reading from " + fpath)
     df_main = pd.read_pickle(fpath)
-    log(memstr())
+    logg(memstr())
 
     if corpus.startswith('dewac'):
         df_main = preprocess_dewac(df_main)
@@ -317,17 +317,17 @@ def main(corpus, batch_size=None):
         # process and save in batches of size batch_size if batch_size is not None
         # or if the last document is reached
         if (batch_size is not None and (i % batch_size == 0)) or (i == length):
-            log('process {:d}:{:d}'.format(last_cnt, i))
+            logg('process {:d}:{:d}'.format(last_cnt, i))
             df_glued = process_subset(pd.concat(groups_tmp))
             write_path = join(SMPL_PATH, corpus + '__{:d}_simple.pickle'.format(i))
-            log(memstr())
-            log('collect: %d' % gc.collect())
-            log(memstr())
+            logg(memstr())
+            logg('collect: %d' % gc.collect())
+            logg(memstr())
 
-            log("writing to " + write_path)
+            logg("writing to " + write_path)
             df_glued.to_pickle(write_path)
             t_b = int(time() - t_a)
-            log("subset done in {:02d}:{:02d}:{:02d}".format(t_b//3600, (t_b//60) % 60, t_b % 60))
+            logg("subset done in {:02d}:{:02d}:{:02d}".format(t_b//3600, (t_b//60) % 60, t_b % 60))
 
             # reset
             t_a = time()
@@ -335,7 +335,7 @@ def main(corpus, batch_size=None):
             last_cnt = i+1
 
     t1 = int(time() - t0)
-    log("done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
+    logg("done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
 
 
 if __name__ == "__main__":
@@ -360,4 +360,4 @@ if __name__ == "__main__":
         main(corpus_name, batch_size=10000)
 
     t_1 = int(time() - t_0)
-    log("all done in {:02d}:{:02d}:{:02d}".format(t_1//3600, (t_1//60) % 60, t_1 % 60))
+    logg("all done in {:02d}:{:02d}:{:02d}".format(t_1//3600, (t_1//60) % 60, t_1 % 60))

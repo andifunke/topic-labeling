@@ -1,4 +1,5 @@
 import gc
+from itertools import chain
 from os import makedirs
 from os.path import join, exists
 import json
@@ -15,44 +16,44 @@ from constants import DATASETS, NBTOPICS, PARAMS, LDA_PATH
 from utils import init_logging, log_args
 
 np.set_printoptions(precision=3, threshold=11, formatter={'float': '{: 0.3f}'.format})
-LOG = None
+LOGG = None
 
 
 class EpochLogger(Metric):
     """Callback to log information about training"""
-    def __init__(self, title=None, message='', log=None):
+    def __init__(self, title=None, message='', logg=None):
         self.logger = None
         self.viz_env = None
         self.title = title
         self.message = message
         self.epoch = 1
-        self.log = log
+        self.logg = logg
 
     def get_value(self, **kwargs):
-        if self.log is not None:
-            self.log(f"--- {self.title} --- Epoch #{self.epoch:02d} --- {self.message} ---")
+        if self.logg is not None:
+            self.logg(f"--- {self.title} --- Epoch #{self.epoch:02d} --- {self.message} ---")
         self.epoch += 1
         gc.collect()
 
 
 class PerplexityMetric(Metric):
     """Metric class for perplexity evaluation."""
-    def __init__(self, corpus=None, logger=None, viz_env=None, title=None, log=None):
+    def __init__(self, corpus=None, logger=None, viz_env=None, title=None, logg=None):
         self.corpus = corpus
         self.logger = logger
         self.viz_env = viz_env
         self.title = title
-        self.log = log
+        self.logg = logg
 
     def get_value(self, **kwargs):
         super(PerplexityMetric, self).set_parameters(**kwargs)
-        if self.log is not None:
-            self.log('  %s' % self.title)
+        if self.logg is not None:
+            self.logg('  %s' % self.title)
         corpus_words = sum(cnt for document in self.corpus for _, cnt in document)
         perwordbound = self.model.bound(self.corpus) / corpus_words
         value = np.exp2(-perwordbound)
-        if self.log is not None:
-            self.log('    %r' % value)
+        if self.logg is not None:
+            self.logg('    %r' % value)
         return value
 
 
@@ -61,7 +62,7 @@ class CoherenceMetric(Metric):
     def __init__(
             self, corpus=None, texts=None, dictionary=None, coherence=None,
             window_size=None, topn=10, logger=None, viz_env=None, title=None,
-            log=None, processes=-1
+            logg=None, processes=-1
     ):
         self.corpus = corpus
         self.dictionary = dictionary
@@ -75,20 +76,20 @@ class CoherenceMetric(Metric):
         self.model = None
         self.topics = None
         self.processes = processes
-        self.log = log
+        self.logg = logg
 
     def get_value(self, **kwargs):
         super(CoherenceMetric, self).set_parameters(**kwargs)
-        if self.log is not None:
-            self.log('  %s' % self.title)
+        if self.logg is not None:
+            self.logg('  %s' % self.title)
         cm = CoherenceModel(
             model=self.model, topics=self.topics, texts=self.texts, corpus=self.corpus,
             dictionary=self.dictionary, window_size=self.window_size,
             coherence=self.coherence, topn=self.topn, processes=self.processes
         )
         value = cm.get_coherence()
-        if self.log is not None:
-            self.log('    %r' % value)
+        if self.logg is not None:
+            self.logg('    %r' % value)
         return value
 
 
@@ -97,7 +98,7 @@ class DiffMetric(Metric):
     def __init__(
             self, distance="jaccard", num_words=100, n_ann_terms=10, diagonal=True,
             annotation=False, normed=True, logger=None, viz_env=None, title=None,
-            convergence=False, log=None
+            convergence=False, logg=None
     ):
         self.distance = distance
         self.num_words = num_words
@@ -110,15 +111,15 @@ class DiffMetric(Metric):
         self.title = title
 
         self.convergence = convergence
-        self.log = log
+        self.logg = logg
 
         self.prev_get_topics = None
         self.prev_topics = None
 
     def get_value(self, **kwargs):
         super(DiffMetric, self).set_parameters(**kwargs)
-        if self.log is not None:
-            self.log('  %s' % self.title)
+        if self.logg is not None:
+            self.logg('  %s' % self.title)
         diff_diagonal, _ = self.diff(
             self.distance, self.num_words, self.n_ann_terms,
             self.diagonal, self.annotation, self.normed
@@ -127,11 +128,11 @@ class DiffMetric(Metric):
             value = np.sum(diff_diagonal)
         else:
             value = diff_diagonal
-        if self.log is not None:
+        if self.logg is not None:
             if isinstance(value, np.ndarray):
-                self.log('    %r' % value[:5])
+                self.logg('    %r' % value[:5])
             else:
-                self.log('    %s' % value)
+                self.logg('    %s' % value)
 
         self.set_prev_topics()
         return value
@@ -226,44 +227,44 @@ def init_callbacks(
             title=dataset,
             message=f'[{version}, {param}, {nbtopics}, {tfidf}]'
                     f' calculating metrics',
-            log=LOG
+            logg=LOGG
         ),
         PerplexityMetric(
             corpus=test_corpus,
             logger=callback_logger, viz_env=viz_env,
             title="Perplexity (test)" + title_suffix,
-            log=LOG
+            logg=LOGG
         ),
         CoherenceMetric(
             corpus=training_corpus, coherence="u_mass", topn=10,
             logger=callback_logger, viz_env=viz_env,
             title="Coherence (u_mass)" + title_suffix,
-            log=LOG, processes=processes
+            logg=LOGG, processes=processes
         ),
         CoherenceMetric(
             corpus=training_corpus, texts=documents, coherence="c_v", topn=10,
             logger=callback_logger, viz_env=viz_env,
             title="Coherence (c_v)" + title_suffix,
-            log=LOG, processes=processes
+            logg=LOGG, processes=processes
         ),
         DiffMetric(
             distance="kullback_leibler",
             logger=callback_logger, viz_env=viz_env,
             title="Diff (kullback_leibler)" + title_suffix,
-            log=LOG
+            logg=LOGG
         ),
         DiffMetric(
             distance="jaccard",
             logger=callback_logger, viz_env=viz_env,
             title="Convergence (jaccard)" + title_suffix,
             convergence=True,
-            log=LOG
+            logg=LOGG
         ),
         EpochLogger(
             title=dataset,
             message=f'[{version}, {param}, {nbtopics}, {tfidf}]'
                     f' epoch finished',
-            log=LOG
+            logg=LOGG
         ),
     ]
 
@@ -330,7 +331,7 @@ def parse_args():
 
 
 def main():
-    global LOG
+    global LOGG
 
     # --- arguments ---
     (
@@ -350,12 +351,12 @@ def main():
         name=f'LDA_{data_name}_{_tfidf_}{_split_}_ep{epochs}',
         basic=False, to_stdout=True, to_file=True
     )
-    LOG = logger.info
+    LOGG = logger.info
     log_args(logger, args)
 
     # --- load texts ---
     if use_callbacks:
-        LOG('Loading texts')
+        LOGG('Loading texts')
         file_path = join(data_dir, f'{data_name}_texts.json')
         with open(file_path, 'r') as fp:
             texts = json.load(fp)
@@ -366,22 +367,22 @@ def main():
     data_name = f'{data_name}_{_tfidf_}'
 
     # --- load dict ---
-    LOG('Loading dictionary')
+    LOGG('Loading dictionary')
     file_path = join(data_dir, f'{data_name}.dict')
     dictionary = Dictionary.load(file_path)
 
     # --- load corpus ---
-    LOG('Loading corpus')
+    LOGG('Loading corpus')
     file_path = join(data_dir, f'{data_name}.mm')
     corpus = MmCorpus(file_path)
     if cache_in_memory:
-        LOG('Reading corpus into RAM')
+        LOGG('Reading corpus into RAM')
         corpus = list(corpus)
     if use_callbacks:
         train, test = split_corpus(corpus)
     else:
         train, test = corpus, []
-    LOG(f'size of... train_set={len(train)}, test_set={len(test)}')
+    LOGG(f'size of... train_set={len(train)}, test_set={len(test)}')
 
     # --- enable visdom ---
     vis = None
@@ -391,13 +392,13 @@ def main():
 
     # --- train ---
     topn = 20
+    columns = [f'term{x}' for x in range(topn)] + [f'weight{x}' for x in range(topn)]
     metrics = []
     for param in params:
         env_id = f"{dataset}-{model_class}"
         for nbtopics in nbs_topics:
             gc.collect()
 
-            LOG('Initializing Callbacks')
             callbacks = init_callbacks(
                 dataset=dataset,
                 callback_logger=cb_logger,
@@ -412,6 +413,8 @@ def main():
             )
             if not use_callbacks:
                 callbacks = callbacks[-1:]
+            else:
+                LOGG('Initializing Callbacks')
 
             kwargs = get_parameterset(
                 train,
@@ -422,29 +425,26 @@ def main():
                 epochs=epochs
             )
 
-            LOG(f'Running {model_class} {_tfidf_} "{param}{_split_}" with {nbtopics} topics')
-            ldamodel = LdaModel(**kwargs)
+            LOGG(f'Running {model_class} {_tfidf_} "{param}{_split_}" with {nbtopics} topics')
+            model = LdaModel(**kwargs)
             gc.collect()
 
             model_dir = join(data_dir, f'{param}{_split_}')
-            model_name = join(model_dir, f'{dataset}_LDAmodel_{param}{_split_}_{nbtopics}_ep{epochs}')
+            model_path = join(model_dir, f'{dataset}_LDAmodel_{param}{_split_}_{nbtopics}_ep{epochs}_X')
             if not exists(model_dir):
                 makedirs(model_dir)
 
             # --- save topics ---
-            topics = [
-                [dataset] +
-                [dictionary[term[0]] for term in ldamodel.get_topic_terms(i, topn=topn)]
-                for i in range(nbtopics)
-            ]
-            df_lda = pd.DataFrame(topics, columns=['dataset'] + ['term' + str(i) for i in range(topn)])
-            LOG(f'Saving topics to {model_name}.csv')
-            df_lda.to_csv(f'{model_name}.csv')
+            topics = model.show_topics(num_topics=-1, num_words=topn, formatted=False)
+            topics = [list(chain(*zip(*topic[1]))) for topic in topics]
+            topics = pd.DataFrame(topics, columns=columns)
+            LOGG(f'Saving topics to {model_path}.csv')
+            topics.to_csv(f'{model_path}.csv')
 
             # --- save metrics ---
-            current_metrics = ldamodel.metrics
+            current_metrics = model.metrics
             metrics.append(('env_id', current_metrics))
-            with open(f'{model_name}_metrics.json', 'w') as fp:
+            with open(f'{model_path}_metrics.json', 'w') as fp:
                 serializable_metrics = {}
                 for k, v in current_metrics.items():
                     if k == dataset:
@@ -453,13 +453,13 @@ def main():
                         serializable_metrics[k] = [x.tolist() for x in v]
                     else:
                         serializable_metrics[k] = [float(x) for x in v]
-                LOG(f'Saving metrics to {model_name}_metrics.json')
+                LOGG(f'Saving metrics to {model_path}_metrics.json')
                 json.dump(serializable_metrics, fp)
 
             # --- save model ---
-            LOG(f'Saving LDAmodel to {model_name}')
-            ldamodel.callbacks = None
-            ldamodel.save(model_name)
+            LOGG(f'Saving LDAmodel to {model_path}')
+            model.callbacks = None
+            model.save(model_path)
 
             # --- save visdom environment ---
             if vis is not None:
@@ -468,7 +468,7 @@ def main():
             gc.collect()
 
     # --- done ---
-    LOG(
+    LOGG(
         f'\n'
         f'----- end -----\n'
         f'----- {dataset.upper()} -----\n'

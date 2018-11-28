@@ -21,6 +21,7 @@ TMP_PATH  = join(DATA_BASE, tmp_base)
 SPCY_PATH = join(NLP_PATH, 'spacy_model')
 VOC_PATH  = join(SPCY_PATH, 'vocab')
 LDA_PATH  = join(ETL_PATH, 'LDAmodel')
+LSI_PATH  = join(ETL_PATH, 'LSImodel')
 EMB_PATH  = join(ETL_PATH, 'embeddings')
 TPX_PATH  = join(LDA_PATH, 'noun', 'topics')
 
@@ -165,6 +166,8 @@ BAD_TOKENS_DICT = {
     ],
 }
 BAD_TOKENS = set(chain(*BAD_TOKENS_DICT.values()))
+PLACEHOLDER = '[[PLACEHOLDER]]'
+
 
 """
  list of tokens to ignore when at the beginning of a phrase

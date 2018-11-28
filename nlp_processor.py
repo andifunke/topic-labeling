@@ -11,7 +11,7 @@ from constants import (
     VOC_PATH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX,
     TOKEN, SENT_IDX, HASH, NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, TITLE, DESCR, ETL_PATH
 )
-from lemmatizer_plus import LemmatizerPlus
+from nlp_lemmatizer_plus import LemmatizerPlus
 from utils import tprint
 
 FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
@@ -19,44 +19,41 @@ FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE,
 
 class NLPProcessor(object):
 
-    def __init__(self, spacy_path, lemmatizer_path='../data/IWNLP.Lemmatizer_20170501.json', log=None):
-        if log is not None:
-            self.log = log
-        else:
-            self.log = print
+    def __init__(self, spacy_path, lemmatizer_path='../data/IWNLP.Lemmatizer_20170501.json', logg=None):
+        self.logg = logg if logg else print
 
         # ------ load spacy and iwnlp ------
-        log("loading spacy")
+        logg("loading spacy")
         self.nlp = spacy.load(spacy_path)  # <-- load with dependency parser (slower)
         # nlp = spacy.load(de, disable=['parser'])
 
         if exists(VOC_PATH):
-            log("reading vocab from " + VOC_PATH)
+            logg("reading vocab from " + VOC_PATH)
             self.nlp.vocab.from_disk(VOC_PATH)
 
-        log("loading IWNLPWrapper")
+        logg("loading IWNLPWrapper")
         self.lemmatizer = LemmatizerPlus(lemmatizer_path, self.nlp)
         self.nlp.add_pipe(self.lemmatizer)
         self.stringstore = self.nlp.vocab.strings
 
     def read_process_store(self, file_path, corpus_name, store=True, vocab_to_disk=False,
                            start=0, stop=None, **kwargs):
-        log = self.log
-        log("*** start new corpus: " + corpus_name)
+        logg = self.logg
+        logg("*** start new corpus: " + corpus_name)
         t0 = time()
 
         # read the etl dataframe
         slicing = "[{:d}:{:d}]".format(start, stop) if (start or stop) else ''
-        log("{}: reading corpus{} from {}".format(corpus_name, slicing, file_path))
+        logg("{}: reading corpus{} from {}".format(corpus_name, slicing, file_path))
         df = self.read(file_path, start=start, stop=stop)
 
-        log('collect: %d' % gc.collect())
+        logg('collect: %d' % gc.collect())
 
         # start the nlp pipeline
-        log(corpus_name + ": start processing")
+        logg(corpus_name + ": start processing")
         # self.check_docs(df); return
         df = self.process_docs(df)
-        log('collect: %d' % gc.collect())
+        logg('collect: %d' % gc.collect())
 
         if kwargs.get('print', False):
             # print dataframe
@@ -70,13 +67,13 @@ class NLPProcessor(object):
             self.store(corpus_name, df, suffix=suffix)
         if vocab_to_disk:
             # stored with each corpus, in case anythings goes wrong
-            log("writing spacy vocab to disk: " + VOC_PATH)
+            logg("writing spacy vocab to disk: " + VOC_PATH)
             # self.nlp.to_disk(SPACY_PATH)
             makedirs(VOC_PATH, exist_ok=True)
             self.nlp.vocab.to_disk(VOC_PATH)
 
         t1 = int(time() - t0)
-        log("{:s}: done in {:02d}:{:02d}:{:02d}".format(corpus_name, t1//3600, (t1//60) % 60, t1 % 60))
+        logg("{:s}: done in {:02d}:{:02d}:{:02d}".format(corpus_name, t1//3600, (t1//60) % 60, t1 % 60))
 
     def check_docs(self, text_df):
         for i, kv in enumerate(text_df.itertuples()):
@@ -98,7 +95,7 @@ class NLPProcessor(object):
             # log progress
             if i % percent == 0:
                 if i > 0:
-                    self.log("  {:d}%: {:d} documents processed".format(done, i))
+                    self.logg("  {:d}%: {:d} documents processed".format(done, i))
                 done += step_len
 
             key, title, descr, text = kv
@@ -128,7 +125,7 @@ class NLPProcessor(object):
         """returns the file path where the dataframe was stores"""
         makedirs(NLP_PATH, exist_ok=True)
         fname = join(NLP_PATH, corpus + suffix + '.pickle')
-        self.log(corpus + ': saving to ' + fname)
+        self.logg(corpus + ': saving to ' + fname)
         df.to_pickle(fname)
 
     def read(self, f, start=0, stop=None):
@@ -138,7 +135,7 @@ class NLPProcessor(object):
         if 'dewiki' in f:
             goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
             df = df[df.index.isin(goodids.index)]
-        self.log('using {:d} documents'.format(len(df)))
+        self.logg('using {:d} documents'.format(len(df)))
         return df.copy()
 
     @staticmethod

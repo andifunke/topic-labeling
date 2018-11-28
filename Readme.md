@@ -41,18 +41,18 @@ Pipeline persist their results and make them available for the succeeding pipeli
 
 ###### Information
 
-- [Overview.ipynb](Overview.ipynb):<br>
+- [overview_project.ipynb](overview_project.ipynb):<br>
 an early overview of the project. This notebook is fairly outdated, though.
 
-- [Stats.ipynb](Stats.ipynb):<br>
+- [overview_stats.ipynb](overview_stats.ipynb):<br>
 statistics about the datasets. Somewhat outdated.
 
-- [Dewiki_dataset_overview.ipynb](Dewiki_dataset_overview.ipynb):<br>
+- [overview_dewiki.ipynb](overview_dewiki.ipynb):<br>
 an overview over the different corpus-files and stages of processing for the **dewiki** dataset. 
 Is also informative for other datasets. The **dewiki** dataset is however usually more complex than
 other datasets.
 
-- [NETL_annotation_dataset.ipynb](NETL_annotation_dataset.ipynb):<br>
+- [overview_netl.ipynb](overview_netl.ipynb):<br>
 provides an overview over the labeling methods and gold standard datasets from Lau et.al. (2011) and
 Bhatia et.al (2016). This serves just a reference.
 
@@ -78,12 +78,12 @@ merely due to alphabetical reasons.
 
 ###### ETL-pipeline
 
-- [ETL_pipeline.ipynb](ETL_pipeline.ipynb):<br>
+- [etl_pipeline.ipynb](etl_pipeline.ipynb):<br>
 converts the raw datasets (e.g. crawled feeds) to the common data scheme. Adds unique document ids.
 Does not contain extraction methods for Wikipedia \[&rarr; refer to etl_wikipedia.py\]. It is desirable
 to replace this notebook with a standard python script.
 
-- [Wikipedia_ETL_addon.ipynb](Wikipedia_ETL_addon.ipynb):<br>
+- [etl_wikipedia_addon.ipynb](etl_wikipedia_addon.ipynb):<br>
 converts results from wiki-extractor to the common data scheme.
 
 - [etl_wikipedia.py](etl_wikipedia.py):<br>
@@ -102,8 +102,14 @@ improved.
 - [nlp_processor.py](nlp_processor.py):<br>
 main class for the nlp-pipeline.
 
-- [lemmatizer_plus.py](lemmatizer_plus.py):<br>
+- [nlp_lemmatizer_plus.py](nlp_lemmatizer_plus.py):<br>
 offers additional features esp. for compound nouns.
+
+- [nlp_lemmatization_map.ipynb](nlp_lemmatization_map.ipynb):<br>
+creates a mapping from lemmatized to unlemmatized tokens. This is especially important for
+phrases which are handled as single tokens. Lemmatized phrases tend to have grammatically incorrect
+properties. Also creates a lemmatization map for Wiktionary terms. This helps to evaluate the quality
+of topics.
 
 ###### PHRASE-pipeline
 
@@ -122,25 +128,20 @@ same as notebook."
 
 ###### Other
 
-- [train_corpus_generation.py](train_corpus_generation.py):<br>
+- [preprocessing_corpus_generation.py](preprocessing_corpus_generation.py):<br>
 converts a dataset to a bow or optional tf-idf representation and serializes it to the Matrix Market 
 format. Also creates a gensim dictionary and additionally raw texts for LDA training. Specify the POS 
 tags a training corpus should consist of (defaults to NOUN, PROPN, NER and NOUN PHRASE).
 
-- [Reimplementing_NETL_preprocessing.ipynb](Reimplementing_NETL_preprocessing.ipynb):<br>
+- [preprocessing_netl.ipynb](preprocessing_netl.ipynb):<br>
 adapts the NETL preprocessing steps to the common data scheme. These adaptions are already incorporated
 into the train_w2v|d2v.py scripts, making this notebook obsolete.
 
-- [Snippets.ipynb](Snippets.ipynb):<br>
+- [preprocessing_snippets.ipynb](preprocessing_snippets.ipynb):<br>
 contains numerous small steps and fixes in the preprocessing pipeline. Has grown too large and has become
 somewhat convoluted. Certainly needs an overhaul and some more refactoring into the official pipeline.
 Most important feature is the detection and removal of inappropriate documents.
 
-- [Lemmatization_map.ipynb](Lemmatization_map.ipynb):<br>
-creates a mapping from lemmatized to unlemmatized tokens. This is especially important for
-phrases which are handled as single tokens. Lemmatized phrases tend to have grammatically incorrect
-properties. Also creates a lemmatization map for Wiktionary terms. This helps to evaluate the quality
-of topics.
 
 #### Training:
 
@@ -155,13 +156,16 @@ trains word embeddings from Wikipedia articles. Supports word2vec and fastText.
 - [train_utils.py](train_utils.py):<br>
 provides argument parsing and callback classes for word embedding inference.
 
-###### LDA
+###### Topic modeling
 
 - [train_lda.py](train_lda.py):<br>
 trains LDA models from datasets. Corpora have to be provided in Matrix Market format (bow or tf-idf) 
 with an affiliated dictionary. Training can be observed via several callback metrics. For perplexity
 evaluation a hold out set will be split from the corpus. For window based coherence metrics the corpus
 has also be provided in plain text format.
+
+- [train_lsi.py](train_lsi.py):<br>
+additional LSI model training. Takes data in identical format to the LDA model.
 
 ###### Topic reranking
 
@@ -171,39 +175,39 @@ of a topic (where M < N and usually M = 10, N = 20). Improves human interpretabi
 and eases label generation due to a reduced number of outlier terms. Also includes evaluation metrics
 for the quality of the reranking metrics.
 
-- [Topic_reranking_vectorbased.ipynb](Topic_reranking_vectorbased.ipynb):<br>
+- [topic_reranking_vectorbased.ipynb](topic_reranking_vectorbased.ipynb):<br>
 new approach to rerank topic terms based on their similarity in embedding space. Needs to be included
 into the topic_reranking.py module.
 
 ###### Label generation
 
-- [label_candidate_generation.py](label_candidate_generation.py):<br>
+- [labeling.py](labeling.py):<br>
 Generates topic label candidates based on their similarity to doc2vec, word2vec and fastText embeddings 
 from Wikipedia articles. The algorithm is taken from the NETL framework by Bhatia et.al.. Copyright 
 remarks will be added upon final release.
 
-- [Label_generation_alternatives.ipynb](Label_generation_alternatives.ipynb):<br>
+- [labeling_alternatives.ipynb](labeling_alternatives.ipynb):<br>
 playground to experiment with alternative approaches to generate labels.
 
-- [PyGermaNet.ipynb](PyGermaNet.ipynb):<br>
+- [labeling_pygermanet.ipynb](labeling_pygermanet.ipynb):<br>
 Contributes to the alternative label generation approaches.
 
 ###### Other
 
-- [Topic_and_label_cleaning.ipynb](Topic_and_label_cleaning.ipynb):<br>
+- [labeling_postprocessing.ipynb](labeling_postprocessing.ipynb):<br>
 converts lemmatized terms and phrases in topics and labels to more human readable unlemmatized form.
 Uses lemmatization maps. 
 
 
 #### Evaluation:
 
-- [topic_coherence_on_wikipedia.py](topic_coherence_on_wikipedia.py):<br>
-evaluates the topic coherence on basis of full Wikipedia dataset. Supports *U<sub>mass</sub>*, 
-*C<sub>uci</sub>*/*C<sub>pmi</sub>*, *C<sub>npmi</sub>* and *C<sub>v</sub>* metrics.
-
-- [Evaluate_LDA_training.ipynb](Evaluate_LDA_training.ipynb):<br>
+- [eval_lda.ipynb](eval_lda.ipynb):<br>
 Reads and plots statistics from the LDA training. Also tests, for which datasets and parameter 
 combinations LDA models have been trained.
 
-- [Topic_reranking_evaluation.ipynb](Topic_reranking_evaluation.ipynb):<br>
+- [eval_lda_on_wikipedia.py](eval_lda_on_wikipedia.py):<br>
+evaluates the topic coherence on basis of full Wikipedia dataset. Supports *U<sub>mass</sub>*, 
+*C<sub>uci</sub>*/*C<sub>pmi</sub>*, *C<sub>npmi</sub>* and *C<sub>v</sub>* metrics.
+
+- [eval_topic_reranking.ipynb](eval_topic_reranking.ipynb):<br>
 Evaluates and plots the reranking results. Also first attempts to rate methods based on human scores.

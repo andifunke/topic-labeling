@@ -10,12 +10,12 @@ from pprint import pformat
 import gensim
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
-from gensim.models import Doc2Vec, Word2Vec, FastText
+from gensim.models import Doc2Vec, Word2Vec, FastText, LdaModel
 
 from constants import (
     ETL_PATH, NLP_PATH, SMPL_PATH, LDA_PATH, DSETS, PARAMS, NBTOPICS, METRICS, VERSIONS,
-    EMB_PATH
-)
+    EMB_PATH,
+    DATASETS, BAD_TOKENS, PLACEHOLDER)
 
 try:
     from tabulate import tabulate
@@ -112,20 +112,149 @@ def log_args(logger, args):
     logger.info('\n' + pformat(vars(args)))
 
 
+# --------------------------------------------------------------------------------------------------
+# --- TopicLoader Class ---
+
+
+class TopicsLoader(object):
+
+    def __init__(
+            self, dataset, param_ids: list, nbs_topics: list,
+            version=None, corpus_type='bow', epochs=30, topn=20,
+            filter_bad_terms=False, include_weights=False
+    ):
+        self.topn = topn
+        self.dataset = DATASETS.get(dataset, dataset)
+        self.version = version
+        self.param_ids = param_ids
+        self.nb_topics_list = nbs_topics
+        self.nb_topics = sum(nbs_topics) * len(param_ids)
+        self.corpus_type = corpus_type
+        self.epochs = f"ep{epochs}"
+        self.directory = join(LDA_PATH, self.version)
+        self.data_filename = f'{self.dataset}_{version}'
+        self.filter_terms = filter_bad_terms
+        self.include_weights = include_weights
+        self.pat = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöü].*')
+        self.dict_from_corpus = self._load_dict()
+        self.corpus = self._load_corpus()
+        self.texts = self._load_texts()
+        self.topics = self._topn_topics()
+
+    def _topn_topics(self):
+        """
+        get the topn topics from the LDA-model in DataFrame format
+        """
+        all_topics = []
+        for param_id in self.param_ids:
+            for nb_topics in self.nb_topics_list:
+                ldamodel = self._load_model(param_id, nb_topics)
+                # topic building ignoring placeholder values
+                topics = []
+                topics_weights = []
+                for i in range(nb_topics):
+                    tokens = []
+                    weights = []
+                    for term in ldamodel.get_topic_terms(i, topn=self.topn*2):
+                        token = ldamodel.id2word[term[0]]
+                        weight = term[1]
+                        if (token not in BAD_TOKENS and self.pat.match(token)) or not self.filter_terms:
+                            tokens.append(token)
+                            weights.append(weight)
+                            if len(tokens) == self.topn:
+                                break
+                    topics.append(tokens)
+                    topics_weights.append(weights)
+
+                model_topics = (
+                    pd.DataFrame(topics, columns=[f'term{i}' for i in range(self.topn)])
+                    .assign(
+                        dataset=self.dataset,
+                        param_id=param_id,
+                        nb_topics=nb_topics
+                    )
+                )
+                if self.include_weights:
+                    model_weights = (
+                        pd.DataFrame(topics_weights, columns=[f'weight{i}' for i in range(self.topn)])
+                    )
+                    model_topics = (
+                        pd.concat([model_topics, model_weights], axis=1, sort=False)
+                    )
+                all_topics.append(model_topics)
+        topics = (
+            pd.concat(all_topics)
+            .rename_axis('topic_idx')
+            .reset_index(drop=False)
+            .set_index(['dataset', 'param_id', 'nb_topics', 'topic_idx'])
+        )
+        return topics
+
+    def topic_ids(self):
+        return self.topics.applymap(lambda x: self.dict_from_corpus.token2id[x])
+
+    def _load_model(self, param_id, nb_topics):
+        """
+        Load an LDA model.
+        """
+        model_dir = join(self.directory, self.corpus_type, param_id)
+        model_file = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}_{self.epochs}'
+        model_path = join(model_dir, model_file)
+        print('Loading model from', model_path)
+        ldamodel = LdaModel.load(model_path)
+        return ldamodel
+
+    def _load_dict(self):
+        """
+        This dictionary is a different from the model's dict with a different word<->id mapping,
+        but from the same corpus and will be used for the Coherence Metrics.
+        """
+        dict_dir = join(self.directory, self.corpus_type)
+        dict_path = join(dict_dir, f'{self.data_filename}_{self.corpus_type}.dict')
+        print('loading dictionary from', dict_path)
+        dict_from_corpus: Dictionary = Dictionary.load(dict_path)
+        dict_from_corpus.add_documents([[PLACEHOLDER]])
+        _ = dict_from_corpus[0]  # init dictionary
+        return dict_from_corpus
+
+    def _load_corpus(self):
+        """
+        load corpus (for u_mass scores)
+        """
+        corpus_dir = join(self.directory, self.corpus_type)
+        corpus_path = join(corpus_dir, f'{self.data_filename}_{self.corpus_type}.mm')
+        print('loading corpus from', corpus_path)
+        corpus = MmCorpus(corpus_path)
+        corpus = list(corpus)
+        corpus.append([(self.dict_from_corpus.token2id[PLACEHOLDER], 1.0)])
+        return corpus
+
+    def _load_texts(self):
+        """
+        load texts (for c_... scores using sliding window)
+        """
+        doc_path = join(self.directory, self.data_filename + '_texts.json')
+        with open(doc_path, 'r') as fp:
+            print('loading texts from', doc_path)
+            texts = json.load(fp)
+        texts.append([PLACEHOLDER])
+        return texts
+
+
 def load(*args, logger=None):
     """
     work in progress: may not work for all cases, especially not yet for reading distributed
     datsets like dewiki and dewac.
     """
 
-    def log(msg):
+    def logg(msg):
         if logger:
             logger.info(msg)
         else:
             print(msg)
 
     if not args:
-        log('no arguments, no load')
+        logg('no arguments, no load')
         return
 
     single = {
@@ -152,7 +281,7 @@ def load(*args, logger=None):
     if isinstance(args, str):
         args = [args]
     args = [arg.replace('-', '_') if isinstance(arg, str) else arg for arg in args]
-    # log(args)
+    # logg(args)
 
     # parse args
     for arg in args:
@@ -187,8 +316,8 @@ def load(*args, logger=None):
         nbtopics.append('100')
         metrics.append('ref')
 
-    log('purpose ' + purpose)
-    log('dataset ' + dataset)
+    logg('purpose ' + purpose)
+    logg('dataset ' + dataset)
 
     # combine args
     if purpose == 'single':
@@ -214,20 +343,20 @@ def load(*args, logger=None):
             dict_path = join(LDA_PATH, version, f'dewiki_noun_bow_unfiltered.dict')
         else:
             dict_path = join(LDA_PATH, version, f'{dataset}_{version}_bow.dict')
-        log(f'loading dict from {dict_path}')
+        logg(f'loading dict from {dict_path}')
         dict_from_corpus = Dictionary.load(dict_path)
         _ = dict_from_corpus[0]  # init dictionary
         return dict_from_corpus
     elif purpose == 'corpus':
         corpus_path = join(LDA_PATH, version, f'{dataset}_{version}_bow.mm')
-        log(f'loading corpus from {corpus_path}')
+        logg(f'loading corpus from {corpus_path}')
         corpus = MmCorpus(corpus_path)
         corpus = list(corpus)
         return corpus
     elif purpose == 'texts':
         doc_path = join(LDA_PATH, version, f'{dataset}_{version}_bow_texts.json')
         with open(doc_path, 'r') as fp:
-            log(f'loading texts from {doc_path}')
+            logg(f'loading texts from {doc_path}')
             texts = json.load(fp)
         return texts
     elif purpose in {'nlp', 'simple', 'smpl', 'wiki', 'wiki_phrases', 'phrases', 'etl', None}:
@@ -244,7 +373,7 @@ def load(*args, logger=None):
             directory = join(SMPL_PATH, 'wiki_phrases')
             suffix = '_simple_wiki_phrases'
         else:
-            log('oops')
+            logg('oops')
             return
         if dataset.lower() in {'speeches', 's'}:
             file = [
@@ -261,7 +390,7 @@ def load(*args, logger=None):
             file = join(directory, f'{dataset.replace("dewac1", "dewac_01")}{suffix}.pickle')
 
     try:
-        log(f'Reading {file}')
+        logg(f'Reading {file}')
         if purpose == 'embedding':
             if 'd2v' in dataset:
                 return Doc2Vec.load(file)
@@ -311,7 +440,7 @@ def load(*args, logger=None):
             df = pd.concat([pd.read_pickle(f) for f in file])
             return df
     except Exception as e:
-        log(e)
+        logg(e)
 
 
 def main():

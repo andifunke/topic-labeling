@@ -21,10 +21,10 @@ if __name__ == "__main__":
     ### --- run ---
     logger = init_logging('NLP')
 
-    def log(msg):
+    def logg(msg):
         logger.info(msg)
 
-    log("##### START #####")
+    logg("##### START #####")
 
     # filter files for certain prefixes
     prefixes = r'^(' + '|'.join(CORPUS_PREFIXES) + r').'
@@ -33,7 +33,7 @@ if __name__ == "__main__":
         f for f in listdir(FULL_PATH)
         if (isfile(join(FULL_PATH, f)) and pattern.match(f))
     ])
-    processor = NLPProcessor(spacy_path=DE, log=log)
+    processor = NLPProcessor(spacy_path=DE, logg=logg)
 
     start = START  # 550_000
     batch_size = BATCH_SIZE  # 50_000
@@ -43,7 +43,7 @@ if __name__ == "__main__":
         corpus = name.split('.')[0]
         fname = join(FULL_PATH, name)
         for i in range(1, batches+1):
-            log('>>> batch: {:d} >>>'.format(i))
+            logg('>>> batch: {:d} >>>'.format(i))
             processor.read_process_store(
                 fname, corpus,
                 start=start,
@@ -59,4 +59,4 @@ if __name__ == "__main__":
                 break
 
     t1 = int(time() - t0)
-    log("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
+    logg("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))

@@ -5,140 +5,25 @@ from os import makedirs
 from os.path import join, exists
 from pprint import pformat
 from time import time
-import re
 
 import numpy as np
 import pandas as pd
-from gensim.corpora import Dictionary, MmCorpus
-from gensim.models import CoherenceModel, LdaModel
+from gensim.models import CoherenceModel
 from pandas.core.common import SettingWithCopyWarning
 
-from constants import BAD_TOKENS, DATASETS, METRICS, PARAMS, NBTOPICS, LDA_PATH
+from constants import DATASETS, METRICS, PARAMS, NBTOPICS, LDA_PATH, PLACEHOLDER
 import warnings
+
+from utils import TopicsLoader
+
 warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 
 pd.options.display.precision = 3
 np.set_printoptions(precision=3, threshold=None, edgeitems=None, linewidth=800, suppress=None)
 
-PLACEHOLDER = '[[PLACEHOLDER]]'
-
-
-# --------------------------------------------------------------------------------------------------
-# --- TopicLoader Class ---
-
-
-class TopicsLoader(object):
-
-    def __init__(self, dataset, param_ids: list, nbs_topics: list,
-                 version=None, nbfiles=None, corpus_type='bow', topn=20):
-        self.topn = topn
-        self.dataset = DATASETS.get(dataset, dataset)
-        self.version = version
-        self.param_ids = param_ids
-        self.nb_topics_list = nbs_topics
-        self.nb_topics = sum(nbs_topics) * len(param_ids)
-        self.corpus_type = corpus_type
-        self.directory = join(LDA_PATH, self.version)
-        self.nbfiles = nbfiles
-        self.nbfiles_str = f'_nbfiles{nbfiles:02d}' if nbfiles else ''
-        self.data_filename = f'{self.dataset}{self.nbfiles_str}_{version}_{self.corpus_type}'
-        self.pat = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöü].*')
-        self.dict_from_corpus = self._load_dict()
-        self.corpus = self._load_corpus()
-        self.texts = self._load_texts()
-        self.topics = self._topn_topics()
-
-    def _topn_topics(self):
-        """
-        get the topn topics from the LDA-model in DataFrame format
-        """
-        all_topics = []
-        for param_id in self.param_ids:
-            for nb_topics in self.nb_topics_list:
-                ldamodel = self._load_model(param_id, nb_topics)
-                # topic building ignoring placeholder values
-                topics = []
-                for i in range(nb_topics):
-                    topic = []
-                    for term in ldamodel.get_topic_terms(i, topn=self.topn+10):
-                        token = ldamodel.id2word[term[0]]
-                        if token not in BAD_TOKENS and self.pat.match(token):
-                            topic.append(token)
-                            if len(topic) == self.topn:
-                                break
-                        else:
-                            # print(token)
-                            pass
-                    topics.append(topic)
-
-                model_topics = (
-                    pd.DataFrame(topics, columns=['term' + str(i) for i in range(self.topn)])
-                    .assign(
-                        dataset=f'{self.dataset}{self.nbfiles}' if self.nbfiles else self.dataset,
-                        param_id=param_id,
-                        nb_topics=nb_topics
-                    )
-                )
-                all_topics.append(model_topics)
-        topics = (
-            pd.concat(all_topics)
-            .rename_axis('topic_idx')
-            .reset_index(drop=False)
-            .set_index(['dataset', 'param_id', 'nb_topics', 'topic_idx'])
-        )
-        return topics
-
-    def topic_ids(self):
-        return self.topics.applymap(lambda x: self.dict_from_corpus.token2id[x])
-
-    def _load_model(self, param_id, nb_topics):
-        """
-        Load an LDA model.
-        """
-        model_filename = f'{self.dataset}{self.nbfiles_str}_LDAmodel_{param_id}_{nb_topics}'
-        path = join(self.directory, param_id, model_filename)
-        print('Loading model from', path)
-        ldamodel = LdaModel.load(path)
-        return ldamodel
-
-    def _load_dict(self):
-        """
-        This dictionary is a different from the model's dict with a different word<->id mapping,
-        but from the same corpus and will be used for the Coherence Metrics.
-        """
-        dict_path = join(self.directory, self.data_filename + '.dict')
-        print('loading dictionary from', dict_path)
-        dict_from_corpus: Dictionary = Dictionary.load(dict_path)
-        dict_from_corpus.add_documents([[PLACEHOLDER]])
-        _ = dict_from_corpus[0]  # init dictionary
-        return dict_from_corpus
-
-    def _load_corpus(self):
-        """
-        load corpus (for u_mass scores)
-        """
-        corpus_path = join(self.directory, self.data_filename + '.mm')
-        print('loading corpus from', corpus_path)
-        corpus = MmCorpus(corpus_path)
-        corpus = list(corpus)
-        corpus.append([(self.dict_from_corpus.token2id[PLACEHOLDER], 1.0)])
-        return corpus
-
-    def _load_texts(self):
-        """
-        load texts (for c_... scores using sliding window)
-        """
-        doc_path = join(self.directory, self.data_filename + '_texts.json')
-        with open(doc_path, 'r') as fp:
-            print('loading texts from', doc_path)
-            texts = json.load(fp)
-        texts.append([PLACEHOLDER])
-        return texts
-
 
 # --------------------------------------------------------------------------------------------------
 # --- Reranker Class ---
-
 
 class Reranker(object):
 
@@ -157,13 +42,12 @@ class Reranker(object):
         self.corpus = topics.corpus
         self.texts = topics.texts
         self.nb_topics = topics.nb_topics
-        self.topic_terms = topics.topics
+        self.topic_terms = topics.topics.copy()
         self.topic_ids = topics.topic_ids()
         self.nb_top_terms = nb_top_terms
         self.processes = processes
         self.dataset = topics.dataset
         self.version = topics.version
-        self.nbfiles_str = topics.nbfiles_str
 
         if nb_candidate_terms is None:
             self.nb_candidate_terms = topics.topn
@@ -180,7 +64,6 @@ class Reranker(object):
         self._statistics_ = dict()
         self._statistics_['dataset'] = topics.dataset
         self._statistics_['version'] = topics.version
-        self._statistics_['nbfiles'] = topics.nbfiles
 
     def _shift_topics(self):
         """
@@ -513,7 +396,7 @@ class Reranker(object):
             directory = join(LDA_PATH, self.version, 'topics')
         if not exists(directory):
             makedirs(directory)
-        model_name = self.dataset + self.nbfiles_str
+        model_name = self.dataset
         file_path = join(directory, model_name)
 
         if topics and self.topic_candidates is not None:
@@ -589,7 +472,6 @@ def parse_args():
 
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--version", type=str, required=False, default='default')
-    parser.add_argument("--nbfiles", type=int, required=False, default=None)
 
     parser.add_argument("--topn", type=int, required=False, default=TOPN)
     parser.add_argument("--cores", type=int, required=False, default=CORES)
@@ -612,7 +494,7 @@ def parse_args():
 
 
 def rerank(
-        dataset, version=None, nbfiles=None,
+        dataset, version=None,
         topn=TOPN, save=SAVE, plot=PLOT, cores=CORES,
         metrics=METRICS, param_ids=PARAMS, nbs_topics=NBTOPICS
 ):
@@ -621,7 +503,6 @@ def rerank(
         param_ids=param_ids,
         nbs_topics=nbs_topics,
         version=version,
-        nbfiles=nbfiles,
         topn=topn
     )
     reranker = Reranker(topics_loader, processes=cores)
@@ -642,7 +523,6 @@ def main():
     reranker = rerank(
         dataset=DATASETS.get(args.dataset, args.dataset),
         version=args.version,
-        nbfiles=args.nbfiles,
         topn=args.topn,
         param_ids=args.params,
         nbs_topics=args.nbtopics,

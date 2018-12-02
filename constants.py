@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 from itertools import chain
 from os.path import join
 
@@ -137,6 +138,7 @@ METRICS = ('ref', 'u_mass', 'c_v', 'c_uci', 'c_npmi', 'vote')
 PARAMS = ('a42', 'b42', 'c42', 'd42', 'e42')
 NBTOPICS = (10, 25, 50, 100)
 VERSIONS = ('noun', 'noun-verb', 'noun-verb-adj')
+CORPUS_TYPE = ('bow', 'tfidf')
 
 # --- filter lookup table
 # the follwoing tokens are filtered befor applying LDA training
@@ -167,7 +169,12 @@ BAD_TOKENS_DICT = {
 }
 BAD_TOKENS = set(chain(*BAD_TOKENS_DICT.values()))
 PLACEHOLDER = '[[PLACEHOLDER]]'
-
+MINIMAL_PATTERN = re.compile(r'.\.')
+# NOUN_PATTERN = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöü].*?[A-Za-zÄÖÜäöü0-9].*')
+NOUN_PATTERN = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöü].*')
+POS_N = [NOUN, PROPN, NER, NPHRASE]
+POS_NV = [NOUN, PROPN, NER, NPHRASE, VERB]
+POS_NVA = [NOUN, PROPN, NER, NPHRASE, VERB, ADJ, ADV]
 
 """
  list of tokens to ignore when at the beginning of a phrase

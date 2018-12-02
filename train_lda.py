@@ -430,7 +430,7 @@ def main():
             gc.collect()
 
             model_dir = join(data_dir, f'{param}{_split_}')
-            model_path = join(model_dir, f'{dataset}_LDAmodel_{param}{_split_}_{nbtopics}_ep{epochs}_X')
+            model_path = join(model_dir, f'{dataset}_LDAmodel_{param}{_split_}_{nbtopics}_ep{epochs}')
             if not exists(model_dir):
                 makedirs(model_dir)
 

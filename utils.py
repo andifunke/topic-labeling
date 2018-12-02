@@ -3,19 +3,18 @@ import logging
 import re
 import sys
 from genericpath import exists
-from os import makedirs
+from os import makedirs, listdir
 from os.path import join
 from pprint import pformat
 
 import gensim
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
-from gensim.models import Doc2Vec, Word2Vec, FastText, LdaModel
+from gensim.models import Doc2Vec, Word2Vec, FastText
 
 from constants import (
     ETL_PATH, NLP_PATH, SMPL_PATH, LDA_PATH, DSETS, PARAMS, NBTOPICS, METRICS, VERSIONS,
-    EMB_PATH,
-    DATASETS, BAD_TOKENS, PLACEHOLDER)
+    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN)
 
 try:
     from tabulate import tabulate
@@ -112,133 +111,43 @@ def log_args(logger, args):
     logger.info('\n' + pformat(vars(args)))
 
 
-# --------------------------------------------------------------------------------------------------
-# --- TopicLoader Class ---
+def multiload(dataset, purpose='etl'):
+    if dataset.lower().startswith('dewa'):
+        dewac = True
+    elif dataset.lower().startswith('dewi'):
+        dewac = False
+    else:
+        print('unkown dataset')
+        return
 
+    if purpose.lower() in ['simple', 'smpl', 'phrase']:
+        if dewac:
+            dpath = join(SMPL_PATH, 'wiki_phrases')
+            pattern = re.compile(r'^dewac_[0-9]{2}_simple_wiki_phrases\.pickle')
+            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+        else:
+            dpath = join(SMPL_PATH, 'dewiki')
+            pattern = re.compile(r'^dewiki_[0-9]+_[0-9]+__[0-9]+_simple\.pickle')
+            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+    elif purpose.lower() == 'nlp':
+        dpath = NLP_PATH
+        if dewac:
+            pattern = re.compile(r'^dewac_[0-9]{2}_nlp\.pickle')
+            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+        else:
+            pattern = re.compile(r'^dewiki_[0-9]+_[0-9]+_nlp\.pickle')
+            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+    else:
+        dpath = ETL_PATH
+        if dewac:
+            pattern = re.compile(r'^dewac_[0-9]{2}\.pickle')
+            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+        else:
+            files = [join(dpath, 'dewiki.pickle')]
 
-class TopicsLoader(object):
-
-    def __init__(
-            self, dataset, param_ids: list, nbs_topics: list,
-            version=None, corpus_type='bow', epochs=30, topn=20,
-            filter_bad_terms=False, include_weights=False
-    ):
-        self.topn = topn
-        self.dataset = DATASETS.get(dataset, dataset)
-        self.version = version
-        self.param_ids = param_ids
-        self.nb_topics_list = nbs_topics
-        self.nb_topics = sum(nbs_topics) * len(param_ids)
-        self.corpus_type = corpus_type
-        self.epochs = f"ep{epochs}"
-        self.directory = join(LDA_PATH, self.version)
-        self.data_filename = f'{self.dataset}_{version}'
-        self.filter_terms = filter_bad_terms
-        self.include_weights = include_weights
-        self.pat = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöü].*')
-        self.dict_from_corpus = self._load_dict()
-        self.corpus = self._load_corpus()
-        self.texts = self._load_texts()
-        self.topics = self._topn_topics()
-
-    def _topn_topics(self):
-        """
-        get the topn topics from the LDA-model in DataFrame format
-        """
-        all_topics = []
-        for param_id in self.param_ids:
-            for nb_topics in self.nb_topics_list:
-                ldamodel = self._load_model(param_id, nb_topics)
-                # topic building ignoring placeholder values
-                topics = []
-                topics_weights = []
-                for i in range(nb_topics):
-                    tokens = []
-                    weights = []
-                    for term in ldamodel.get_topic_terms(i, topn=self.topn*2):
-                        token = ldamodel.id2word[term[0]]
-                        weight = term[1]
-                        if (token not in BAD_TOKENS and self.pat.match(token)) or not self.filter_terms:
-                            tokens.append(token)
-                            weights.append(weight)
-                            if len(tokens) == self.topn:
-                                break
-                    topics.append(tokens)
-                    topics_weights.append(weights)
-
-                model_topics = (
-                    pd.DataFrame(topics, columns=[f'term{i}' for i in range(self.topn)])
-                    .assign(
-                        dataset=self.dataset,
-                        param_id=param_id,
-                        nb_topics=nb_topics
-                    )
-                )
-                if self.include_weights:
-                    model_weights = (
-                        pd.DataFrame(topics_weights, columns=[f'weight{i}' for i in range(self.topn)])
-                    )
-                    model_topics = (
-                        pd.concat([model_topics, model_weights], axis=1, sort=False)
-                    )
-                all_topics.append(model_topics)
-        topics = (
-            pd.concat(all_topics)
-            .rename_axis('topic_idx')
-            .reset_index(drop=False)
-            .set_index(['dataset', 'param_id', 'nb_topics', 'topic_idx'])
-        )
-        return topics
-
-    def topic_ids(self):
-        return self.topics.applymap(lambda x: self.dict_from_corpus.token2id[x])
-
-    def _load_model(self, param_id, nb_topics):
-        """
-        Load an LDA model.
-        """
-        model_dir = join(self.directory, self.corpus_type, param_id)
-        model_file = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}_{self.epochs}'
-        model_path = join(model_dir, model_file)
-        print('Loading model from', model_path)
-        ldamodel = LdaModel.load(model_path)
-        return ldamodel
-
-    def _load_dict(self):
-        """
-        This dictionary is a different from the model's dict with a different word<->id mapping,
-        but from the same corpus and will be used for the Coherence Metrics.
-        """
-        dict_dir = join(self.directory, self.corpus_type)
-        dict_path = join(dict_dir, f'{self.data_filename}_{self.corpus_type}.dict')
-        print('loading dictionary from', dict_path)
-        dict_from_corpus: Dictionary = Dictionary.load(dict_path)
-        dict_from_corpus.add_documents([[PLACEHOLDER]])
-        _ = dict_from_corpus[0]  # init dictionary
-        return dict_from_corpus
-
-    def _load_corpus(self):
-        """
-        load corpus (for u_mass scores)
-        """
-        corpus_dir = join(self.directory, self.corpus_type)
-        corpus_path = join(corpus_dir, f'{self.data_filename}_{self.corpus_type}.mm')
-        print('loading corpus from', corpus_path)
-        corpus = MmCorpus(corpus_path)
-        corpus = list(corpus)
-        corpus.append([(self.dict_from_corpus.token2id[PLACEHOLDER], 1.0)])
-        return corpus
-
-    def _load_texts(self):
-        """
-        load texts (for c_... scores using sliding window)
-        """
-        doc_path = join(self.directory, self.data_filename + '_texts.json')
-        with open(doc_path, 'r') as fp:
-            print('loading texts from', doc_path)
-            texts = json.load(fp)
-        texts.append([PLACEHOLDER])
-        return texts
+    for file in files:
+        print(f'Reading {file}')
+        yield pd.read_pickle(file)
 
 
 def load(*args, logger=None):
@@ -264,6 +173,7 @@ def load(*args, logger=None):
         'links': join(ETL_PATH, 'dewiki_links.pickle'),
         'categories': join(ETL_PATH, 'dewiki_categories.pickle'),
         'disamb': join(ETL_PATH, 'dewiki_disambiguation.pickle'),
+        'wikt': join(ETL_PATH, 'wiktionary_lemmatization_map.pickle'),
     }
     dataset = None
     purposes = {
@@ -273,6 +183,7 @@ def load(*args, logger=None):
     }
     purpose = None
     version = None
+    corpus_type = None
     params = []
     nbtopics = []
     metrics = []
@@ -307,17 +218,21 @@ def load(*args, logger=None):
             metrics.append(arg)
         elif not version and arg in VERSIONS:
             version = arg
+        elif not corpus_type and arg in CORPUS_TYPE:
+            corpus_type = arg
 
     # setting default values
-    if not version:
+    if version is None:
         version = 'noun'
+    if corpus_type is None:
+        corpus_type = 'bow'
     if 'default' in args:
         params.append('e42')
         nbtopics.append('100')
         metrics.append('ref')
 
-    logg('purpose ' + purpose)
-    logg('dataset ' + dataset)
+    # logg(f'purpose {purpose}')
+    # logg(f'dataset {dataset}')
 
     # combine args
     if purpose == 'single':
@@ -325,36 +240,49 @@ def load(*args, logger=None):
     elif purpose == 'goodids' and dataset in ['dewac', 'dewiki']:
         file = join(ETL_PATH, f'{dataset}_good_ids.pickle')
     elif purpose == 'lemmap':
-        file = join(ETL_PATH, f'{dataset}_lemmatization_map.pickle')
+        if dataset.lower() in {'speeches', 's'}:
+            file = [
+                join(ETL_PATH, f'{DSETS["E"]}_lemmatization_map.pickle'),
+                join(ETL_PATH, f'{DSETS["P"]}_lemmatization_map.pickle')
+            ]
+        elif dataset.lower() in {'news', 'n', 'f'}:
+            file = [
+                join(ETL_PATH, f'{DSETS["FA"]}_lemmatization_map.pickle'),
+                join(ETL_PATH, f'{DSETS["FO"]}_lemmatization_map.pickle')
+            ]
+        else:
+            file = join(ETL_PATH, f'{dataset}_lemmatization_map.pickle')
     elif purpose == 'embedding':
         file = join(EMB_PATH, dataset, dataset)
     elif purpose in {'topic', 'topics'}:
-        file = join(LDA_PATH, version, 'topics', f'{dataset}_topic-candidates.csv')
+        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-candidates.csv')
     elif purpose in {'score', 'scores'}:
-        file = join(LDA_PATH, version, 'topics', f'{dataset}_topic-scores.csv')
+        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-scores.csv')
     elif purpose == 'wiki_scores':
-        file = join(LDA_PATH, version, 'topics', f'{dataset}_topic-wiki-scores.csv')
+        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-wiki-scores.csv')
     elif purpose == 'x2v_scores':
-        file = join(LDA_PATH, version, 'topics', f'{dataset}_topic-x2v-scores.csv')
+        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-x2v-scores.csv')
     elif purpose in {'label', 'labels'}:
-        file = join(LDA_PATH, version, 'topics', f'{dataset}_label-candidates_full.csv')
+        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_label-candidates_full.csv')
     elif purpose == 'dict':
         if dataset == 'dewiki' and 'unfiltered' in args:
-            dict_path = join(LDA_PATH, version, f'dewiki_noun_bow_unfiltered.dict')
+            dict_path = join(
+                LDA_PATH, version, corpus_type, f'dewiki_noun_{corpus_type}_unfiltered.dict'
+            )
         else:
-            dict_path = join(LDA_PATH, version, f'{dataset}_{version}_bow.dict')
+            dict_path = join(LDA_PATH, version, corpus_type, f'{dataset}_{version}_{corpus_type}.dict')
         logg(f'loading dict from {dict_path}')
         dict_from_corpus = Dictionary.load(dict_path)
         _ = dict_from_corpus[0]  # init dictionary
         return dict_from_corpus
     elif purpose == 'corpus':
-        corpus_path = join(LDA_PATH, version, f'{dataset}_{version}_bow.mm')
+        corpus_path = join(LDA_PATH, version, corpus_type, f'{dataset}_{version}_{corpus_type}.mm')
         logg(f'loading corpus from {corpus_path}')
         corpus = MmCorpus(corpus_path)
         corpus = list(corpus)
         return corpus
     elif purpose == 'texts':
-        doc_path = join(LDA_PATH, version, f'{dataset}_{version}_bow_texts.json')
+        doc_path = join(LDA_PATH, version, f'{dataset}_{version}_texts.json')
         with open(doc_path, 'r') as fp:
             logg(f'loading texts from {doc_path}')
             texts = json.load(fp)
@@ -401,9 +329,8 @@ def load(*args, logger=None):
         elif isinstance(file, str) and file.endswith('.pickle'):
             df = pd.read_pickle(file)
             if purpose == 'single' and 'phrases' in args and 'minimal' in args:
-                pat = re.compile(r'^[a-zA-ZÄÖÜäöü]+.*')
                 df = df.set_index('token').text
-                df = df[df.str.match(pat)]
+                df = df[df.str.match(NOUN_PATTERN)]
             return df
         elif isinstance(file, str) and file.endswith('.csv'):
             index = None
@@ -444,8 +371,18 @@ def load(*args, logger=None):
 
 
 def main():
-    data = load('dewa1', 'topics')
-    print(data)
+    for f in multiload('dewa'):
+        tprint(f, 10)
+    for f in multiload('dewi'):
+        tprint(f, 10)
+    for f in multiload('dewa', 'nlp'):
+        tprint(f, 10)
+    for f in multiload('dewi', 'nlp'):
+        tprint(f, 10)
+    for f in multiload('dewa', 'smpl'):
+        tprint(f, 10)
+    for f in multiload('dewi', 'smpl'):
+        tprint(f, 10)
 
 
 if __name__ == '__main__':

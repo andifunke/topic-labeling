@@ -13,8 +13,8 @@ from gensim.models import TfidfModel
 from utils import init_logging, log_args
 from constants import (
     SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS,
-    GOOD_IDS, NER, NPHRASE, VERB, ADJ, ADV, LDA_PATH
-)
+    GOOD_IDS, NER, NPHRASE, VERB, ADJ, ADV, LDA_PATH,
+    NOUN_PATTERN, POS_N, POS_NV, POS_NVA)
 
 
 def docs_to_lists(token_series):
@@ -59,6 +59,10 @@ def make_texts(dataset, nbfiles, pos_tags, logg=print):
                     if (isfile(join(dir_path, f)) and pattern.match(f))])
 
     files = files[:nbfiles]
+    # pattern explained:
+    # - may have leading digits (allows '21_century')
+    # - must have at least one character from the German alphabet (renoves '1.')
+    # - must have at least two alphanumeric characters (allows 'A4', but removes 'C.')
 
     goodids = None
     if dataset in GOOD_IDS:
@@ -89,8 +93,12 @@ def make_texts(dataset, nbfiles, pos_tags, logg=print):
         # using only certain POS tags
         df = df[df.POS.isin(pos_tags)]
         df[TOKEN] = df[TOKEN].map(lambda x: x.strip('-/'))
+        # TODO: next line probably redundant
         df = df[df.token.str.len() > 1]
         df = df[~df.token.isin(BAD_TOKENS)]
+        print(len(df))
+        df = df[df.str.match(NOUN_PATTERN)]
+        print(len(df))
         nb_words += len(df)
         logg(f'    remaining number of words: {len(df)}')
 
@@ -131,13 +139,13 @@ def parse_args():
 
     if args.pos_tags is None:
         if args.version == 'noun':
-            args.pos_tags = [NOUN, PROPN, NER, NPHRASE]
+            args.pos_tags = POS_N
         elif args.version == 'noun-verb':
-            args.pos_tags = [NOUN, PROPN, NER, NPHRASE, VERB]
+            args.pos_tags = POS_NV
         elif args.version == 'noun-verb-adj':
-            args.pos_tags = [NOUN, PROPN, NER, NPHRASE, VERB, ADJ, ADV]
+            args.pos_tags = POS_NVA
         else:
-            args.pos_tags = [NOUN, PROPN, NER, NPHRASE]
+            args.pos_tags = POS_N
     args.pos_tags = set(args.pos_tags)
 
     return args.dataset, args.version, args.nbfiles, args.pos_tags, args.tfidf, args

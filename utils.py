@@ -145,8 +145,9 @@ def multiload(dataset, purpose='etl'):
         else:
             files = [join(dpath, 'dewiki.pickle')]
 
-    for file in files:
-        print(f'Reading {file}')
+    length = len(files)
+    for i, file in enumerate(files, 1):
+        print(f'Reading {i:02d}/{length}: {file}')
         yield pd.read_pickle(file)
 
 
@@ -197,10 +198,14 @@ def load(*args, logger=None):
     # parse args
     for arg in args:
         if arg in single:
-            purpose = 'single'
-            file = single[arg]
-            dataset = True
-            break
+            if arg == 'phrases' and 'lemmap' in args:
+                dataset = 'dewiki_phrases'
+                purpose = 'lemmap'
+            else:
+                purpose = 'single'
+                file = single[arg]
+                dataset = True
+                break
         elif not dataset and arg.lower() in DSETS:
             dataset = DSETS[arg]
         elif not dataset and arg in DSETS.values():
@@ -240,18 +245,8 @@ def load(*args, logger=None):
     elif purpose == 'goodids' and dataset in ['dewac', 'dewiki']:
         file = join(ETL_PATH, f'{dataset}_good_ids.pickle')
     elif purpose == 'lemmap':
-        if dataset.lower() in {'speeches', 's'}:
-            file = [
-                join(ETL_PATH, f'{DSETS["E"]}_lemmatization_map.pickle'),
-                join(ETL_PATH, f'{DSETS["P"]}_lemmatization_map.pickle')
-            ]
-        elif dataset.lower() in {'news', 'n', 'f'}:
-            file = [
-                join(ETL_PATH, f'{DSETS["FA"]}_lemmatization_map.pickle'),
-                join(ETL_PATH, f'{DSETS["FO"]}_lemmatization_map.pickle')
-            ]
-        else:
-            file = join(ETL_PATH, f'{dataset}_lemmatization_map.pickle')
+        print(dataset)
+        file = join(ETL_PATH, f'{dataset}_lemmatization_map.pickle')
     elif purpose == 'embedding':
         file = join(EMB_PATH, dataset, dataset)
     elif purpose in {'topic', 'topics'}:
@@ -371,18 +366,8 @@ def load(*args, logger=None):
 
 
 def main():
-    for f in multiload('dewa'):
-        tprint(f, 10)
-    for f in multiload('dewi'):
-        tprint(f, 10)
-    for f in multiload('dewa', 'nlp'):
-        tprint(f, 10)
-    for f in multiload('dewi', 'nlp'):
-        tprint(f, 10)
-    for f in multiload('dewa', 'smpl'):
-        tprint(f, 10)
-    for f in multiload('dewi', 'smpl'):
-        tprint(f, 10)
+    df = load('wikt', 'lemmap')
+    print(df)
 
 
 if __name__ == '__main__':

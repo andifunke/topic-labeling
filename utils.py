@@ -250,6 +250,7 @@ def load(*args, logger=None):
     elif purpose == 'embedding':
         file = join(EMB_PATH, dataset, dataset)
     elif purpose in {'topic', 'topics'}:
+        # file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-candidates.csv')
         file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-candidates.csv')
     elif purpose in {'score', 'scores'}:
         file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-scores.csv')
@@ -366,8 +367,14 @@ def load(*args, logger=None):
 
 
 def main():
-    df = load('wikt', 'lemmap')
-    print(df)
+    # df = load('dewiki', 'lemmap')
+    # tprint(df, 10)
+    dataset = 'dewiki'
+    version = 'noun'
+    corpus_type = 'bow'
+    load(dataset, version, corpus_type, 'dict')
+    load(dataset, version, corpus_type, 'corpus')
+    load(dataset, version, 'texts')
 
 
 if __name__ == '__main__':

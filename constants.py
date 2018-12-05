@@ -24,7 +24,7 @@ VOC_PATH  = join(SPCY_PATH, 'vocab')
 LDA_PATH  = join(ETL_PATH, 'LDAmodel')
 LSI_PATH  = join(ETL_PATH, 'LSImodel')
 EMB_PATH  = join(ETL_PATH, 'embeddings')
-TPX_PATH  = join(LDA_PATH, 'noun', 'topics')
+TPX_PATH  = join(LDA_PATH, 'noun', 'bow', 'topics')
 
 ## data scheme
 DATASET   = 'dataset'

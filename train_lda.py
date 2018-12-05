@@ -7,13 +7,12 @@ import argparse
 
 import numpy as np
 import pandas as pd
-from gensim.corpora import Dictionary, MmCorpus
 from gensim.matutils import kullback_leibler, hellinger, jaccard_distance, jensen_shannon
 from gensim.models import LdaModel, CoherenceModel
 from gensim.models.callbacks import Metric
 
 from constants import DATASETS, NBTOPICS, PARAMS, LDA_PATH
-from utils import init_logging, log_args
+from utils import init_logging, log_args, load
 
 np.set_printoptions(precision=3, threshold=11, formatter={'float': '{: 0.3f}'.format})
 LOGG = None
@@ -340,15 +339,12 @@ def main():
     ) = parse_args()
 
     model_class = 'LDAmodel'
-    _tfidf_ = "tfidf" if tfidf else "bow"
-    _split_ = "_split" if use_callbacks else ""
-
-    data_name = f'{dataset}_{version}'
-    data_dir = join(LDA_PATH, version)
+    corpus_type = "tfidf" if tfidf else "bow"
+    _split = "_split" if use_callbacks else ""
 
     # --- logging ---
     logger = init_logging(
-        name=f'LDA_{data_name}_{_tfidf_}{_split_}_ep{epochs}',
+        name=f'LDA_{dataset}_{version}_{corpus_type}{_split}_ep{epochs}',
         basic=False, to_stdout=True, to_file=True
     )
     LOGG = logger.info
@@ -356,25 +352,15 @@ def main():
 
     # --- load texts ---
     if use_callbacks:
-        LOGG('Loading texts')
-        file_path = join(data_dir, f'{data_name}_texts.json')
-        with open(file_path, 'r') as fp:
-            texts = json.load(fp)
+        texts = load(dataset, version, 'texts', logger=logger)
     else:
         texts = []
 
-    data_dir = join(data_dir, _tfidf_)
-    data_name = f'{data_name}_{_tfidf_}'
-
     # --- load dict ---
-    LOGG('Loading dictionary')
-    file_path = join(data_dir, f'{data_name}.dict')
-    dictionary = Dictionary.load(file_path)
+    dictionary = load(dataset, version, corpus_type, 'dict', logger=logger)
 
     # --- load corpus ---
-    LOGG('Loading corpus')
-    file_path = join(data_dir, f'{data_name}.mm')
-    corpus = MmCorpus(file_path)
+    corpus = load(dataset, version, corpus_type, 'corpus', logger=logger)
     if cache_in_memory:
         LOGG('Reading corpus into RAM')
         corpus = list(corpus)
@@ -387,8 +373,12 @@ def main():
     # --- enable visdom ---
     vis = None
     if cb_logger == 'visdom':
-        import visdom
-        vis = visdom.Visdom()
+        try:
+            import visdom
+            vis = visdom.Visdom()
+        except Exception as e:
+            LOGG(e)
+            cb_logger = 'shell'
 
     # --- train ---
     topn = 20
@@ -409,7 +399,7 @@ def main():
                 version=version,
                 param=param,
                 nbtopics=nbtopics,
-                tfidf=_tfidf_
+                tfidf=corpus_type
             )
             if not use_callbacks:
                 callbacks = callbacks[-1:]
@@ -425,12 +415,12 @@ def main():
                 epochs=epochs
             )
 
-            LOGG(f'Running {model_class} {_tfidf_} "{param}{_split_}" with {nbtopics} topics')
+            LOGG(f'Running {model_class} {corpus_type} "{param}{_split}" with {nbtopics} topics')
             model = LdaModel(**kwargs)
             gc.collect()
 
-            model_dir = join(data_dir, f'{param}{_split_}')
-            model_path = join(model_dir, f'{dataset}_LDAmodel_{param}{_split_}_{nbtopics}_ep{epochs}')
+            model_dir = join(LDA_PATH, corpus_type, f'{param}{_split}')
+            model_path = join(model_dir, f'{dataset}_LDAmodel_{param}{_split}_{nbtopics}_ep{epochs}')
             if not exists(model_dir):
                 makedirs(model_dir)
 

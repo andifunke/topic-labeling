@@ -37,8 +37,8 @@ class Reranker(object):
                                     representation set. nb_top_terms ust be < nb_candidate_terms.
         :param processes:           number of processes used for the calculations.
         """
-        self.dict_from_corpus = topics.dict_from_corpus
-        self.placeholder_id = topics.dict_from_corpus.token2id[PLACEHOLDER]
+        self.dict_from_corpus = topics.dictionary
+        self.placeholder_id = topics.dictionary.token2id[PLACEHOLDER]
         self.corpus = topics.corpus
         self.texts = topics.texts
         self.nb_topics = topics.nb_topics

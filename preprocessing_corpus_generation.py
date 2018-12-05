@@ -22,12 +22,13 @@ def docs_to_lists(token_series):
 
 
 def texts2corpus(
-        documents, tfidf=False, stopwords=None, filter_below=5, filter_above=0.5, logg=print
+        documents, tfidf=False, stopwords=None, filter_below=5, filter_above=0.5, keep_n=100000,
+        logg=print
 ):
     logg(f'generating {"tfidf" if tfidf else "bow"} corpus and dictionary')
 
-    dictionary = Dictionary(documents)
-    dictionary.filter_extremes(no_below=filter_below, no_above=filter_above)
+    dictionary = Dictionary(documents, prune_at=None)
+    dictionary.filter_extremes(no_below=filter_below, no_above=filter_above, keep_n=keep_n)
 
     # filter some noice (e.g. special characters)
     if stopwords:
@@ -97,7 +98,7 @@ def make_texts(dataset, nbfiles, pos_tags, logg=print):
         df = df[df.token.str.len() > 1]
         df = df[~df.token.isin(BAD_TOKENS)]
         print(len(df))
-        df = df[df.str.match(NOUN_PATTERN)]
+        df = df[df.token.str.match(NOUN_PATTERN)]
         print(len(df))
         nb_words += len(df)
         logg(f'    remaining number of words: {len(df)}')
@@ -154,9 +155,9 @@ def parse_args():
 def main():
     dataset, version, nbfiles, pos_tags, tfidf, args = parse_args()
 
-    _tfidf_ = "tfidf" if tfidf else "bow"
+    corpus_type = "tfidf" if tfidf else "bow"
 
-    logger = init_logging(name=f'MM_{dataset}_{_tfidf_}', basic=False, to_stdout=True, to_file=True)
+    logger = init_logging(name=f'MM_{dataset}_{corpus_type}', basic=False, to_stdout=True, to_file=True)
     logg = logger.info if logger else print
     log_args(logger, args)
 
@@ -184,8 +185,8 @@ def main():
     # including dictionary, texts (json) and some stats about corpus size (json)
     corpus, dictionary = texts2corpus(texts, tfidf=tfidf, filter_below=5, filter_above=0.5, logg=logg)
 
-    file_name += f'_{_tfidf_}'
-    directory = join(directory, _tfidf_)
+    file_name += f'_{corpus_type}'
+    directory = join(directory, corpus_type)
 
     # --- saving corpus ---
     file_path = join(directory, f'{file_name}.mm')

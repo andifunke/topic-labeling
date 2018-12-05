@@ -12,26 +12,21 @@ from utils import load, tprint
 class Unlemmatizer(object):
 
     def __init__(self):
-        self.phrases = load('phrases', 'minimal')
-        self.wiktionary = load('wikt', 'lemmap').set_index('Lemma').query('POS == "Noun"')
-        # tprint(self.wiktionary, 100)
+        self.phrases = load('phrases', 'lemmap')
+        self.wiktionary = load('wikt', 'lemmap')
 
     def unlemmatize_token(self, token, lemmap=None):
+        # 1) unlemmatize from original dataset
         if lemmap is not None and token in lemmap:
-            word = lemmap[token].index[0]
-        elif token in self.phrases.index:
-            # print('token in phrases')
-            words = self.phrases[token]
-            if isinstance(words, str):
-                word = words
-            else:
-                if token in words.values:
-                    word = token
-                else:
-                    wc = words.value_counts()
-                    word = wc.index[0]
+            word = lemmap[token]
+
+        # 2) unlemmatize from Wikipedia title phrases
+        elif token in self.phrases:
+            word = self.phrases[token]
+
+        # 3) unlemmatize individual parts of a concatenated token
         elif '_' in token:
-            print(token)
+            print('unkown phrase', token)
             tokens = token.split('_')
             ts = []
             for t in tokens:
@@ -48,11 +43,13 @@ class Unlemmatizer(object):
                     ts.append(t)
             word = '_'.join(ts)
             print(word)
+
+        # 4) nothing to do
         else:
-            print('not in index')
             word = token
-            print('   ', token, '->', word)
+
         word = word.replace('_.', '.').replace('_', ' ')
+        # print('   ', token, '->', word)
         return word
 
     def unlemmatize_group(self, group):
@@ -80,6 +77,7 @@ class TopicsLoader(object):
             version='noun', corpus_type='bow', epochs=30, topn=20,
             filter_bad_terms=False, include_weights=False,
             include_corpus=False, include_texts=False,
+            logger=None
     ):
         self.topn = topn
         self.dataset = DSETS.get(dataset, dataset)
@@ -93,7 +91,8 @@ class TopicsLoader(object):
         self.data_filename = f'{self.dataset}_{version}'
         self.filter_terms = filter_bad_terms
         self.include_weights = include_weights
-        self.dict_from_corpus = self._load_dict()
+        self.logg = logger.info if logger else print
+        self.dictionary = self._load_dict()
         self.topics = self._topn_topics()
         self.corpus = self._load_corpus() if include_corpus else None
         self.texts = self._load_texts() if include_texts else None
@@ -150,7 +149,7 @@ class TopicsLoader(object):
         return topics
 
     def topic_ids(self):
-        return self.topics.applymap(lambda x: self.dict_from_corpus.token2id[x])
+        return self.topics.applymap(lambda x: self.dictionary.token2id[x])
 
     def _load_model(self, param_id, nb_topics):
         """
@@ -159,7 +158,7 @@ class TopicsLoader(object):
         model_dir = join(self.directory, self.corpus_type, param_id)
         model_file = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}_{self.epochs}'
         model_path = join(model_dir, model_file)
-        print('Loading model from', model_path)
+        self.logg(f'Loading model from {model_path}')
         ldamodel = LdaModel.load(model_path)
         return ldamodel
 
@@ -170,7 +169,7 @@ class TopicsLoader(object):
         """
         dict_dir = join(self.directory, self.corpus_type)
         dict_path = join(dict_dir, f'{self.data_filename}_{self.corpus_type}.dict')
-        print('loading dictionary from', dict_path)
+        self.logg(f'loading dictionary from {dict_path}')
         dict_from_corpus: Dictionary = Dictionary.load(dict_path)
         dict_from_corpus.add_documents([[PLACEHOLDER]])
         _ = dict_from_corpus[0]  # init dictionary
@@ -182,10 +181,10 @@ class TopicsLoader(object):
         """
         corpus_dir = join(self.directory, self.corpus_type)
         corpus_path = join(corpus_dir, f'{self.data_filename}_{self.corpus_type}.mm')
-        print('loading corpus from', corpus_path)
+        self.logg(f'loading corpus from {corpus_path}')
         corpus = MmCorpus(corpus_path)
         corpus = list(corpus)
-        corpus.append([(self.dict_from_corpus.token2id[PLACEHOLDER], 1.0)])
+        corpus.append([(self.dictionary.token2id[PLACEHOLDER], 1.0)])
         return corpus
 
     def _load_texts(self):
@@ -194,7 +193,7 @@ class TopicsLoader(object):
         """
         doc_path = join(self.directory, self.data_filename + '_texts.json')
         with open(doc_path, 'r') as fp:
-            print('loading texts from', doc_path)
+            self.logg(f'loading texts from {doc_path}')
             texts = json.load(fp)
         texts.append([PLACEHOLDER])
         return texts

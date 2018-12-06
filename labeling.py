@@ -3,7 +3,7 @@
 import argparse
 import pickle
 import re
-from os.path import join
+from os.path import join, exists
 from time import time
 
 import pandas as pd
@@ -12,13 +12,14 @@ from gensim import matutils
 from gensim.models import Word2Vec, Doc2Vec
 
 from topic_reranking import METRICS
-from utils import init_logging, log_args
-from constants import ETL_PATH, DATASETS, PARAMS, NBTOPICS, LDA_PATH, EMB_PATH
+from utils import init_logging, log_args, load
+from constants import ETL_PATH, PARAMS, NBTOPICS, LDA_PATH, EMB_PATH, DSETS
+
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=UserWarning)
 
-LOGG = None
+LOGG = print
 
 
 def get_word(word):
@@ -33,7 +34,7 @@ def get_word(word):
 
 
 def get_labels(topic, nb_labels, d2v_docvecs, d2v_wv, w2v_wv, w2v_indexed, d_indices, w_indices):
-    LOGG.info(f'Generating labels for topic {topic.name[0]}')
+    LOGG(f'Generating labels for {topic.name}')
 
     valdoc2vec = 0.0
     valword2vec = 0.0
@@ -142,17 +143,19 @@ def get_labels(topic, nb_labels, d2v_docvecs, d2v_wv, w2v_wv, w2v_indexed, d_ind
     return [resultlist_doc2vecnew, resultlist_word2vecnew, new_score]
 
 
-def load_embeddings(d2v_path, w2v_path):
-    LOGG.info(f'Doc2Vec loading {d2v_path}')
+def load_embeddings(d2v_path, w2v_path, use_ftx=False):
+    LOGG(f'Doc2Vec loading {d2v_path}')
     d2v = Doc2Vec.load(d2v_path)
-    LOGG.info(f'vocab size: {len(d2v.wv.vocab)}')
-    LOGG.info(f'docvecs size: {len(d2v.docvecs.vectors_docs)}')
-
-    LOGG.info(f'Word2Vec loading {w2v_path}')
-    w2v = Word2Vec.load(w2v_path)
-    LOGG.info(f'vocab size: {len(w2v.wv.vocab)}')
     d2v.delete_temporary_training_data()
-    w2v.delete_temporary_training_data()
+    LOGG(f'vocab size: {len(d2v.wv.vocab)}')
+    LOGG(f'docvecs size: {len(d2v.docvecs.vectors_docs)}')
+
+    LOGG(f'Word2Vec loading {w2v_path}')
+    w2v = Word2Vec.load(w2v_path)
+    if not use_ftx:
+        w2v.delete_temporary_training_data()
+    LOGG(f'vocab size: {len(w2v.wv.vocab)}')
+
     return d2v.docvecs, d2v.wv, w2v.wv
 
 
@@ -199,16 +202,16 @@ def index_embeddings(d2v_docvecs, d2v_wv, w2v_wv, d2v_indices, w2v_indices):
     d2v_docvecs.vectors_docs_norm = \
         (d2v_docvecs.doctag_syn0 / sqrt((d2v_docvecs.doctag_syn0 ** 2).sum(-1))[..., newaxis]) \
         .astype(REAL)[d2v_indices]
-    LOGG.info("doc2vec normalized")
+    LOGG("doc2vec normalized")
 
     w2v_wv.syn0norm = (w2v_wv.syn0 / sqrt((w2v_wv.syn0 ** 2).sum(-1))[..., newaxis]).astype(REAL)
     w2v_indexed = w2v_wv.syn0norm[w2v_indices]
-    LOGG.info("word2vec normalized")
+    LOGG("word2vec normalized")
     return w2v_indexed
 
 
 def load_topics(topics_path, metrics, params, nbtopics, print_sample=False):
-    LOGG.info(f'Loading topics {topics_path}')
+    LOGG(f'Loading topics {topics_path}')
     topics = pd.read_csv(topics_path, index_col=None)
     if metrics and 'metric' in topics.columns:
         topics = topics[topics.metric.isin(metrics)]
@@ -220,25 +223,31 @@ def load_topics(topics_path, metrics, params, nbtopics, print_sample=False):
         if key in topics.columns:
             topics = topics.set_index(key, append=True)
     if print_sample:
-        LOGG.info(f'\n{topics.head(10)}')
-    LOGG.info(f'number of topics {len(topics)}')
+        LOGG(f'\n{topics.head(10)}')
+    LOGG(f'number of topics {len(topics)}')
     return topics
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--topics_file", type=str, required=False)
-    parser.add_argument("--labels_file", type=str, required=False)
-    parser.add_argument("--d2v_indices", type=str, required=False)
-    parser.add_argument("--w2v_indices", type=str, required=False)
+    parser.add_argument("--topics_file", type=str, required=False, default=None)
+    parser.add_argument("--labels_file", type=str, required=False, default=None)
+    parser.add_argument("--d2v_indices", type=str, required=False, default=None)
+    parser.add_argument("--w2v_indices", type=str, required=False, default=None)
 
     parser.add_argument("--d2v_path", type=str, required=False, default=join(EMB_PATH, 'd2v', 'd2v'))
-    parser.add_argument("--w2v_path", type=str, required=False, default=join(EMB_PATH, 'w2v', 'w2v'))
+    parser.add_argument("--w2v_path", type=str, required=False, default=None)
+    parser.add_argument('--fasttext', dest='use_ftx', action='store_true', required=False)
+    parser.add_argument('--no-fasttext', dest='use_ftx', action='store_false', required=False)
+    parser.set_defaults(use_ftx=False)
 
     parser.add_argument("--dataset", type=str, required=False)
-    parser.add_argument("--nbfiles", type=int, required=False, default=None)
     parser.add_argument("--version", type=str, required=False, default='noun')
+    parser.add_argument('--tfidf', dest='tfidf', action='store_true', required=False)
+    parser.add_argument('--no-tfidf', dest='tfidf', action='store_false', required=False)
+    parser.set_defaults(tfidf=False)
+
     parser.add_argument("--metrics", nargs='*', type=str, required=False, default=['ref'])
     parser.add_argument("--params", nargs='*', type=str, required=False, default=['e42'])
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=[100])
@@ -257,36 +266,36 @@ def parse_args():
     if -1 in args.nbtopics:
         args.nbtopics = NBTOPICS
 
-    dataset = DATASETS.get(args.dataset, args.dataset)
-    nbfiles_str = f'_nbfiles{args.nbfiles:02d}' if args.nbfiles else ''
-    if args.topics_file:
-        topics_file_is_given = True
-        args.nbfiles = args.version = args.metrics = args.params = args.nbtopics = None
-    else:
-        topics_file_is_given = False
-        args.topics_file = join(
-            LDA_PATH, args.version, 'topics',
-            f'{dataset}{nbfiles_str}_topic-candidates.csv'
-        )
+    args.dataset = DSETS.get(args.dataset, args.dataset)
+    corpus_type = 'tfidf' if args.tfidf else 'bow'
+
     if args.labels_file is None:
-        if topics_file_is_given:
+        if args.topics_file is not None:
             args.labels_file = args.topics_file.strip('.csv') + '_label-candidates'
         else:
             args.labels_file = join(
-                LDA_PATH, args.version, 'topics',
-                f'{dataset}{nbfiles_str}_label-candidates'
+                LDA_PATH, args.version, corpus_type, 'topics',
+                f'{args.dataset}_{args.version}_{corpus_type}_label-candidates'
             )
 
     if args.d2v_indices and args.w2v_indices:
         args.max_title_length = None
         args.min_doc_length = None
 
+    if args.w2v_path is None:
+        if args.use_ftx:
+            args.w2v_path = join(EMB_PATH, 'ftx', 'ftx')
+            args.labels_file += '_ftx'
+        else:
+            args.w2v_path = join(EMB_PATH, 'w2v', 'w2v')
+
     print_sample = False
 
     return (
         args.topics_file, args.labels_file, args.d2v_indices, args.w2v_indices,
-        args.d2v_path, args.w2v_path,
-        args.dataset, args.metrics, args.params, args.nbtopics, args.total_num_topics,
+        args.d2v_path, args.w2v_path, args.use_ftx,
+        args.dataset, args.version, corpus_type,
+        args.metrics, args.params, args.nbtopics, args.total_num_topics,
         args.max_title_length, args.min_doc_length, args.nblabels, print_sample, args
     )
 
@@ -295,32 +304,41 @@ def main():
     global LOGG
     (
         topics_file, labels_file, d2v_indices_file, w2v_indices_file,
-        d2v_path, w2v_path,
-        dataset, metrics, params, nb_topics, total_num_topics,
+        d2v_path, w2v_path, use_ftx,
+        dataset, version, corpus_type,
+        metrics, params, nbtopics, total_num_topics,
         max_title_length, min_doc_length, nb_labels, print_sample, args
     ) = parse_args()
 
-    LOG = logger = init_logging(name=f'labelgen_{dataset}', to_file=False)
+    logger = init_logging(name=f'Labeling_{dataset}', basic=False, to_stdout=True, to_file=False)
     log_args(logger, args)
+    LOGG = logger.info
 
-    topics = load_topics(
-        topics_path=topics_file,
-        metrics=metrics,
-        params=params,
-        nbtopics=nb_topics,
-        print_sample=print_sample
-    )
+    if topics_file is not None:
+        topics = load_topics(
+            topics_path=topics_file,
+            metrics=metrics,
+            params=params,
+            nbtopics=nbtopics,
+            print_sample=print_sample,
+        )
+    else:
+        topics = load(
+            'topics', dataset, version, corpus_type, *metrics, *params, *nbtopics, logger=logger
+        )
+
     d2v_docvecs, d2v_wv, w2v_wv = load_embeddings(
         d2v_path=d2v_path,
-        w2v_path=w2v_path
+        w2v_path=w2v_path,
+        use_ftx=use_ftx,
     )
 
     if d2v_indices_file and w2v_indices_file:
-        logger.info(f'loading {d2v_indices_file}')
         with open(d2v_indices_file, 'rb') as fp:
+            LOGG(f'Loading {d2v_indices_file}')
             d2v_indices = pickle.load(fp)
-        logger.info(f'loading {w2v_indices_file}')
         with open(w2v_indices_file, 'rb') as fp:
+            LOGG(f'Loading {w2v_indices_file}')
             w2v_indices = pickle.load(fp)
     else:
         d2v_indices, w2v_indices = get_indices(
@@ -355,36 +373,41 @@ def main():
         axis=1
     )
     t1 = int(time() - t0)
-    logger.info(f"done in {t1//3600:02d}:{(t1//60) % 60:02d}:{t1 % 60:02d}")
+    LOGG(f"done in {t1//3600:02d}:{(t1//60) % 60:02d}:{t1 % 60:02d}")
     if print_sample:
-        LOG.info(f'\n{labels.head(10)}')
+        LOGG(f'\n{labels.head(10)}')
 
     # reformatting output files
+    col2 = 'ftx' if use_ftx else 'w2v'
+    col3 = 'comb_ftx' if use_ftx else 'comb'
     full = (
         labels
         .apply(pd.Series)
-        .rename(columns={0: 'd2v', 1: 'w2v', 2: 'comb'})
+        .rename(columns={0: 'd2v', 1: col2, 2: col3})
         .stack()
         .apply(pd.Series)
         .rename(columns=lambda x: f'label{x}')
     )
     full.index = full.index.droplevel(0).rename(names='label_method', level=-1)
     if print_sample:
-        LOG.info(f'\n{full.head(10)}')
-    logger.info(f'Writing labels to {labels_file}')
+        LOGG(f'\n{full.head(10)}')
+
+    if exists(labels_file + '_full.csv'):
+        labels_file = labels_file + '_' + str(time()).split('.')[0]
+    LOGG(f'Writing labels to {labels_file}')
     full.to_csv(labels_file + '_full.csv')
 
     # reducing results to default values and metrics
     if print_sample:
-        LOG.info(f'\n{full.head(10)}')
+        LOGG(f'\n{full.head(10)}')
     simple = (
         full.query('label_method == "comb"')
         .reset_index(drop=True)
         .applymap(lambda x: x[0])
     )
     if print_sample:
-        LOG.info(f'\n{simple.head(10)}')
-    simple.to_csv(labels_file + '_simple.csv', index=None)
+        LOGG(f'\n{simple.head(10)}')
+    simple.to_csv(labels_file + '_minimal.csv', index=None)
 
 
 if __name__ == '__main__':

@@ -419,7 +419,7 @@ def main():
             model = LdaModel(**kwargs)
             gc.collect()
 
-            model_dir = join(LDA_PATH, corpus_type, f'{param}{_split}')
+            model_dir = join(LDA_PATH, version, corpus_type, f'{param}{_split}')
             model_path = join(model_dir, f'{dataset}_LDAmodel_{param}{_split}_{nbtopics}_ep{epochs}')
             if not exists(model_dir):
                 makedirs(model_dir)

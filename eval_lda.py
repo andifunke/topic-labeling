@@ -8,8 +8,7 @@ import pandas as pd
 from gensim.models import CoherenceModel
 
 from constants import PARAMS, NBTOPICS, DATASETS, LDA_PATH
-from topics_postprocessing import TopicsLoader
-from utils import init_logging, load, log_args
+from utils import init_logging, load, log_args, TopicsLoader
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -187,14 +186,16 @@ def main():
             keyed_vectors=None, metrics=None, window_size=None,
             suffix='', cores=cores, logg=logger.info,
         )
+        gc.collect()
         dfs.append(df)
 
-        wiki_texts = load('texts', 'dewiki', logger=logger)[:1000]
+        wiki_texts = load('texts', 'dewiki', logger=logger)
         df = eval_coherence(
             topics=topics, dictionary=wiki_dict, corpus=None, texts=wiki_texts,
             keyed_vectors=None, metrics=None, window_size=None,
             suffix='_wikt', cores=cores, logg=logger.info,
         )
+        gc.collect()
         dfs.append(df)
 
         df = eval_coherence(
@@ -202,6 +203,8 @@ def main():
             keyed_vectors=None, metrics=['c_uci'], window_size=20,
             suffix='_wikt_w20', cores=cores, logg=logger.info,
         )
+        del wiki_texts
+        gc.collect()
         dfs.append(df)
 
     df_sims = None
@@ -222,6 +225,7 @@ def main():
             keyed_vectors=w2v, metrics=None, window_size=None,
             suffix='_w2v', cores=cores, logg=logger.info,
         )
+        gc.collect()
         dfs.append(df)
 
         df = eval_coherence(
@@ -229,6 +233,7 @@ def main():
             keyed_vectors=ftx, metrics=None, window_size=None,
             suffix='_ftx', cores=cores, logg=logger.info,
         )
+        gc.collect()
         dfs.append(df)
 
         # apply custom similarity metrics
@@ -240,6 +245,8 @@ def main():
             {'mean_similarity': ms, 'pairwise_similarity_ignore_oov': ps, 'pairwise_similarity': ps2},
             axis=1
         )
+        del d2v, w2v, ftx
+        gc.collect()
 
     dfs = pd.concat(dfs, axis=1)
     dfs = dfs.stack().apply(pd.Series).rename(columns={0: 'score', 1: 'stdev', 2: 'support'}).unstack()

@@ -14,7 +14,7 @@ from pandas.core.common import SettingWithCopyWarning
 from constants import DATASETS, METRICS, PARAMS, NBTOPICS, LDA_PATH, PLACEHOLDER
 import warnings
 
-from topics_postprocessing import TopicsLoader
+from utils import TopicsLoader
 
 warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 

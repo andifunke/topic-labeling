@@ -366,7 +366,12 @@ def load(*args, logger=None):
         logg(e)
         if purpose in {'topic', 'topics'}:
             logg('Loading topics via TopicsLoader')
-            return TopicsLoader(dataset, version, corpus_type, params, nbtopics, topn=10).topics
+            kwargs = dict(dataset=dataset, version=version, corpus_type=corpus_type, topn=10)
+            if params:
+                kwargs['param_ids'] = params
+            if nbtopics:
+                kwargs['nbs_topics'] = nbtopics
+            return TopicsLoader(**kwargs).topics
 
 
 class Unlemmatizer(object):

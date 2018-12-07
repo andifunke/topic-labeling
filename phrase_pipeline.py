@@ -25,8 +25,9 @@ tqdm.pandas()
 
 
 # based on Philipp Grawes approach on extracting and normalizing street names
-STREET_NAME_LIST = [r'strasse$', r'straße$', r'str$', r'str.$', r'platz', r'gasse$',
-                    r'allee$', r'ufer$', r'weg$']
+STREET_NAME_LIST = [
+    r'strasse$', r'straße$', r'str$', r'str.$', r'platz', r'gasse$', r'allee$', r'ufer$', r'weg$'
+]
 STREET_NAMES = re.compile(r'(' + '|'.join(STREET_NAME_LIST) + ')', re.IGNORECASE)
 STREET_PATTERN = re.compile(r"str(\.|a(ss|ß)e)?\b", re.IGNORECASE)
 SPECIAL_CHAR = re.compile(r'[^\w&/]+')

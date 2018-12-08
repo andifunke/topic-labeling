@@ -12,7 +12,7 @@ from gensim import matutils
 from gensim.models import Word2Vec, Doc2Vec
 
 from topic_reranking import METRICS
-from utils import init_logging, log_args, load
+from utils import init_logging, log_args, load, tprint
 from constants import ETL_PATH, PARAMS, NBTOPICS, LDA_PATH, EMB_PATH, DSETS
 
 import warnings
@@ -380,7 +380,7 @@ def main():
     # reformatting output files
     col2 = 'ftx' if use_ftx else 'w2v'
     col3 = 'comb_ftx' if use_ftx else 'comb'
-    full = (
+    labels = (
         labels
         .apply(pd.Series)
         .rename(columns={0: 'd2v', 1: col2, 2: col3})
@@ -388,26 +388,15 @@ def main():
         .apply(pd.Series)
         .rename(columns=lambda x: f'label{x}')
     )
-    full.index = full.index.droplevel(0).rename(names='label_method', level=-1)
     if print_sample:
-        LOGG(f'\n{full.head(10)}')
+        LOGG(f'\n{labels.head(10)}')
 
-    if exists(labels_file + '_full.csv'):
-        labels_file = labels_file + '_' + str(time()).split('.')[0]
+    if exists(labels_file + '.csv'):
+        labels_file = labels_file + '_' + str(time()) + '.csv'
+    else:
+        labels_file += '.csv'
     LOGG(f'Writing labels to {labels_file}')
-    full.to_csv(labels_file + '_full.csv')
-
-    # reducing results to default values and metrics
-    if print_sample:
-        LOGG(f'\n{full.head(10)}')
-    simple = (
-        full.query('label_method == "comb"')
-        .reset_index(drop=True)
-        .applymap(lambda x: x[0])
-    )
-    if print_sample:
-        LOGG(f'\n{simple.head(10)}')
-    simple.to_csv(labels_file + '_minimal.csv', index=None)
+    labels.to_csv(labels_file)
 
 
 if __name__ == '__main__':

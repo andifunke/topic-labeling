@@ -151,17 +151,58 @@ def multiload(dataset, purpose='etl'):
         yield pd.read_pickle(file)
 
 
+def reduce_df(df, metrics, params, nbtopics):
+    if len(metrics) > 0:
+        try:
+            df = df.query('metric in @metrics')
+        except Exception as e:
+            print(e)
+    if len(params) > 0:
+        try:
+            df = df.query('param_id in @params')
+        except Exception as e:
+            print(e)
+    if len(nbtopics) > 0:
+        try:
+            df = df.query('nb_topics in @nbtopics')
+        except Exception as e:
+            print(e)
+    return df
+
+
+def flatten_columns(df):
+    df = pd.DataFrame(df.to_records())
+
+    def rename_column(col):
+        if col.startswith('('):
+            col = eval(col)
+            if col[0] == 'score':
+                col = col[1]
+            else:
+                col = '_'.join(col)
+        return col
+
+    df = df.rename(columns=rename_column)
+    df = set_index(df)
+    return df
+
+
+def set_index(df):
+    keys = [
+        key for key in ['dataset', 'param_id', 'nb_topics', 'topic_idx', 'label_method', 'metric']
+        if key in df.columns
+    ]
+    df = df.set_index(keys)
+    return df
+
+
 def load(*args, logger=None):
     """
     work in progress: may not work for all cases, especially not yet for reading distributed
     datsets like dewiki and dewac.
     """
 
-    def logg(msg):
-        if logger:
-            logger.info(msg)
-        else:
-            print(msg)
+    logg = logger.info if logger else print
 
     if not args:
         logg('no arguments, no load')
@@ -188,14 +229,13 @@ def load(*args, logger=None):
     params = []
     nbtopics = []
     metrics = []
-    file = None
 
     if isinstance(args, str):
         args = [args]
     args = [arg.replace('-', '_') if isinstance(arg, str) else arg for arg in args]
     # logg(args)
 
-    # parse args
+    # --- parse args ---
     for arg in args:
         if arg in single:
             if arg == 'phrases' and 'lemmap' in args:
@@ -203,8 +243,7 @@ def load(*args, logger=None):
                 purpose = 'lemmap'
             else:
                 purpose = 'single'
-                file = single[arg]
-                dataset = True
+                dataset = arg
                 break
         elif not dataset and arg.lower() in DSETS:
             dataset = DSETS[arg]
@@ -212,7 +251,7 @@ def load(*args, logger=None):
             dataset = arg
         elif not purpose and arg.lower() in purposes:
             purpose = arg.lower()
-        elif any([s in arg for s in ['d2v', 'w2v', 'ftx'] if isinstance(arg, str)]):
+        elif not purpose and any([s in arg for s in ['d2v', 'w2v', 'ftx'] if isinstance(arg, str)]):
             purpose = 'embedding'
             dataset = arg
         elif arg in PARAMS:
@@ -226,7 +265,7 @@ def load(*args, logger=None):
         elif not corpus_type and arg in CORPUS_TYPE:
             corpus_type = arg
 
-    # setting default values
+    # --- setting default values ---
     if version is None:
         version = 'noun'
     if corpus_type is None:
@@ -236,30 +275,41 @@ def load(*args, logger=None):
         nbtopics.append('100')
         metrics.append('ref')
 
-    # logg(f'purpose {purpose}')
-    # logg(f'dataset {dataset}')
-
-    # combine args
+    # --- single ---
     if purpose == 'single':
-        pass
+        df = pd.read_pickle(single[dataset])
+        if 'phrases' in args and 'minimal' in args:
+            df = df.set_index('token').text
+            df = df[df.str.match(NOUN_PATTERN)]
+        return df
+
+    # --- good_ideas ---
     elif purpose == 'goodids' and dataset in ['dewac', 'dewiki']:
         file = join(ETL_PATH, f'{dataset}_good_ids.pickle')
+        logg('fLoading {file}')
+        return pd.read_pickle(file)
+
+    # --- lemmap ---
     elif purpose == 'lemmap':
-        print(dataset)
         file = join(ETL_PATH, f'{dataset}_lemmatization_map.pickle')
+        logg('fLoading {file}')
+        return pd.read_pickle(file)
+
+    # --- embeddings ---
     elif purpose == 'embedding':
         file = join(EMB_PATH, dataset, dataset)
-    elif purpose in {'topic', 'topics'}:
-        # file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-candidates.csv')
-        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-candidates.csv')
-    elif purpose in {'score', 'scores'}:
-        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-scores.csv')
-    elif purpose == 'wiki_scores':
-        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-wiki-scores.csv')
-    elif purpose == 'x2v_scores':
-        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_topic-x2v-scores.csv')
-    elif purpose in {'label', 'labels'}:
-        file = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_label-candidates_full.csv')
+        try:
+            logg(f'Reading {file}')
+            if 'd2v' in dataset:
+                return Doc2Vec.load(file)
+            if 'w2v' in dataset:
+                return Word2Vec.load(file)
+            if 'ftx' in dataset:
+                return FastText.load(file)
+        except Exception as e:
+            logg(e)
+
+    # --- gensim dict ---
     elif purpose == 'dict':
         if dataset == 'dewiki' and 'unfiltered' in args:
             dict_path = join(
@@ -267,22 +317,128 @@ def load(*args, logger=None):
             )
         else:
             dict_path = join(LDA_PATH, version, corpus_type, f'{dataset}_{version}_{corpus_type}.dict')
-        logg(f'Loading dict from {dict_path}')
-        dict_from_corpus = Dictionary.load(dict_path)
-        _ = dict_from_corpus[0]  # init dictionary
-        return dict_from_corpus
+        try:
+            logg(f'Loading dict from {dict_path}')
+            dict_from_corpus = Dictionary.load(dict_path)
+            _ = dict_from_corpus[0]  # init dictionary
+            return dict_from_corpus
+        except Exception as e:
+            logg(e)
+
+    # --- MM corpus ---
     elif purpose == 'corpus':
         corpus_path = join(LDA_PATH, version, corpus_type, f'{dataset}_{version}_{corpus_type}.mm')
-        logg(f'Loading corpus from {corpus_path}')
-        corpus = MmCorpus(corpus_path)
-        corpus = list(corpus)
-        return corpus
+        try:
+            logg(f'Loading corpus from {corpus_path}')
+            corpus = MmCorpus(corpus_path)
+            corpus = list(corpus)
+            return corpus
+        except Exception as e:
+            logg(e)
+
+    # --- json texts ---
     elif purpose == 'texts':
         doc_path = join(LDA_PATH, version, f'{dataset}_{version}_texts.json')
-        with open(doc_path, 'r') as fp:
-            logg(f'Loading texts from {doc_path}')
-            texts = json.load(fp)
-        return texts
+        try:
+            with open(doc_path, 'r') as fp:
+                logg(f'Loading texts from {doc_path}')
+                texts = json.load(fp)
+            return texts
+        except Exception as e:
+            logg(e)
+
+    # --- topics ---
+    elif purpose in {'topic', 'topics'}:
+        file = join(
+            LDA_PATH, version, corpus_type, 'topics',
+            f'{dataset}_{version}_{corpus_type}_topic-candidates.csv'
+        )
+        try:
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0)
+            df = set_index(df)
+            return reduce_df(df, metrics, params, nbtopics)
+        except Exception as e:
+            logg(e)
+            logg('Loading topics via TopicsLoader')
+            kwargs = dict(dataset=dataset, version=version, corpus_type=corpus_type, topn=10)
+            if params:
+                kwargs['param_ids'] = params
+            if nbtopics:
+                kwargs['nbs_topics'] = nbtopics
+            return TopicsLoader(**kwargs).topics
+
+    # --- labels ---
+    elif purpose in {'label', 'labels'}:
+        def _load_label_file(file_):
+            logg(f'Reading {file_}')
+            df_ = pd.read_csv(file_, header=0)
+            df_ = set_index(df_)
+            df_ = df_.applymap(eval)
+            if 'minimal' in args:
+                df_ = df_.query('label_method in ["comb", "comb_ftx"]').applymap(lambda x: x[0])
+            return reduce_df(df_, metrics, params, nbtopics)
+
+        fpath = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_{version}_{corpus_type}')
+        df = w2v = None
+        if 'w2v' in args or 'ftx' not in args:
+            try:
+                file = fpath + '_label-candidates.csv'
+                df = w2v = _load_label_file(file)
+            except Exception as e:
+                logg(e)
+        if 'ftx' in args or 'w2v' not in args:
+            try:
+                file = fpath + '_label-candidates_ftx.csv'
+                df = ftx = _load_label_file(file)
+                if w2v is not None:
+                    ftx = ftx.query('label_method != "d2v"')
+                    df = w2v.append(ftx).sort_index()
+            except Exception as e:
+                logg(e)
+        return df
+
+    # --- scores ---
+    elif purpose in {'score', 'scores'}:
+        dfs = []
+        try:
+            file = join(
+                LDA_PATH, version, corpus_type, 'topics',
+                f'{dataset}_{version}_{corpus_type}_topic-scores.csv'
+            )
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=[0, 1], skipinitialspace=True)
+            cols = list(df.columns)
+            for column in cols:
+                if column[0].startswith('Unnamed'):
+                    col_name = df.loc[0, column]
+                    df[col_name] = df[column]
+                    df = df.drop(column, axis=1)
+            df = df.drop(0)
+            df.nb_topics = df.nb_topics.astype(int)
+            df.topic_idx = df.topic_idx.astype(int)
+            df = df.drop(['stdev', 'support'], level=0, axis=1)
+            df = set_index(df)
+            df = flatten_columns(df)
+            df = reduce_df(df, metrics, params, nbtopics)
+            dfs.append(df)
+        except Exception as e:
+            logg(e)
+        try:
+            file = join(
+                LDA_PATH, version, corpus_type, 'topics',
+                f'{dataset}_{version}_{corpus_type}_topic-scores_germanet.csv'
+            )
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0)
+            df = set_index(df)
+            df = reduce_df(df, metrics, params, nbtopics)
+            dfs.append(df)
+        except Exception as e:
+            logg(e)
+        return pd.concat(dfs, axis=1)
+
+    # --- pipelines ---
     elif purpose in {'nlp', 'simple', 'smpl', 'wiki', 'wiki_phrases', 'phrases', 'etl', None}:
         if purpose in {'etl', None}:
             directory = ETL_PATH
@@ -309,69 +465,17 @@ def load(*args, logger=None):
                 join(directory, f'{DSETS["FA"]}{suffix}.pickle'),
                 join(directory, f'{DSETS["FO"]}{suffix}.pickle')
             ]
+        # TODO: call multiload
         else:
-            # TODO: allow to load full or partially dewiki and dewac
             file = join(directory, f'{dataset.replace("dewac1", "dewac_01")}{suffix}.pickle')
-
-    try:
-        logg(f'Reading {file}')
-        if purpose == 'embedding':
-            if 'd2v' in dataset:
-                return Doc2Vec.load(file)
-            if 'w2v' in dataset:
-                return Word2Vec.load(file)
-            if 'ftx' in dataset:
-                return FastText.load(file)
-        elif isinstance(file, str) and file.endswith('.pickle'):
-            df = pd.read_pickle(file)
-            if purpose == 'single' and 'phrases' in args and 'minimal' in args:
-                df = df.set_index('token').text
-                df = df[df.str.match(NOUN_PATTERN)]
-            return df
-        elif isinstance(file, str) and file.endswith('.csv'):
-            index = None
-            header = 0
-            if purpose in {'label', 'labels'}:
-                index = [0, 1, 2, 3, 4, 5]
-            elif purpose in {'topic', 'topics', 'score', 'scores', 'x2v_scores'}:
-                index = [0, 1, 2, 3, 4]
-            elif purpose in {'wiki_scores'}:
-                index = [0, 1, 2, 3, 4]
-                header = 1
-
-            df = pd.read_csv(file, index_col=index, header=header)
-
-            if len(metrics) > 0:
-                df = df.query('metric in @metrics')
-            if len(params) > 0:
-                df = df.query('param_id in @params')
-            if len(nbtopics) > 0:
-                df = df.query('nb_topics in @nbtopics')
-            if purpose in {'label', 'labels'}:
-                df = df.applymap(eval)
-                if 'minimal' in args:
-                    df = (
-                        df.query('label_method == "comb"')
-                        .reset_index(drop=True)
-                        .applymap(lambda x: x[0])
-                    )
-            if purpose in {'topic', 'topics', 'score', 'scores', 'wiki_scores', 'x2v_scores'}:
-                if 'minimal' in args:
-                    df = df.reset_index(drop=True)
-            return df
-        else:
-            df = pd.concat([pd.read_pickle(f) for f in file])
-            return df
-    except Exception as e:
-        logg(e)
-        if purpose in {'topic', 'topics'}:
-            logg('Loading topics via TopicsLoader')
-            kwargs = dict(dataset=dataset, version=version, corpus_type=corpus_type, topn=10)
-            if params:
-                kwargs['param_ids'] = params
-            if nbtopics:
-                kwargs['nbs_topics'] = nbtopics
-            return TopicsLoader(**kwargs).topics
+        try:
+            logg(f'Reading {file}')
+            if isinstance(file, str):
+                return pd.read_pickle(file)
+            else:
+                return pd.concat([pd.read_pickle(f) for f in file])
+        except Exception as e:
+            logg(e)
 
 
 class Unlemmatizer(object):
@@ -566,29 +670,6 @@ class TopicsLoader(object):
 
 def main():
     tprint(load('topics', 'dewac1', 'e42', 'a42', 100, 25))
-    # df = load('dewiki', 'lemmap')
-    # tprint(df, 10)
-    # dataset = 'dewiki'
-    # version = 'noun'
-    # corpus_type = 'bow'
-    # load(dataset, version, corpus_type, 'dict')
-    # load(dataset, version, corpus_type, 'corpus')
-    # load(dataset, version, 'texts')
-
-    # dataset = 'news'
-    # # param_ids = 'e42'
-    #
-    # tl = TopicsLoader(
-    #     dataset=dataset,
-    #     # param_ids=param_ids,
-    #     # nbs_topics=nbs_topics,
-    #     # version=version,
-    #     # topn=nb_candidate_terms
-    # )
-    # # tprint(tl.topics)
-    # ul = Unlemmatizer()
-    # topics = ul.unlemmatize_topics(tl.topics)
-    # tprint(topics)
 
 
 if __name__ == '__main__':

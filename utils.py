@@ -287,13 +287,13 @@ def load(*args, logger=None):
     # --- good_ideas ---
     elif purpose == 'goodids' and dataset in ['dewac', 'dewiki']:
         file = join(ETL_PATH, f'{dataset}_good_ids.pickle')
-        logg('fLoading {file}')
+        logg(f'Loading {file}')
         return pd.read_pickle(file)
 
     # --- lemmap ---
     elif purpose == 'lemmap':
         file = join(ETL_PATH, f'{dataset}_lemmatization_map.pickle')
-        logg('fLoading {file}')
+        logg(f'Loading {file}')
         return pd.read_pickle(file)
 
     # --- embeddings ---
@@ -371,13 +371,13 @@ def load(*args, logger=None):
             f'{dataset}_{version}_{corpus_type}_topic-candidates.csv'
         )
         try:
-            logg(f'Reading {file}')
             df = pd.read_csv(file, header=0)
+            logg(f'Reading {file}')
             df = set_index(df)
             return reduce_df(df, metrics, params, nbtopics)
         except Exception as e:
-            logg(e)
-            logg('Loading topics via TopicsLoader')
+            # logg(e)
+            # logg('Loading topics via TopicsLoader')
             lsi = 'lsi' in args
             kwargs = dict(dataset=dataset, version=version, corpus_type=corpus_type, topn=10, lsi=lsi)
             if params:
@@ -545,16 +545,16 @@ class Unlemmatizer(object):
                     print(self.wiktionary.loc[t.title()])
                     ts.append(t)
                 else:
-                    ts.append(t)
+                    ts.append(t.title())
             word = '_'.join(ts)
-            print(word)
 
         # 4) nothing to do
         else:
             word = token
 
         word = word.replace('_.', '.').replace('_', ' ')
-        # print('   ', token, '->', word)
+        if word != token:
+            print('   ', token, '->', word)
         return word
 
     def unlemmatize_group(self, group):
@@ -569,6 +569,11 @@ class Unlemmatizer(object):
         else:
             topics = topics.groupby('dataset', sort=False).apply(self.unlemmatize_group)
         return topics
+
+    def unlemmatize_labels(self, labels):
+        labels = labels.copy()
+        labels = labels.applymap(self.unlemmatize_token)
+        return labels
 
 
 # --------------------------------------------------------------------------------------------------

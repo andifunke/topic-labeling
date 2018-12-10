@@ -1,6 +1,7 @@
 # coding: utf-8
 import argparse
 import json
+from collections import defaultdict
 from os import makedirs
 from os.path import join, exists
 from pprint import pformat
@@ -14,7 +15,7 @@ from pandas.core.common import SettingWithCopyWarning
 from constants import DATASETS, METRICS, PARAMS, NBTOPICS, LDA_PATH, PLACEHOLDER
 import warnings
 
-from utils import TopicsLoader
+from utils import TopicsLoader, tprint, load
 
 warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 
@@ -59,6 +60,8 @@ class Reranker(object):
         self.shifted_topics = self._shift_topics()
         self.topic_candidates = None
         self.eval_scores = None
+        self.scores_vec = None
+        self.kvs = None
 
         # generate some statistics
         self._statistics_ = dict()
@@ -78,6 +81,29 @@ class Reranker(object):
         # omit the first topic term, then the second and append the first etc...
         shifted_topics = shifted_ids.iloc[:, 1:].values.tolist()
         return shifted_topics
+
+    def _init_vectors(self):
+        d2v = load('d2v').docvecs
+        w2v = load('w2v').wv
+        ftx = load('ftx').wv
+
+        # Dry run to make sure both indices are fully in RAM
+        d2v.init_sims()
+        vector = d2v.vectors_docs_norm[0]
+        _ = d2v.index2entity[0]
+        d2v.most_similar([vector], topn=5)
+
+        w2v.init_sims()
+        vector = w2v.vectors_norm[0]
+        _ = w2v.index2entity[0]
+        w2v.most_similar([vector], topn=5)
+
+        ftx.init_sims()
+        vector = ftx.vectors_norm[0]
+        _ = ftx.index2entity[0]
+        ftx.most_similar([vector], topn=5)
+
+        self.kvs = {'d2v': d2v, 'w2v': w2v, 'ftx': ftx}
 
     def _id2term(self, id_):
         return self.dict_from_corpus[id_]
@@ -194,7 +220,7 @@ class Reranker(object):
         print("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
         return topic_votes
 
-    def rerank_fast_per_metric(self, metric, coherence_model=None):
+    def rerank_coherence_per_metric(self, metric, coherence_model=None):
         """
         Object method to trigger the reranking for a given metric.
         It uses the fast heuristic for the reranking in O(n) with n being the number
@@ -257,7 +283,7 @@ class Reranker(object):
         print("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
         return tpx_ids
 
-    def rerank_fast(self, metrics=None):
+    def rerank_coherence(self, metrics=None):
         """
         Main method of a Reranker instance. It generates topic candidates for the given coherence
         metrics. A topic candidate is a reranking of the representational terms of a topic. For each
@@ -286,16 +312,16 @@ class Reranker(object):
 
         # adding several rerankings according to different metrics
         if 'u_mass' in metrics:
-            umass_topics_terms = self.rerank_fast_per_metric('u_mass')
+            umass_topics_terms = self.rerank_coherence_per_metric('u_mass')
             candidates.append(umass_topics_terms)
         if 'c_v' in metrics:
-            cv_topics_terms = self.rerank_fast_per_metric('c_v')
+            cv_topics_terms = self.rerank_coherence_per_metric('c_v')
             candidates.append(cv_topics_terms)
         if 'c_uci' in metrics:
-            cuci_topics_terms = self.rerank_fast_per_metric('c_uci')
+            cuci_topics_terms = self.rerank_coherence_per_metric('c_uci')
             candidates.append(cuci_topics_terms)
         if 'c_npmi' in metrics:
-            cnpmi_topics_terms = self.rerank_fast_per_metric('c_npmi')
+            cnpmi_topics_terms = self.rerank_coherence_per_metric('c_npmi')
             candidates.append(cnpmi_topics_terms)
         topic_candidates = pd.concat(candidates, axis=0)
 
@@ -315,6 +341,161 @@ class Reranker(object):
         )
         self.topic_candidates = topic_candidates
         return topic_candidates
+
+    def _rank(self, df, name):
+        df[f'{name}_drank'] = df[f'{name}_dscore'].rank().map(lambda x: x - 1)
+        df[f'{name}_rrank'] = df[f'{name}_rscore'].rank().map(lambda x: x - 1)
+        return df
+
+    def _fillna_max(self, df):
+        mask = df.isnull().any(axis=1)
+        df[mask] = df[mask].apply(lambda x: x.fillna(x.max()), axis=1)
+        return df
+
+    def rerank_vec_values(self, topic_param):
+        reference = pd.Series(np.arange(self.nb_candidate_terms), index=topic_param, name='ref_rank')
+        scores = [reference]
+        for name, kv in self.kvs.items():
+            in_kv = np.vectorize(lambda x: x in kv)
+            mask = in_kv(topic_param)
+            topic = topic_param[mask]
+            # not_in_kv = topic_param[~mask]
+            nb_terms_in_vocab = len(topic)
+            rank_scores = defaultdict(int)
+            dist_scores = defaultdict(float)
+            for i in range(nb_terms_in_vocab):
+                entity = topic[i]
+                others = np.delete(topic, i)
+                distances = kv.distances(entity, tuple(others))
+                argsort = distances.argsort()
+                nearest = others[argsort]
+                for j, term in zip(distances, others):
+                    dist_scores[term] += j
+                for j, term in enumerate(nearest):
+                    rank_scores[term] += j
+            d_score = pd.Series(dist_scores, name=f'{name}_dscore')
+            r_score = pd.Series(rank_scores, name=f'{name}_rscore')
+            dr = pd.concat([d_score, r_score], axis=1)
+            dr = self._rank(dr, name)
+            scores.append(dr)
+        df = pd.concat(scores, axis=1, sort=False)
+        if df.isnull().any().any():
+            for s in ['dscore', 'rscore', 'drank', 'rrank']:
+                scols = df.columns.str.contains(s)
+                df.loc[:, scols] = self._fillna_max(df.loc[:, scols])
+
+        # getting scores and ranks for all combinations -> calculating c = a+b for both distance and
+        # rank scores and getting a rank for the sum
+        for c, a, b in [('dw', 'd2v', 'w2v'), ('df', 'd2v', 'ftx'), ('wf', 'w2v', 'ftx'),
+                        ('dwf', 'dw', 'ftx')]:
+            df[f'{c}_dscore'] = df[f'{a}_dscore'] + df[f'{b}_dscore']
+            df[f'{c}_rscore'] = df[f'{a}_rscore'] + df[f'{b}_rscore']
+            df = self._rank(df, c)
+
+        return df
+
+    def sort_terms(self, col):
+        top_terms = col.sort_values().index.values[:self.nb_top_terms]
+        col = col[col.index.isin(top_terms)]
+        return col.index.values
+
+    def remove_not_matching_terms(self, kv_name, topic):
+        kv = self.kvs[kv_name]
+        # reduced_tpx = topic
+
+        in_kv = np.vectorize(lambda x: x in kv)
+        mask = in_kv(topic)
+        reduced_tpx = topic[mask]
+        # not_in_kv = topic[~mask]
+        nb_terms_in_kv = len(reduced_tpx)
+        if nb_terms_in_kv > self.nb_top_terms:
+            for i in range(nb_terms_in_kv - self.nb_top_terms):
+                remove = kv.doesnt_match(reduced_tpx)
+                reduced_tpx = reduced_tpx[reduced_tpx != remove]
+        elif nb_terms_in_kv == 0:
+            reduced_tpx = topic[:self.nb_top_terms]
+        elif nb_terms_in_kv < self.nb_top_terms:
+            nb_missing = self.nb_top_terms - nb_terms_in_kv
+            for i, m in enumerate(mask):
+                if not m:
+                    mask[i] = True
+                    nb_missing -= 1
+                    if nb_missing == 0:
+                        break
+            reduced_tpx = topic[mask]
+
+        ser = pd.Series(reduced_tpx, name=kv_name + '_matches')
+        return ser
+
+    def vote_vec(self, df, reference, name='vote'):
+        jury = (
+            df
+            .loc[:, 'term0':f'term{self.nb_top_terms - 1}']
+            .apply(pd.value_counts)
+            .sum(axis=1)
+            [reference]
+            .dropna()
+            .astype(np.int16)
+            .reset_index()
+            .rename(columns={'index': 'term', 0: 'count'})
+            .sort_values('count', ascending=False, kind='mergesort')
+            [:self.nb_top_terms]
+            .set_index('term')
+            .squeeze()
+            [reference]
+            .dropna()
+            .reset_index()
+            .rename(lambda x: f'term{x}')
+            .drop('count', axis=1)
+            .squeeze()
+            .rename(name)
+        )
+        return jury
+
+    def oop_score_vec(self, col, df_ranks):
+        terms = col.values
+        ref_ranks = df_ranks.loc[terms, 'ref_rank']
+        oop = (ref_ranks - np.arange(len(ref_ranks))).abs().sum()
+        return oop
+
+    def rerank_vec_group(self, topic):
+        topic = topic.values[0]
+
+        df = self.rerank_vec_values(topic)
+        rank_columns = [col for col in df.columns if 'rank' in col]
+        df_ranks = df[rank_columns]
+        reranks = df_ranks.apply(self.sort_terms, axis=0).reset_index(drop=True).T.rename(
+            columns=lambda x: f'term{x}'
+        )
+
+        dred = self.remove_not_matching_terms('d2v', topic)
+        wred = self.remove_not_matching_terms('w2v', topic)
+        fred = self.remove_not_matching_terms('ftx', topic)
+        reds = pd.concat([dred, wred, fred], axis=1).T.rename(columns=lambda x: f'term{x}')
+        reranks = pd.concat([reranks, reds])
+
+        votes = []
+        for name in ['rrank', 'drank', 'matches', '']:
+            x = reranks[reranks.index.str.contains(name)]
+            v = self.vote_vec(x, topic, f'{name}_vote'.strip('_'))
+            votes.append(v)
+        reranks = reranks.append(votes)
+
+        reranks['oop_scores'] = reranks.apply(lambda x: self.oop_score_vec(x, df_ranks), axis=1)
+        return reranks
+
+    def rerank_vec(self, topics=None):
+        if topics is None:
+            topics = self.topic_terms
+        if self.kvs is None:
+            self._init_vectors()
+        result = topics.groupby(level=[0, 1, 2, 3], sort=False).apply(self.rerank_vec_group)
+        result.index = result.index.rename(names='metric', level=-1)
+        self.scores_vec = result.oop_scores.unstack('metric')
+        # scores.describe()
+        # plot(scores)
+        # self.kvs = None
+        return result
 
     def rerank_greedy(self):
         pass
@@ -415,6 +596,7 @@ class Reranker(object):
 
     def plot(self):
         Reranker.plot_scores(self.eval_scores)
+        self.scores_vec.boxplot()
 
     @classmethod
     def save_scores(cls, scores, dataset, directory=None):
@@ -471,7 +653,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--dataset", type=str, required=True)
-    parser.add_argument("--version", type=str, required=False, default='default')
+    parser.add_argument("--version", type=str, required=False, default='noun')
 
     parser.add_argument("--topn", type=int, required=False, default=TOPN)
     parser.add_argument("--cores", type=int, required=False, default=CORES)
@@ -503,11 +685,16 @@ def rerank(
         param_ids=param_ids,
         nbs_topics=nbs_topics,
         version=version,
-        topn=topn
+        topn=topn,
+        include_corpus=True,
+        include_texts=True
     )
     reranker = Reranker(topics_loader, processes=cores)
-    topic_candidates = reranker.rerank_fast(metrics)
-    reranker.evaluate(topic_candidates)
+    topic_candidates_coh = reranker.rerank_coherence(metrics)
+    tprint(topic_candidates_coh)
+    topic_candidates_vec = reranker.rerank_vec()
+    tprint(topic_candidates_vec)
+    # reranker.evaluate(topic_candidates)
     if save:
         reranker.save_results()
     if plot:

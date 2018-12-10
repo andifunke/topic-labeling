@@ -41,6 +41,9 @@ def pairwise_similarity(topic, kvs, ignore_oov=True):
     for name, kv in kvs.items():
         vector = lambda x: kv[x] if x in kv else np.nan
         vectors = topic.map(vector).dropna()
+        if len(vectors) < 2:
+            similarities[name] = np.nan
+            continue
         vectors = vectors.apply(pd.Series).values
         sims = np.asarray([cosine_similarities(vec, vectors) for vec in vectors]).mean(axis=0)
         if not ignore_oov:
@@ -57,6 +60,9 @@ def mean_similarity(topic, kvs):
     for name, kv in kvs.items():
         vector = lambda x: kv[x] if x in kv else np.nan
         vectors = topic.map(vector).dropna()
+        if len(vectors) < 2:
+            similarities[name] = np.nan
+            continue
         vectors = vectors.apply(pd.Series).values
         mean_vec = np.mean(vectors, axis=0)
         similarity = cosine_similarities(mean_vec, vectors).mean()
@@ -165,29 +171,37 @@ def main():
     logger = init_logging(name=f'Eval_lda_{dataset}', basic=False, to_stdout=True, to_file=True)
     log_args(logger, args)
 
-    tl = TopicsLoader(
-        dataset=dataset,
-        param_ids=params,
-        nbs_topics=nbtopics,
-        version=version,
-        topn=topn,
-        include_corpus=use_coherence,
-        include_texts=use_coherence,
-        logger=logger
-    )
-    topics = tl.topics
+    try:
+        tl = TopicsLoader(
+            dataset=dataset,
+            param_ids=params,
+            nbs_topics=nbtopics,
+            version=version,
+            topn=topn,
+            include_corpus=use_coherence,
+            include_texts=use_coherence,
+            logger=logger
+        )
+        topics = tl.topics
+    except FileNotFoundError as e:
+        print(e)
+        topics = load('topics', dataset, version, corpus_type, *params, *nbtopics)
+        tl = None
+
     logger.info(f'number of topics: {len(topics)}')
     wiki_dict = load('dict', 'dewiki', 'unfiltered', logger=logger)
 
     dfs = []
     if use_coherence:
-        df = eval_coherence(
-            topics=topics, dictionary=tl.dictionary, corpus=tl.corpus, texts=tl.texts,
-            keyed_vectors=None, metrics=None, window_size=None,
-            suffix='', cores=cores, logg=logger.info,
-        )
-        gc.collect()
-        dfs.append(df)
+        if tl is not None:
+            df = eval_coherence(
+                topics=topics, dictionary=tl.dictionary, corpus=tl.corpus, texts=tl.texts,
+                keyed_vectors=None, metrics=None, window_size=None,
+                suffix='', cores=cores, logg=logger.info,
+            )
+            del tl
+            gc.collect()
+            dfs.append(df)
 
         wiki_texts = load('texts', 'dewiki', logger=logger)
         df = eval_coherence(
@@ -257,7 +271,7 @@ def main():
         LDA_PATH, version, corpus_type, 'topics', f'{dataset}_{version}_{corpus_type}_topic-scores.csv'
     )
     if exists(file):
-        file = file.rstrip('.csv') + '_' + str(time()).split('.')[0] + '.csv'
+        file = file.rstrip('.csv') + 's_' + str(time()).split('.')[0] + '.csv'
     logger.info(f'Writing {file}')
     dfs.to_csv(file)
     return dfs

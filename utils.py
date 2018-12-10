@@ -3,6 +3,7 @@ import logging
 import re
 import sys
 from genericpath import exists
+from itertools import chain
 from os import makedirs, listdir
 from os.path import join
 from pprint import pformat
@@ -10,11 +11,11 @@ from pprint import pformat
 import gensim
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
-from gensim.models import Doc2Vec, Word2Vec, FastText, LdaModel
+from gensim.models import Doc2Vec, Word2Vec, FastText, LdaModel, LsiModel
 
 from constants import (
     ETL_PATH, NLP_PATH, SMPL_PATH, LDA_PATH, DSETS, PARAMS, NBTOPICS, METRICS, VERSIONS,
-    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER)
+    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH)
 
 try:
     from tabulate import tabulate
@@ -247,7 +248,7 @@ def load(*args, logger=None):
                 break
         elif not dataset and arg.lower() in DSETS:
             dataset = DSETS[arg]
-        elif not dataset and arg in DSETS.values():
+        elif not dataset and arg in list(DSETS.values()) + ['gurevych', 'gur', 'simlex', 'ws']:
             dataset = arg
         elif not purpose and arg.lower() in purposes:
             purpose = arg.lower()
@@ -349,6 +350,22 @@ def load(*args, logger=None):
 
     # --- topics ---
     elif purpose in {'topic', 'topics'}:
+        if dataset in ['gur', 'gurevych']:
+            file = join(ETL_PATH, 'gurevych_datasets.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1])
+            return df[['Token1', 'Token2']]
+        elif dataset in ['simlex']:
+            file = join(ETL_PATH, 'simlex999.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1])
+            return df[['Token1', 'Token2']]
+        elif dataset in ['ws']:
+            file = join(ETL_PATH, 'ws353.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1])
+            return df[['Token1', 'Token2']]
+
         file = join(
             LDA_PATH, version, corpus_type, 'topics',
             f'{dataset}_{version}_{corpus_type}_topic-candidates.csv'
@@ -361,7 +378,8 @@ def load(*args, logger=None):
         except Exception as e:
             logg(e)
             logg('Loading topics via TopicsLoader')
-            kwargs = dict(dataset=dataset, version=version, corpus_type=corpus_type, topn=10)
+            lsi = 'lsi' in args
+            kwargs = dict(dataset=dataset, version=version, corpus_type=corpus_type, topn=10, lsi=lsi)
             if params:
                 kwargs['param_ids'] = params
             if nbtopics:
@@ -415,8 +433,10 @@ def load(*args, logger=None):
                     df[col_name] = df[column]
                     df = df.drop(column, axis=1)
             df = df.drop(0)
-            df.nb_topics = df.nb_topics.astype(int)
-            df.topic_idx = df.topic_idx.astype(int)
+            if 'nb_topics' in df.columns:
+                df.nb_topics = df.nb_topics.astype(int)
+            if 'topic_idx' in df.columns:
+                df.topic_idx = df.topic_idx.astype(int)
             df = df.drop(['stdev', 'support'], level=0, axis=1)
             df = set_index(df)
             df = flatten_columns(df)
@@ -440,6 +460,22 @@ def load(*args, logger=None):
 
     # --- pipelines ---
     elif purpose in {'nlp', 'simple', 'smpl', 'wiki', 'wiki_phrases', 'phrases', 'etl', None}:
+        if dataset in ['gur', 'gurevych']:
+            file = join(ETL_PATH, 'gurevych_datasets.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1])
+            return df
+        elif dataset in ['simlex']:
+            file = join(ETL_PATH, 'simlex999.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1])
+            return df
+        elif dataset in ['ws']:
+            file = join(ETL_PATH, 'ws353.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1])
+            return df
+
         if purpose in {'etl', None}:
             directory = ETL_PATH
             suffix = ''
@@ -543,12 +579,11 @@ class TopicsLoader(object):
 
     def __init__(
             self, dataset, version='noun', corpus_type='bow',
-            param_ids='e42', nbs_topics=100, epochs=30, topn=20,
+            param_ids='e42', nbs_topics=100, epochs=30, topn=20, lsi=False,
             filter_bad_terms=False, include_weights=False,
             include_corpus=False, include_texts=False,
             logger=None
     ):
-        self.topn = topn
         self.dataset = DSETS.get(dataset, dataset)
         self.version = version
         self.param_ids = [param_ids] if isinstance(param_ids, str) else param_ids
@@ -556,6 +591,8 @@ class TopicsLoader(object):
         self.nb_topics = sum(self.nb_topics_list) * len(self.param_ids)
         self.corpus_type = corpus_type
         self.epochs = f"ep{epochs}"
+        self.topn = topn
+        self.lsi = lsi
         self.directory = join(LDA_PATH, self.version)
         self.data_filename = f'{self.dataset}_{version}'
         self.filter_terms = filter_bad_terms
@@ -568,20 +605,39 @@ class TopicsLoader(object):
 
     def _topn_topics(self):
         """
-        get the topn topics from the LDA-model in DataFrame format
+        get the topn topics from the LDA/LSI-model in DataFrame format
         """
+        if self.lsi:
+            columns = [f'term{x}' for x in range(self.topn)] + [f'weight{x}' for x in range(self.topn)]
+            dfs = []
+            for nb_topics in self.nb_topics_list:
+                model = self._load_model(None, nb_topics)
+                topics = model.show_topics(num_words=self.topn, formatted=False)
+                topics = [list(chain(*zip(*topic[1]))) for topic in topics]
+                df = pd.DataFrame(topics, columns=columns)
+                df['nb_topics'] = nb_topics
+                df['topic_idx'] = df.index.values
+                dfs.append(df)
+            df = pd.concat(dfs)
+            df['dataset'] = self.dataset
+            df['param_id'] = 'lsi'
+            df = df.set_index(['dataset', 'param_id', 'nb_topics', 'topic_idx'])
+            if not self.include_weights:
+                df = df.loc[:, 'term0':f'term{self.topn-1}']
+            return df
+
         all_topics = []
         for param_id in self.param_ids:
             for nb_topics in self.nb_topics_list:
-                ldamodel = self._load_model(param_id, nb_topics)
+                model = self._load_model(param_id, nb_topics)
                 # topic building ignoring placeholder values
                 topics = []
                 topics_weights = []
                 for i in range(nb_topics):
                     tokens = []
                     weights = []
-                    for term in ldamodel.get_topic_terms(i, topn=self.topn*2):
-                        token = ldamodel.id2word[term[0]]
+                    for term in model.get_topic_terms(i, topn=self.topn*2):
+                        token = model.id2word[term[0]]
                         weight = term[1]
                         if self.filter_terms and (token in BAD_TOKENS or NOUN_PATTERN.match(token)):
                             continue
@@ -624,12 +680,18 @@ class TopicsLoader(object):
         """
         Load an LDA model.
         """
-        model_dir = join(self.directory, self.corpus_type, param_id)
-        model_file = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}_{self.epochs}'
-        model_path = join(model_dir, model_file)
+        if self.lsi:
+            model_dir = join(LSI_PATH, self.version, self.corpus_type)
+            model_file = f'{self.dataset}_LSImodel_{nb_topics}'
+            model_path = join(model_dir, model_file)
+            model = LsiModel.load(model_path)
+        else:
+            model_dir = join(self.directory, self.corpus_type, param_id)
+            model_file = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}_{self.epochs}'
+            model_path = join(model_dir, model_file)
+            model = LdaModel.load(model_path)
         self.logg(f'Loading model from {model_path}')
-        ldamodel = LdaModel.load(model_path)
-        return ldamodel
+        return model
 
     def _load_dict(self):
         """
@@ -669,10 +731,11 @@ class TopicsLoader(object):
 
 
 def main():
-    tprint(load('topics', 'dewac1', 'e42', 'a42', 100, 25))
+    # tprint(load('topics', 'gur'))
+    # topics = TopicsLoader('O', nbs_topics=[10, 25, 50, 100], lsi=True, topn=10).topics
+    topics = load('gur', 'scores')
+    tprint(topics, 10)
 
 
 if __name__ == '__main__':
     main()
-
-

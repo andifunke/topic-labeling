@@ -127,6 +127,9 @@ def parse_args():
     parser.add_argument('--tfidf', dest='tfidf', action='store_true', required=False)
     parser.add_argument('--no-tfidf', dest='tfidf', action='store_false', required=False)
     parser.set_defaults(tfidf=False)
+    parser.add_argument('--rerank', dest='rerank', action='store_true', required=False)
+    parser.add_argument('--no-rerank', dest='rerank', action='store_false', required=False)
+    parser.set_defaults(rerank=False)
     parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)
     parser.add_argument("--topn", type=int, required=False, default=10)
@@ -143,35 +146,38 @@ def parse_args():
 
     return (
         args.dataset, args.version, args.params, args.nbtopics, args.topn, args.cores, corpus_type,
-        use_coherence, use_w2v, args
+        use_coherence, use_w2v, args.rerank, args
     )
 
 
 def main():
     (
         dataset, version, params, nbtopics, topn, cores, corpus_type,
-        use_coherence, use_w2v, args
+        use_coherence, use_w2v, rerank, args
     ) = parse_args()
 
     logger = init_logging(name=f'Eval_lda_{dataset}', basic=False, to_stdout=True, to_file=True)
     log_args(logger, args)
 
-    try:
-        tl = TopicsLoader(
-            dataset=dataset,
-            param_ids=params,
-            nbs_topics=nbtopics,
-            version=version,
-            topn=topn,
-            include_corpus=use_coherence,
-            include_texts=use_coherence,
-            logger=logger
-        )
-        topics = tl.topics
-    except FileNotFoundError as e:
-        print(e)
-        topics = load('topics', dataset, version, corpus_type, *params, *nbtopics)
-        tl = None
+    tl = None
+    if rerank:
+        topics = load('rerank', dataset, version, corpus_type, *params, *nbtopics)
+    else:
+        try:
+            tl = TopicsLoader(
+                dataset=dataset,
+                param_ids=params,
+                nbs_topics=nbtopics,
+                version=version,
+                topn=topn,
+                include_corpus=use_coherence,
+                include_texts=use_coherence,
+                logger=logger
+            )
+            topics = tl.topics
+        except FileNotFoundError as e:
+            print(e)
+            topics = load('topics', dataset, version, corpus_type, *params, *nbtopics)
 
     logger.info(f'number of topics: {len(topics)}')
     wiki_dict = load('dict', 'dewiki', 'unfiltered', logger=logger)
@@ -252,13 +258,17 @@ def main():
     if df_sims is not None:
         dfs = pd.concat([dfs, df_sims], axis=1)
 
-    file = join(
-        LDA_PATH, version, corpus_type, 'topics', f'{dataset}_{version}_{corpus_type}_topic-scores.csv'
-    )
+    tpx_path = join(LDA_PATH, version, corpus_type, 'topics')
+    if rerank:
+        file = join(tpx_path, f'{dataset}_{version}_{corpus_type}_reranker-eval.csv')
+    else:
+        file = join(tpx_path, f'{dataset}_{version}_{corpus_type}_topic-scores.csv')
     if exists(file):
-        file = file.rstrip('.csv') + 's_' + str(time()).split('.')[0] + '.csv'
+        file = file.replace('.csv', f's_{str(time()).split(".")[0]}.csv')
+
     logger.info(f'Writing {file}')
     dfs.to_csv(file)
+
     return dfs
 
 

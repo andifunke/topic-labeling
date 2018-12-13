@@ -15,7 +15,7 @@ from gensim.models import Doc2Vec, Word2Vec, FastText, LdaModel, LsiModel
 
 from constants import (
     ETL_PATH, NLP_PATH, SMPL_PATH, LDA_PATH, DSETS, PARAMS, NBTOPICS, METRICS, VERSIONS,
-    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH)
+    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH, TPX_PATH)
 
 try:
     from tabulate import tabulate
@@ -197,13 +197,13 @@ def set_index(df):
     return df
 
 
-def load(*args, logger=None):
+def load(*args, logger=None, logg=print):
     """
     work in progress: may not work for all cases, especially not yet for reading distributed
     datsets like dewiki and dewac.
     """
 
-    logg = logger.info if logger else print
+    logg = logger.info if logger else logg
 
     if not args:
         logg('no arguments, no load')
@@ -222,7 +222,8 @@ def load(*args, logger=None):
     purposes = {
         'goodids', 'etl', 'nlp', 'simple', 'smpl', 'wiki_phrases', 'embedding',
         'topic', 'topics', 'label', 'labels', 'lda', 'ldamodel', 'score', 'scores',
-        'lemmap', 'disamb', 'dict', 'corpus', 'texts', 'wiki_scores', 'x2v_scores'
+        'lemmap', 'disamb', 'dict', 'corpus', 'texts', 'wiki_scores', 'x2v_scores',
+        'rerank', 'rerank_score', 'rerank_scores', 'rerank_eval'
     }
     purpose = None
     version = None
@@ -345,6 +346,23 @@ def load(*args, logger=None):
                 logg(f'Loading texts from {doc_path}')
                 texts = json.load(fp)
             return texts
+        except Exception as e:
+            logg(e)
+
+    # --- rerank topics / scores / eval_scores ---
+    elif purpose.startswith('rerank'):
+        tpx_path = join(LDA_PATH, version, corpus_type, 'topics')
+        if purpose.startswith('rerank_score'):
+            file = join(tpx_path, f'{dataset}_reranker-scores.csv')
+        elif purpose.startswith('rerank_eval'):
+            file = join(tpx_path, f'{dataset}_reranker-eval.csv')
+        else:
+            file = join(tpx_path, f'{dataset}_reranker-candidates.csv')
+        logg(f'Reading {file}')
+        try:
+            df = pd.read_csv(file, header=0, index_col=[0, 1, 2, 3, 4])
+            df = reduce_df(df, metrics, params, nbtopics)
+            return df
         except Exception as e:
             logg(e)
 
@@ -587,7 +605,7 @@ class TopicsLoader(object):
             param_ids='e42', nbs_topics=100, epochs=30, topn=20, lsi=False,
             filter_bad_terms=False, include_weights=False,
             include_corpus=False, include_texts=False,
-            logger=None
+            logger=None, logg=print
     ):
         self.dataset = DSETS.get(dataset, dataset)
         self.version = version
@@ -602,7 +620,9 @@ class TopicsLoader(object):
         self.data_filename = f'{self.dataset}_{version}'
         self.filter_terms = filter_bad_terms
         self.include_weights = include_weights
-        self.logg = logger.info if logger else print
+        self.column_names_terms = [f'term{i}' for i in range(self.topn)]
+        self.column_names_weights = [f'weight{i}' for i in range(self.topn)]
+        self.logg = logger.info if logger else logg
         self.dictionary = self._load_dict()
         self.topics = self._topn_topics()
         self.corpus = self._load_corpus() if include_corpus else None
@@ -613,7 +633,7 @@ class TopicsLoader(object):
         get the topn topics from the LDA/LSI-model in DataFrame format
         """
         if self.lsi:
-            columns = [f'term{x}' for x in range(self.topn)] + [f'weight{x}' for x in range(self.topn)]
+            columns = self.column_names_terms + self.column_names_weights
             dfs = []
             for nb_topics in self.nb_topics_list:
                 model = self._load_model(None, nb_topics)
@@ -655,7 +675,7 @@ class TopicsLoader(object):
                     topics_weights.append(weights)
 
                 model_topics = (
-                    pd.DataFrame(topics, columns=[f'term{i}' for i in range(self.topn)])
+                    pd.DataFrame(topics, columns=self.column_names_terms)
                     .assign(
                         dataset=self.dataset,
                         param_id=param_id,
@@ -664,7 +684,7 @@ class TopicsLoader(object):
                 )
                 if self.include_weights:
                     model_weights = (
-                        pd.DataFrame(topics_weights, columns=[f'weight{i}' for i in range(self.topn)])
+                        pd.DataFrame(topics_weights, columns=self.column_names_weights)
                     )
                     model_topics = (
                         pd.concat([model_topics, model_weights], axis=1, sort=False)
@@ -679,7 +699,7 @@ class TopicsLoader(object):
         return topics
 
     def topic_ids(self):
-        return self.topics.applymap(lambda x: self.dictionary.token2id[x])
+        return self.topics[self.column_names_terms].applymap(lambda x: self.dictionary.token2id[x])
 
     def _load_model(self, param_id, nb_topics):
         """
@@ -738,8 +758,8 @@ class TopicsLoader(object):
 def main():
     # tprint(load('topics', 'gur'))
     # topics = TopicsLoader('O', nbs_topics=[10, 25, 50, 100], lsi=True, topn=10).topics
-    topics = load('gur', 'scores')
-    tprint(topics, 10)
+    tprint(load('rerank', 'O'))
+    tprint(load('rerank_score', 'O'))
 
 
 if __name__ == '__main__':

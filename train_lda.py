@@ -322,10 +322,11 @@ def parse_args():
     args = parser.parse_args()
 
     args.dataset = DATASETS.get(args.dataset, args.dataset)
+    corpus_type = "tfidf" if args.tfidf else "bow"
 
     return (
         args.dataset, args.version, args.logger, args.params, args.nbtopics, args.epochs,
-        args.cores, args.cache_in_memory, args.use_callbacks, args.tfidf, args
+        args.cores, args.cache_in_memory, args.use_callbacks, corpus_type, args
     )
 
 
@@ -335,11 +336,10 @@ def main():
     # --- arguments ---
     (
         dataset, version, cb_logger, params, nbs_topics, epochs,
-        cores, cache_in_memory, use_callbacks, tfidf, args
+        cores, cache_in_memory, use_callbacks, corpus_type, args
     ) = parse_args()
 
     model_class = 'LDAmodel'
-    corpus_type = "tfidf" if tfidf else "bow"
     _split = "_split" if use_callbacks else ""
 
     # --- logging ---

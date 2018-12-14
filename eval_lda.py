@@ -8,7 +8,7 @@ import pandas as pd
 from gensim.models import CoherenceModel
 
 from constants import PARAMS, NBTOPICS, DATASETS, LDA_PATH
-from utils import init_logging, load, log_args, TopicsLoader
+from utils import init_logging, load, log_args
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -158,55 +158,43 @@ def main():
 
     logger = init_logging(name=f'Eval_lda_{dataset}', basic=False, to_stdout=True, to_file=True)
     log_args(logger, args)
+    logg = logger.info
 
-    tl = None
-    if rerank:
-        topics = load('rerank', dataset, version, corpus_type, *params, *nbtopics)
-    else:
-        try:
-            tl = TopicsLoader(
-                dataset=dataset,
-                param_ids=params,
-                nbs_topics=nbtopics,
-                version=version,
-                topn=topn,
-                include_corpus=use_coherence,
-                include_texts=use_coherence,
-                logger=logger
-            )
-            topics = tl.topics
-        except FileNotFoundError as e:
-            print(e)
-            topics = load('topics', dataset, version, corpus_type, *params, *nbtopics)
-
-    logger.info(f'number of topics: {len(topics)}')
-    wiki_dict = load('dict', 'dewiki', 'unfiltered', logger=logger)
+    purpose = 'rerank' if rerank else 'topics'
+    topics = load(purpose, dataset, version, corpus_type, *params, *nbtopics, logg=logg)
+    logg(f'number of topics: {len(topics)}')
+    unique_topics = topics.drop_duplicates()
+    logg(f'number of unique topics: {len(unique_topics)}')
+    wiki_dict = load('dict', 'dewiki', 'unfiltered', logg=logg)
 
     dfs = []
     if use_coherence:
-        if tl is not None:
-            df = eval_coherence(
-                topics=topics, dictionary=tl.dictionary, corpus=tl.corpus, texts=tl.texts,
-                keyed_vectors=None, metrics=None, window_size=None,
-                suffix='', cores=cores, logg=logger.info,
-            )
-            del tl
-            gc.collect()
-            dfs.append(df)
+        dictionary = load('dict', dataset, version, corpus_type, logg=logg)
+        corpus = load('corpus', dataset, version, corpus_type, logg=logg)
+        texts = load('texts', dataset, version, logg=logg)
 
-        wiki_texts = load('texts', 'dewiki', logger=logger)
         df = eval_coherence(
-            topics=topics, dictionary=wiki_dict, corpus=None, texts=wiki_texts,
+            topics=unique_topics, dictionary=dictionary, corpus=corpus, texts=texts,
             keyed_vectors=None, metrics=None, window_size=None,
-            suffix='_wikt', cores=cores, logg=logger.info,
+            suffix='', cores=cores, logg=logg,
+        )
+        del dictionary, corpus, texts
+        gc.collect()
+        dfs.append(df)
+
+        wiki_texts = load('texts', 'dewiki', logg=logg)
+        df = eval_coherence(
+            topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=wiki_texts,
+            keyed_vectors=None, metrics=None, window_size=None,
+            suffix='_wikt', cores=cores, logg=logg,
         )
         gc.collect()
         dfs.append(df)
 
         df = eval_coherence(
-            topics, wiki_dict, corpus=None, texts=wiki_texts,
+            unique_topics, wiki_dict, corpus=None, texts=wiki_texts,
             keyed_vectors=None, metrics=['c_uci'], window_size=20,
-            suffix='_wikt_w20', cores=cores, logg=logger.info,
+            suffix='_wikt_w20', cores=cores, logg=logg,
         )
         del wiki_texts
         gc.collect()
@@ -214,9 +202,9 @@ def main():
 
     df_sims = None
     if use_w2v:
-        d2v = load('d2v').docvecs
-        w2v = load('w2v').wv
-        ftx = load('ftx').wv
+        d2v = load('d2v', logg=logg).docvecs
+        w2v = load('w2v', logg=logg).wv
+        ftx = load('ftx', logg=logg).wv
         # Dry run to make sure both indices are fully in RAM
         d2v.init_sims()
         _ = d2v.vectors_docs_norm[0]
@@ -226,7 +214,7 @@ def main():
         _ = ftx.vectors_norm[0]
 
         df = eval_coherence(
-            topics=topics, dictionary=wiki_dict, corpus=None, texts=None,
+            topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=None,
             keyed_vectors=w2v, metrics=None, window_size=None,
             suffix='_w2v', cores=cores, logg=logger.info,
         )
@@ -234,7 +222,7 @@ def main():
         dfs.append(df)
 
         df = eval_coherence(
-            topics=topics, dictionary=wiki_dict, corpus=None, texts=None,
+            topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=None,
             keyed_vectors=ftx, metrics=None, window_size=None,
             suffix='_ftx', cores=cores, logg=logger.info,
         )
@@ -243,9 +231,9 @@ def main():
 
         # apply custom similarity metrics
         kvs = {'d2v': d2v, 'w2v': w2v, 'ftx': ftx}
-        ms = topics.apply(lambda x: mean_similarity(x, kvs), axis=1)
-        ps = topics.apply(lambda x: pairwise_similarity(x, kvs, ignore_oov=True), axis=1)
-        ps2 = topics.apply(lambda x: pairwise_similarity(x, kvs, ignore_oov=False), axis=1)
+        ms = unique_topics.apply(lambda x: mean_similarity(x, kvs), axis=1)
+        ps = unique_topics.apply(lambda x: pairwise_similarity(x, kvs, ignore_oov=True), axis=1)
+        ps2 = unique_topics.apply(lambda x: pairwise_similarity(x, kvs, ignore_oov=False), axis=1)
         df_sims = pd.concat(
             {'mean_similarity': ms, 'pairwise_similarity_ignore_oov': ps, 'pairwise_similarity': ps2},
             axis=1
@@ -258,6 +246,17 @@ def main():
     if df_sims is not None:
         dfs = pd.concat([dfs, df_sims], axis=1)
 
+    # restore scores for all topics from results of unique topics
+    topics.columns = pd.MultiIndex.from_tuples([('terms', t) for t in list(topics.columns)])
+    topic_columns = list(topics.columns)
+    fillna = lambda grp: grp.fillna(method='ffill') if len(grp) > 1 else grp
+    dfs = (
+        topics
+        .join(dfs)
+        .groupby(topic_columns).apply(fillna)
+        .drop(topic_columns, axis=1)
+    )
+
     tpx_path = join(LDA_PATH, version, corpus_type, 'topics')
     if rerank:
         file = join(tpx_path, f'{dataset}_{version}_{corpus_type}_reranker-eval.csv')
@@ -266,7 +265,7 @@ def main():
     if exists(file):
         file = file.replace('.csv', f's_{str(time()).split(".")[0]}.csv')
 
-    logger.info(f'Writing {file}')
+    logg(f'Writing {file}')
     dfs.to_csv(file)
 
     return dfs

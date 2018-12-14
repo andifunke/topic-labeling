@@ -202,7 +202,6 @@ class Reranker(object):
         )
 
         # calculate the scores for all shifted topics
-        print(self.processes)
         kwargs = dict(
             topics=self.shifted_topics,
             dictionary=self.dict_from_corpus,
@@ -561,7 +560,7 @@ class Reranker(object):
             directory = join(LDA_PATH, 'topics')
         filename = join(directory, dataset)
         fcsv = f'{filename}_{suffix}.csv'
-        self.logg(f"Writing evaluation scores to {fcsv}")
+        self.logg(f"Writing scores to {fcsv}")
         scores.to_csv(fcsv)
 
     def save_results(self, directory=None, topics=True, scores=True, stats=True):
@@ -609,12 +608,6 @@ class Reranker(object):
 # --- App ---
 
 
-SAVE = True
-PLOT = False
-TOPN = 20
-CORES = 4
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -624,14 +617,30 @@ def parse_args():
     parser.add_argument('--no-tfidf', dest='tfidf', action='store_false', required=False)
     parser.set_defaults(tfidf=False)
 
-    parser.add_argument("--topn", type=int, required=False, default=TOPN)
-    parser.add_argument("--cores", type=int, required=False, default=CORES)
+    parser.add_argument("--topn", type=int, required=False, default=20)
+    parser.add_argument("--cores", type=int, required=False, default=4)
+
+    parser.add_argument('--coh', dest='coh', action='store_true', required=False)
+    parser.add_argument('--no-coh', dest='coh', action='store_false', required=False)
+    parser.set_defaults(coh=True)
+    parser.add_argument('--vec', dest='vec', action='store_true', required=False)
+    parser.add_argument('--no-vec', dest='vec', action='store_false', required=False)
+    parser.set_defaults(vec=True)
+    parser.add_argument('--weight', dest='weight', action='store_true', required=False)
+    parser.add_argument('--no-weight', dest='weight', action='store_false', required=False)
+    parser.set_defaults(weight=True)
+    parser.add_argument('--oop', dest='oop', action='store_true', required=False)
+    parser.add_argument('--no-oop', dest='oop', action='store_false', required=False)
+    parser.set_defaults(oop=True)
+    parser.add_argument('--eval', dest='eval', action='store_true', required=False)
+    parser.add_argument('--no-eval', dest='eval', action='store_false', required=False)
+    parser.set_defaults(eval=False)
     parser.add_argument('--save', dest='save', action='store_true', required=False)
     parser.add_argument('--no-save', dest='save', action='store_false', required=False)
-    parser.set_defaults(save=SAVE)
+    parser.set_defaults(save=True)
     parser.add_argument('--plot', dest='save', action='store_true', required=False)
     parser.add_argument('--no-plot', dest='save', action='store_false', required=False)
-    parser.set_defaults(plot=PLOT)
+    parser.set_defaults(plot=False)
 
     parser.add_argument("--metrics", nargs='*', type=str, required=False,
                         default=METRICS)
@@ -646,14 +655,18 @@ def parse_args():
 
     return (
         args.dataset, args.version, corpus_type, args.metrics, args.params, args.nbtopics,
-        args.topn, args.cores, args.save, args.plot, args
+        args.topn, args.cores,
+        args.coh, args.vec, args.weight, args.oop, args.eval, args.save, args.plot,
+        args
     )
 
 
 def main():
     (
         dataset, version, corpus_type, metrics, params, nbtopics,
-        topn, cores, save, plot, args
+        topn, cores,
+        coh, vec, weight, oop, evaluate, save, plot,
+        args
     ) = parse_args()
 
     # --- logging ---
@@ -663,6 +676,7 @@ def main():
     )
     logg = logger.info
     log_args(logger, args)
+    t0 = time()
 
     reranker = Reranker(
         dataset=dataset,
@@ -675,15 +689,23 @@ def main():
         processes=cores,
         logg=logg
     )
-    reranker.rerank_coherence(metrics)
-    reranker.rerank_w2v()
-    reranker.weight_score()
-    reranker.oop_score()
-    # reranker.evaluate()
+    if coh:
+        reranker.rerank_coherence(metrics)
+    if vec:
+        reranker.rerank_w2v()
+    if weight:
+        reranker.weight_score()
+    if oop:
+        reranker.oop_score()
+    if evaluate:
+        reranker.evaluate()
     if save:
         reranker.save_results()
     if plot:
         reranker.plot()
+
+    t1 = int(time() - t0)
+    logg(f">>> done in {t1//3600:02d}:{(t1//60)%60:02d}:{t1%60:02d} <<<")
     return reranker
 
 

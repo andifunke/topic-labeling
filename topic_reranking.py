@@ -126,15 +126,16 @@ class Reranker(object):
     def _append_candidates(self, topic_candidates):
         if self.topic_candidates is None:
             self.topic_candidates = topic_candidates.sort_index()
+            self.logg(f'topic candidates {self.topic_candidates.shape}')
         else:
+            self.logg(f'topic candidates old {self.topic_candidates.shape}')
+            self.logg(f'topic candidates add {topic_candidates.shape}')
             self.topic_candidates = (
                 self.topic_candidates
-                    .append(topic_candidates)
-                    .reset_index('metric', drop=False)
-                    .drop_duplicates(keep='first')
-                    .set_index('metric', append=True)
+                    .append(topic_candidates.drop('ref', level='metric'))
                     .sort_index()
             )
+            self.logg(f'topic candidates concatenated {self.topic_candidates.shape}')
 
     def _add_scores(self, scores):
         if self.scores is None:
@@ -397,18 +398,18 @@ class Reranker(object):
 
         # adding candidates by majority votes from prior reference and rerankings
         if 'vote' in metrics:
-            vote_topic_terms2 = (
+            vote_topics_terms = (
                 topic_candidates
                 .groupby(level=[0, 1, 2, 3], sort=False)
                 .apply(lambda x: self._vote(x, self.topic_ids.loc[x.name, :].values, name=x.name))
                 .assign(metric='vote_coh')
                 .set_index('metric', append=True)
             )
-            topic_candidates = topic_candidates.append(vote_topic_terms2)
+            topic_candidates = topic_candidates.append(vote_topics_terms)
 
         # replacing token-ids with tokens -> resulting in the final topic candidates
-        topic_candidates.loc[:, 'term0':f'term{self.nb_top_terms - 1}'] = \
-            topic_candidates.loc[:, 'term0':f'term{self.nb_top_terms - 1}'].applymap(self._id2term)
+        top_cols = list(self.topic_terms.columns)[:self.nb_top_terms]
+        topic_candidates.loc[:, top_cols] = topic_candidates.loc[:, top_cols].applymap(self._id2term)
 
         self._append_candidates(topic_candidates)
         return topic_candidates
@@ -703,6 +704,9 @@ def main():
         reranker.save_results()
     if plot:
         reranker.plot()
+
+    logg(f'final shape {reranker.topic_candidates.shape}')
+    assert len(reranker.topic_candidates) == 24975
 
     t1 = int(time() - t0)
     logg(f">>> done in {t1//3600:02d}:{(t1//60)%60:02d}:{t1%60:02d} <<<")

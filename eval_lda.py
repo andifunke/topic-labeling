@@ -263,7 +263,7 @@ def main():
     else:
         file = join(tpx_path, f'{dataset}_{version}_{corpus_type}_topic-scores.csv')
     if exists(file):
-        file = file.replace('.csv', f's_{str(time()).split(".")[0]}.csv')
+        file = file.replace('.csv', f'_{str(time()).split(".")[0]}.csv')
 
     logg(f'Writing {file}')
     dfs.to_csv(file)

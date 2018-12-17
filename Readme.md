@@ -205,7 +205,7 @@ Uses lemmatization maps.
 Reads and plots statistics from the LDA training. Also tests, for which datasets and parameter 
 combinations LDA models have been trained.
 
-- [eval_lda_on_wikipedia.py](eval_lda.py):<br>
+- [eval_lda_on_wikipedia.py](evaluate_topics.py):<br>
 evaluates the topic coherence on basis of full Wikipedia dataset. Supports *U<sub>mass</sub>*, 
 *C<sub>uci</sub>*/*C<sub>pmi</sub>*, *C<sub>npmi</sub>* and *C<sub>v</sub>* metrics.
 

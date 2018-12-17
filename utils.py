@@ -7,20 +7,26 @@ from itertools import chain
 from os import makedirs, listdir
 from os.path import join
 from pprint import pformat
+import warnings
 
 import gensim
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import Doc2Vec, Word2Vec, FastText, LdaModel, LsiModel
+from pandas.errors import DtypeWarning
 
 from constants import (
     ETL_PATH, NLP_PATH, SMPL_PATH, LDA_PATH, DSETS, PARAMS, NBTOPICS, METRICS, VERSIONS,
-    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH, TPX_PATH)
+    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH
+)
 
 try:
     from tabulate import tabulate
 except ImportError as ie:
     print(ie)
+
+warnings.simplefilter(action='ignore', category=DtypeWarning)
+
 
 
 def tprint(df, head=0, floatfmt=None, to_latex=False):
@@ -42,6 +48,13 @@ def tprint(df, head=0, floatfmt=None, to_latex=False):
 
     if to_latex:
         print(df.to_latex(bold_rows=True))
+
+
+def index_level_dtypes(df):
+    return [
+        f"{df.index.names[i]}: {df.index.get_level_values(n).dtype}"
+        for i, n in enumerate(df.index.names)
+    ]
 
 
 def hms_string(sec_elapsed):
@@ -195,6 +208,47 @@ def set_index(df):
     ]
     df = df.set_index(keys)
     return df
+
+
+def load_scores(dataset, version, corpus_type, metrics, params, nbtopics, logg=print, rerank=False):
+    dfs = []
+    tpx_path = join(LDA_PATH, version, corpus_type, 'topics')
+    if rerank:
+        file_prefix = join(tpx_path, f'{dataset}_reranker-eval')
+    else:
+        file_prefix = join(tpx_path, f'{dataset}_{version}_{corpus_type}_topic-scores')
+    try:
+        file = file_prefix + '.csv'
+        logg(f'Reading {file}')
+        df = pd.read_csv(file, header=[0, 1], skipinitialspace=True)
+        cols = list(df.columns)
+        for column in cols:
+            if column[0].startswith('Unnamed'):
+                col_name = df.loc[0, column]
+                df[col_name] = df[column]
+                df = df.drop(column, axis=1)
+        df = df.drop(0)
+        if 'nb_topics' in df.columns:
+            df.nb_topics = df.nb_topics.astype(int)
+        if 'topic_idx' in df.columns:
+            df.topic_idx = df.topic_idx.astype(int)
+        df = df.drop(['stdev', 'support'], level=0, axis=1)
+        df = set_index(df)
+        df = flatten_columns(df)
+        df = reduce_df(df, metrics, params, nbtopics)
+        dfs.append(df)
+    except Exception as e:
+        logg(e)
+    try:
+        file = file_prefix + '_germanet.csv'
+        logg(f'Reading {file}')
+        df = pd.read_csv(file, header=0)
+        df = set_index(df)
+        df = reduce_df(df, metrics, params, nbtopics)
+        dfs.append(df)
+    except Exception as e:
+        logg(e)
+    return pd.concat(dfs, axis=1)
 
 
 def load(*args, logger=None, logg=print):
@@ -355,7 +409,9 @@ def load(*args, logger=None, logg=print):
         if purpose.startswith('rerank_score'):
             file = join(tpx_path, f'{dataset}_reranker-scores.csv')
         elif purpose.startswith('rerank_eval'):
-            file = join(tpx_path, f'{dataset}_reranker-eval.csv')
+            return load_scores(
+                dataset, version, corpus_type, metrics, params, nbtopics, logg=logg, rerank=True
+            )
         else:
             file = join(tpx_path, f'{dataset}_reranker-candidates.csv')
         logg(f'Reading {file}')
@@ -436,45 +492,7 @@ def load(*args, logger=None, logg=print):
 
     # --- scores ---
     elif purpose in {'score', 'scores'}:
-        dfs = []
-        try:
-            file = join(
-                LDA_PATH, version, corpus_type, 'topics',
-                f'{dataset}_{version}_{corpus_type}_topic-scores.csv'
-            )
-            logg(f'Reading {file}')
-            df = pd.read_csv(file, header=[0, 1], skipinitialspace=True)
-            cols = list(df.columns)
-            for column in cols:
-                if column[0].startswith('Unnamed'):
-                    col_name = df.loc[0, column]
-                    df[col_name] = df[column]
-                    df = df.drop(column, axis=1)
-            df = df.drop(0)
-            if 'nb_topics' in df.columns:
-                df.nb_topics = df.nb_topics.astype(int)
-            if 'topic_idx' in df.columns:
-                df.topic_idx = df.topic_idx.astype(int)
-            df = df.drop(['stdev', 'support'], level=0, axis=1)
-            df = set_index(df)
-            df = flatten_columns(df)
-            df = reduce_df(df, metrics, params, nbtopics)
-            dfs.append(df)
-        except Exception as e:
-            logg(e)
-        try:
-            file = join(
-                LDA_PATH, version, corpus_type, 'topics',
-                f'{dataset}_{version}_{corpus_type}_topic-scores_germanet.csv'
-            )
-            logg(f'Reading {file}')
-            df = pd.read_csv(file, header=0)
-            df = set_index(df)
-            df = reduce_df(df, metrics, params, nbtopics)
-            dfs.append(df)
-        except Exception as e:
-            logg(e)
-        return pd.concat(dfs, axis=1)
+        return load_scores(dataset, version, corpus_type, metrics, params, nbtopics, logg=logg)
 
     # --- pipelines ---
     elif purpose in {'nlp', 'simple', 'smpl', 'wiki', 'wiki_phrases', 'phrases', 'etl', None}:
@@ -758,8 +776,12 @@ class TopicsLoader(object):
 def main():
     # tprint(load('topics', 'gur'))
     # topics = TopicsLoader('O', nbs_topics=[10, 25, 50, 100], lsi=True, topn=10).topics
-    tprint(load('rerank', 'O'))
-    tprint(load('rerank_score', 'O'))
+    # tprint(load('score', 'O'), 50)
+
+    x = load('rerank_eval', 'E')
+    tprint(x, 50)
+    print(x.dtypes)
+    print(index_level_dtypes(x))
 
 
 if __name__ == '__main__':

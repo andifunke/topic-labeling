@@ -28,7 +28,6 @@ except ImportError as ie:
 warnings.simplefilter(action='ignore', category=DtypeWarning)
 
 
-
 def tprint(df, head=0, floatfmt=None, to_latex=False):
     if df is None:
         return
@@ -134,7 +133,7 @@ def multiload(dataset, purpose='etl'):
         print('unkown dataset')
         return
 
-    if purpose.lower() in ['simple', 'smpl', 'phrase']:
+    if purpose is not None and purpose.lower() in ['simple', 'smpl', 'phrase']:
         if dewac:
             dpath = join(SMPL_PATH, 'wiki_phrases')
             pattern = re.compile(r'^dewac_[0-9]{2}_simple_wiki_phrases\.pickle')
@@ -143,7 +142,7 @@ def multiload(dataset, purpose='etl'):
             dpath = join(SMPL_PATH, 'dewiki')
             pattern = re.compile(r'^dewiki_[0-9]+_[0-9]+__[0-9]+_simple\.pickle')
             files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
-    elif purpose.lower() == 'nlp':
+    elif purpose is not None and purpose.lower() == 'nlp':
         dpath = NLP_PATH
         if dewac:
             pattern = re.compile(r'^dewac_[0-9]{2}_nlp\.pickle')
@@ -404,7 +403,7 @@ def load(*args, logger=None, logg=print):
             logg(e)
 
     # --- rerank topics / scores / eval_scores ---
-    elif purpose.startswith('rerank'):
+    elif isinstance(purpose, str) and purpose.startswith('rerank'):
         tpx_path = join(LDA_PATH, version, corpus_type, 'topics')
         if purpose.startswith('rerank_score'):
             file = join(tpx_path, f'{dataset}_reranker-scores.csv')
@@ -537,9 +536,14 @@ def load(*args, logger=None, logg=print):
                 join(directory, f'{DSETS["FA"]}{suffix}.pickle'),
                 join(directory, f'{DSETS["FO"]}{suffix}.pickle')
             ]
-        # TODO: call multiload
-        else:
+        elif dataset.lower() in {'dewa1', 'dewac1'}:
             file = join(directory, f'{dataset.replace("dewac1", "dewac_01")}{suffix}.pickle')
+        elif dataset.lower() in {'dewa', 'dewac', 'dewi', 'dewik', 'dewiki'}:
+            print(dataset)
+            dfs = [d for d in multiload(dataset, purpose)]
+            return pd.concat(dfs)
+        else:
+            file = None
         try:
             logg(f'Reading {file}')
             if isinstance(file, str):
@@ -778,10 +782,12 @@ def main():
     # topics = TopicsLoader('O', nbs_topics=[10, 25, 50, 100], lsi=True, topn=10).topics
     # tprint(load('score', 'O'), 50)
 
-    x = load('rerank_eval', 'E')
-    tprint(x, 50)
-    print(x.dtypes)
-    print(index_level_dtypes(x))
+    # for x in load('phrases'):
+    #     print(x)
+    tprint(load('dewik'), 10)
+    from itertools import islice
+    # for d in islice(load('dewik'), 2):
+    #     tprint(d, 2)
 
 
 if __name__ == '__main__':

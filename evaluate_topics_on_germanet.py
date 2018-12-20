@@ -70,7 +70,7 @@ def main():
 
     purpose = 'rerank' if rerank else 'topics'
     topics = load(purpose, dataset, version, corpus_type, *params, *nbtopics)
-    logg('Number of topics', len(topics))
+    logg(f'Number of topics {len(topics)}')
 
     logg('Getting SynSets for topic terms')
     sstopics = topics.applymap(gn.synsets)

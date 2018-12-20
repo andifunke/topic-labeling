@@ -120,6 +120,7 @@ DATASETS = {
 DSETS = DATASETS.copy()
 DSETS.update({
     'dewi': 'dewiki',
+    'dewik': 'dewiki',
     'dewa': 'dewac',
     'dewa1': 'dewac1',
     'e': 'Europarl',

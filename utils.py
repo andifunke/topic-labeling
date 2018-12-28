@@ -124,7 +124,7 @@ def log_args(logger, args):
     logger.info('\n' + pformat(vars(args)))
 
 
-def multiload(dataset, purpose='etl'):
+def multiload(dataset, purpose='etl', deprecated=False):
     if dataset.lower().startswith('dewa'):
         dewac = True
     elif dataset.lower().startswith('dewi'):
@@ -156,7 +156,12 @@ def multiload(dataset, purpose='etl'):
             pattern = re.compile(r'^dewac_[0-9]{2}\.pickle')
             files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
         else:
-            files = [join(dpath, 'dewiki.pickle')]
+            if deprecated:
+                dpath = join(dpath, 'deprecated')
+                pattern = re.compile(r'^dewiki_[0-9]{2}.*\.pickle\.gz')
+                files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+            else:
+                files = [join(dpath, 'dewiki.pickle')]
 
     length = len(files)
     for i, file in enumerate(files, 1):
@@ -284,6 +289,8 @@ def load(*args, logger=None, logg=print):
     params = []
     nbtopics = []
     metrics = []
+    deprecated = False
+    dsets = set(list(DSETS.keys()) + list(DSETS.values()) + ['gurevych', 'gur', 'simlex', 'ws'])
 
     if isinstance(args, str):
         args = [args]
@@ -292,6 +299,7 @@ def load(*args, logger=None, logg=print):
 
     # --- parse args ---
     for arg in args:
+        arg = arg.lower()
         if arg in single:
             if arg == 'phrases' and 'lemmap' in args:
                 dataset = 'dewiki_phrases'
@@ -300,12 +308,10 @@ def load(*args, logger=None, logg=print):
                 purpose = 'single'
                 dataset = arg
                 break
-        elif not dataset and arg.lower() in DSETS:
-            dataset = DSETS[arg]
-        elif not dataset and arg in list(DSETS.values()) + ['gurevych', 'gur', 'simlex', 'ws']:
-            dataset = arg
-        elif not purpose and arg.lower() in purposes:
-            purpose = arg.lower()
+        elif not dataset and arg in dsets:
+            dataset = DSETS.get(arg, arg)
+        elif not purpose and arg in purposes:
+            purpose = arg
         elif not purpose and any([s in arg for s in ['d2v', 'w2v', 'ftx'] if isinstance(arg, str)]):
             purpose = 'embedding'
             dataset = arg
@@ -319,6 +325,8 @@ def load(*args, logger=None, logg=print):
             version = arg
         elif not corpus_type and arg in CORPUS_TYPE:
             corpus_type = arg
+        elif arg == 'deprecated':
+            deprecated = True
 
     # --- setting default values ---
     if version is None:
@@ -526,30 +534,39 @@ def load(*args, logger=None, logg=print):
         else:
             logg('oops')
             return
-        if dataset.lower() in {'speeches', 's'}:
+        if dataset == 'speeches':
             file = [
                 join(directory, f'{DSETS["E"]}{suffix}.pickle'),
                 join(directory, f'{DSETS["P"]}{suffix}.pickle')
             ]
-        elif dataset.lower() in {'news', 'n', 'f'}:
+        elif dataset == 'news':
             file = [
                 join(directory, f'{DSETS["FA"]}{suffix}.pickle'),
                 join(directory, f'{DSETS["FO"]}{suffix}.pickle')
             ]
-        elif dataset.lower() in {'dewa1', 'dewac1'}:
+        elif dataset == 'dewac1':
             file = join(directory, f'{dataset.replace("dewac1", "dewac_01")}{suffix}.pickle')
-        elif dataset.lower() in {'dewa', 'dewac', 'dewi', 'dewik', 'dewiki'}:
-            print(dataset)
-            dfs = [d for d in multiload(dataset, purpose)]
+        elif dataset in {'dewac', 'dewiki'}:
+            dfs = [d for d in multiload(dataset, purpose, deprecated)]
             return pd.concat(dfs)
         else:
-            file = None
+            if purpose in {'etl', None} and deprecated and dataset in {'FAZ', 'FOCUS'}:
+                directory = join(ETL_PATH, 'deprecated')
+                if dataset == 'FAZ':
+                    file = [
+                        join(directory, 'FAZ.pickle.gz'),
+                        join(directory, 'FAZ2.pickle.gz')
+                    ]
+                else:
+                    file = join(directory, 'FOCUS.pickle.gz')
+            else:
+                file = join(directory, f'{dataset}{suffix}.pickle')
         try:
             logg(f'Reading {file}')
             if isinstance(file, str):
                 return pd.read_pickle(file)
             else:
-                return pd.concat([pd.read_pickle(f) for f in file])
+                return pd.concat([pd.read_pickle(f).drop('new', axis=1, errors='ignore') for f in file])
         except Exception as e:
             logg(e)
 
@@ -784,8 +801,8 @@ def main():
 
     # for x in load('phrases'):
     #     print(x)
-    tprint(load('dewik'), 10)
-    from itertools import islice
+    tprint(load('dewi', 'deprecated'), 10)
+    # from itertools import islice
     # for d in islice(load('dewik'), 2):
     #     tprint(d, 2)
 

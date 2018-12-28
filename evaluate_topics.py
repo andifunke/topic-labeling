@@ -267,6 +267,7 @@ def main():
 
     logg(f'Writing {file}')
     dfs.to_csv(file)
+    logg('done')
 
     return dfs
 

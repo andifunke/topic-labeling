@@ -111,6 +111,7 @@ def main():
 
     logg(f'Writing {file}')
     topics.to_csv(file)
+    logg('done')
 
 
 if __name__ == '__main__':

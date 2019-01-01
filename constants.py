@@ -124,10 +124,15 @@ DSETS.update({
     'dewa': 'dewac',
     'dewa1': 'dewac1',
     'e': 'Europarl',
+    'europarl': 'Europarl',
     'fa': 'FAZ',
+    'faz': 'FAZ',
     'fo': 'FOCUS',
+    'focus': 'FOCUS',
     'o': 'OnlineParticipation',
+    'onlineparticipation': 'OnlineParticipation',
     'p': 'PoliticalSpeeches',
+    'politicalspeeches': 'PoliticalSpeeches',
     'n': 'news',
     'f': 'news',
     'F': 'news',
@@ -171,8 +176,8 @@ BAD_TOKENS_DICT = {
 BAD_TOKENS = set(chain(*BAD_TOKENS_DICT.values()))
 PLACEHOLDER = '[[PLACEHOLDER]]'
 MINIMAL_PATTERN = re.compile(r'.\.')
-# NOUN_PATTERN = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöü].*?[A-Za-zÄÖÜäöü0-9].*')
-NOUN_PATTERN = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöü].*')
+# NOUN_PATTERN = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöüß].*?[A-Za-zÄÖÜäöüß0-9].*')
+NOUN_PATTERN = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöüß].*')
 POS_N = [NOUN, PROPN, NER, NPHRASE]
 POS_NV = [NOUN, PROPN, NER, NPHRASE, VERB]
 POS_NVA = [NOUN, PROPN, NER, NPHRASE, VERB, ADJ, ADV]

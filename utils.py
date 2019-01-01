@@ -290,16 +290,15 @@ def load(*args, logger=None, logg=print):
     nbtopics = []
     metrics = []
     deprecated = False
-    dsets = set(list(DSETS.keys()) + list(DSETS.values()) + ['gurevych', 'gur', 'simlex', 'ws'])
+    dsets = list(DSETS.keys()) + list(DSETS.values()) + ['gurevych', 'gur', 'simlex', 'ws']
 
     if isinstance(args, str):
         args = [args]
     args = [arg.replace('-', '_') if isinstance(arg, str) else arg for arg in args]
-    # logg(args)
 
     # --- parse args ---
     for arg in args:
-        arg = arg.lower()
+        arg = arg.lower() if isinstance(arg, str) else arg
         if arg in single:
             if arg == 'phrases' and 'lemmap' in args:
                 dataset = 'dewiki_phrases'
@@ -578,13 +577,13 @@ class Unlemmatizer(object):
         self.wiktionary = load('wikt', 'lemmap')
 
     def unlemmatize_token(self, token, lemmap=None):
-        # 1) unlemmatize from original dataset
-        if lemmap is not None and token in lemmap:
-            word = lemmap[token]
-
-        # 2) unlemmatize from Wikipedia title phrases
-        elif token in self.phrases:
+        # 1) unlemmatize from Wikipedia title phrases
+        if token in self.phrases:
             word = self.phrases[token]
+
+        # 2) unlemmatize from original dataset
+        elif lemmap is not None and token in lemmap:
+            word = lemmap[token]
 
         # 3) unlemmatize individual parts of a concatenated token
         elif '_' in token:

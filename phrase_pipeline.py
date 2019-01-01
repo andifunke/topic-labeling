@@ -153,6 +153,8 @@ def ngrams(ser):
 
 
 def insert_wikipedia_phrases(df):
+    # TODO: fix missing concatenation for TEXT
+    # TODO: ignore n-grams beyond sentence segments
     global PS
     if PS is None:
         p = pd.read_pickle(join(ETL_PATH, 'dewiki_phrases_lemmatized.pickle'))
@@ -236,6 +238,10 @@ def process_subset(df):
     df_phrases['tok_set'] = df_phrases[TOK_IDX]
     df_phrases[TOK_IDX] = df_phrases[TOK_IDX].apply(lambda x: x[0])
 
+    logg("insert phrases to original tokens")
+    df_glued = insert_phrases(df, df_phrases)
+    del df_phrases
+
     logg("extracting streets")
     df_loc = (
         df
@@ -256,12 +262,10 @@ def process_subset(df):
             ENT_TYPE: "category"
         })
     )
+    del df
     logg('collect: %d' % gc.collect())
     logg(memstr())
 
-    logg("insert phrases to original tokens")
-    df_glued = insert_phrases(df, df_phrases)
-    del df_phrases, df
     logg("insert locations / streets")
     df_glued = insert_phrases(df_glued, df_loc)
     del df_loc
@@ -303,7 +307,7 @@ def main(corpus, batch_size=None):
         df_main = preprocess_dewiki(df_main)
 
     # fixes wrong POS tagging for punctuation
-    mask_punct = df_main[TOKEN].isin(list('[]<>/–%'))
+    mask_punct = df_main[TOKEN].isin(list('[]<>/–%{}'))
     df_main.loc[mask_punct, POS] = PUNCT
 
     df_main = df_main.groupby(HASH, sort=False)

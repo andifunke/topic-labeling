@@ -302,7 +302,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--dataset", type=str, required=True)
-    parser.add_argument("--version", type=str, required=False, default='default')
+    parser.add_argument("--version", type=str, required=False, default='noun')
     parser.add_argument("--logger", type=str, required=False, default='shell')
     parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)

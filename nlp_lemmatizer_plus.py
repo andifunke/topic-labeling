@@ -4,8 +4,8 @@ from spacy.tokens import Token
 from iwnlp.iwnlp_wrapper import IWNLPWrapper
 from constants import (
     ADJ, ADV, INTJ, NOUN, PROPN, VERB, ADP, AUX, CCONJ, CONJ, DET, NUM,
-    PART, PRON, SCONJ, PUNCT, SYM, X, SPACE, PHRASE
-)
+    PART, PRON, SCONJ, PUNCT, SYM, X, SPACE, PHRASE,
+    NPHRASE)
 
 
 class LemmatizerPlus(object):
@@ -40,7 +40,7 @@ class LemmatizerPlus(object):
         pos = token.pos_
 
         # nothing to lemmatize here
-        if pos in {PHRASE, PUNCT, SPACE, SYM}:
+        if pos in {PHRASE, NPHRASE, PUNCT, SPACE, SYM}:
             return text
         # lemmatiaztions are odd on DET and NUM, so better leave it alone
         if pos in {DET, NUM}:

@@ -440,6 +440,7 @@ class Reranker(object):
         return topic_candidates
 
     def oop_score(self, topic_candidates=None):
+        """ measure the distance of a reranked topic to the reference via out-of-place score"""
 
         def _oop_score_by_row(row):
             columns = [col for col in row.index if col.startswith('term')]
@@ -463,6 +464,10 @@ class Reranker(object):
         return oop_scores
 
     def weight_score(self, topic_candidates=None):
+        """
+        measure the distance of a reranked topic to the reference by calculating the remaining weight
+        of its terms.
+        """
         def _weight_score_by_row(row):
             columns = [col for col in row.index if col.startswith('term')]
             terms = row[columns].values
@@ -495,6 +500,12 @@ class Reranker(object):
         return self._statistics_
 
     def evaluate(self, topic_candidates=None, nbtopterms=None):
+        """
+        evaluate topic coherence. This method is for convenience and actually redundant.
+        The coherence scores should optimally be calculated in evaluate_topics.py which provides more
+        features and metrics.
+        """
+
         self.logg('evaluating topic candidates')
 
         # reference scores per topic for top topic terms

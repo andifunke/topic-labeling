@@ -19,11 +19,10 @@ def main():
     ) = parse_args()
 
     model_class = 'LSImodel'
-    _tfidf_ = "tfidf" if tfidf else "bow"
     _split_ = "_split" if use_callbacks else ""
 
-    data_name = f'{dataset}_{version}_{_tfidf_}'
-    data_dir = join(LDA_PATH, version, _tfidf_)
+    data_name = f'{dataset}_{version}_{tfidf}'
+    data_dir = join(LDA_PATH, version, tfidf)
 
     # --- logging ---
     logger = init_logging(name=data_name, basic=False, to_stdout=True, to_file=True)
@@ -57,7 +56,7 @@ def main():
         logg(f'Running {model_class} with {nbtopics} topics')
         model = LsiModel(corpus=train, num_topics=nbtopics, id2word=dictionary)
 
-        model_dir = join(LSI_PATH, version, _tfidf_, f'{_split_}')
+        model_dir = join(LSI_PATH, version, tfidf, f'{_split_}')
         model_path = join(model_dir, f'{dataset}_{model_class}{_split_}_{nbtopics}')
         if not exists(model_dir):
             makedirs(model_dir)

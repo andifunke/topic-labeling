@@ -181,7 +181,7 @@ into the topic_reranking.py module.
 
 ###### Label generation
 
-- [labeling.py](labeling.py):<br>
+- [labeling.py](label_generation.py):<br>
 Generates topic label candidates based on their similarity to doc2vec, word2vec and fastText embeddings 
 from Wikipedia articles. The algorithm is taken from the NETL framework by Bhatia et.al.. Copyright 
 remarks will be added upon final release.

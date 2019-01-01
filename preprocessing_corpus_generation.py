@@ -88,7 +88,7 @@ def make_texts(dataset, nbfiles, pos_tags, logg=print):
             df = df[df.hash.isin(goodids.index)]
 
         # fixing bad POS tagging
-        mask = df.token.isin(list('[]<>/–%'))
+        mask = df.token.isin(list('[]<>/–%{}'))
         df.loc[mask, POS] = PUNCT
 
         # using only certain POS tags

@@ -1,4 +1,3 @@
-import argparse
 from os.path import join, exists
 from time import time
 
@@ -6,7 +5,8 @@ import numpy as np
 from pygermanet import load_germanet, Synset
 from tqdm import tqdm
 
-from constants import LDA_PATH, PARAMS, NBTOPICS, DSETS
+from constants import LDA_PATH
+from evaluate_topics import parse_args
 from utils import load, init_logging, log_args
 
 np.set_printoptions(precision=3)
@@ -25,7 +25,7 @@ def compare_synset_lists(synset_list1, synset_list2, sim_func, agg_func):
         return np.nan
 
 
-def similarities(topic, ignore_unknown=True, sim_func=Synset.sim_lch, agg_func=max, topn=10):
+def similarities(topic, topn, ignore_unknown=True, sim_func=Synset.sim_lch, agg_func=max):
     arr = np.zeros((topn, topn))
     for j, ssl1 in enumerate(topic.values):
         for k, ssl2 in enumerate(topic.values[j+1:], j+1):
@@ -36,41 +36,23 @@ def similarities(topic, ignore_unknown=True, sim_func=Synset.sim_lch, agg_func=m
     return np.nanmean(arr)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--dataset", type=str, required=True)
-    parser.add_argument("--version", type=str, required=False, default='noun')
-    parser.add_argument('--tfidf', dest='tfidf', action='store_true', required=False)
-    parser.add_argument('--no-tfidf', dest='tfidf', action='store_false', required=False)
-    parser.set_defaults(tfidf=False)
-    parser.add_argument('--rerank', dest='rerank', action='store_true', required=False)
-    parser.add_argument('--no-rerank', dest='rerank', action='store_false', required=False)
-    parser.set_defaults(rerank=False)
-    parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
-    parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)
-    parser.add_argument("--topn", type=int, required=False, default=10)
-
-    args = parser.parse_args()
-
-    args.dataset = DSETS.get(args.dataset, args.dataset)
-    corpus_type = "tfidf" if args.tfidf else "bow"
-
-    return (
-        args.dataset, args.version, corpus_type, args.params, args.nbtopics, args.topn, args.rerank, args
-    )
-
-
 def main():
-    dataset, version, corpus_type, params, nbtopics, topn, rerank, args = parse_args()
+    (
+        dataset, version, params, nbtopics, topn, cores, corpus_type,
+        use_coherence, use_w2v, rerank, lsi, args
+    ) = parse_args()
 
     logger = init_logging(name=f'Eval_topics_on_germanet_{dataset}', basic=False, to_stdout=True, to_file=True)
     log_args(logger, args)
     logg = logger.info
 
     purpose = 'rerank' if rerank else 'topics'
-    topics = load(purpose, dataset, version, corpus_type, *params, *nbtopics)
-    logg(f'Number of topics {len(topics)}')
+    topics = load(purpose, dataset, version, corpus_type, lsi, *params, *nbtopics)
+    if topn > 0:
+        topics = topics[:topn]
+    else:
+        topn = topics.shape[1]
+    logg(f'Number of topics {topics.shape}')
 
     logg('Getting SynSets for topic terms')
     sstopics = topics.applymap(gn.synsets)
@@ -101,11 +83,14 @@ def main():
     )
 
     topics = topics.iloc[:, topn:]
-    tpx_path = join(LDA_PATH, version, corpus_type, 'topics')
+    tpx_path = join(LDA_PATH, version, 'bow', 'topics')
     if rerank:
         file = join(tpx_path, f'{dataset}_reranker-eval_germanet.csv')
     else:
-        file = join(tpx_path, f'{dataset}_{version}_{corpus_type}_topic-scores_germanet.csv')
+        file = join(
+            tpx_path,
+            f'{dataset}{"_"+lsi if lsi else ""}_{version}_{corpus_type}_topic-scores_germanet.csv'
+        )
     if exists(file):
         file = file.replace('.csv', f'_{str(time()).split(".")[0]}.csv')
 

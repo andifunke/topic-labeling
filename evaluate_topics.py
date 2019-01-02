@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from gensim.models import CoherenceModel
 
-from constants import PARAMS, NBTOPICS, DATASETS, LDA_PATH
+from constants import PARAMS, NBTOPICS, DATASETS, LDA_PATH, DSETS
 from utils import init_logging, load, log_args
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -130,30 +130,34 @@ def parse_args():
     parser.add_argument('--rerank', dest='rerank', action='store_true', required=False)
     parser.add_argument('--no-rerank', dest='rerank', action='store_false', required=False)
     parser.set_defaults(rerank=False)
+    parser.add_argument('--lsi', dest='lsi', action='store_true', required=False)
+    parser.add_argument('--no-lsi', dest='lsi', action='store_false', required=False)
+    parser.set_defaults(lsi=False)
     parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)
-    parser.add_argument("--topn", type=int, required=False, default=10)
+    parser.add_argument("--topn", type=int, required=False, default=-1)
     parser.add_argument("--cores", type=int, required=False, default=4)
     parser.add_argument("--method", type=str, required=False, default='both',
                         choices=['coherence', 'w2v', 'both'])
 
     args = parser.parse_args()
 
-    args.dataset = DATASETS.get(args.dataset, args.dataset)
+    args.dataset = DSETS.get(args.dataset, args.dataset)
     corpus_type = "tfidf" if args.tfidf else "bow"
+    lsi = "lsi" if args.lsi else ""
     use_coherence = (args.method in ['coherence', 'both'])
     use_w2v = (args.method in ['w2v', 'both'])
 
     return (
         args.dataset, args.version, args.params, args.nbtopics, args.topn, args.cores, corpus_type,
-        use_coherence, use_w2v, args.rerank, args
+        use_coherence, use_w2v, args.rerank, lsi, args
     )
 
 
 def main():
     (
         dataset, version, params, nbtopics, topn, cores, corpus_type,
-        use_coherence, use_w2v, rerank, args
+        use_coherence, use_w2v, rerank, lsi, args
     ) = parse_args()
 
     logger = init_logging(name=f'Eval_topics_{dataset}', basic=False, to_stdout=True, to_file=True)
@@ -161,7 +165,11 @@ def main():
     logg = logger.info
 
     purpose = 'rerank' if rerank else 'topics'
-    topics = load(purpose, dataset, version, corpus_type, *params, *nbtopics, logg=logg)
+    topics = load(purpose, dataset, version, corpus_type, lsi, *params, *nbtopics, logg=logg)
+    if topn > 0:
+        topics = topics[:topn]
+    else:
+        topn = topics.shape[1]
     logg(f'number of topics: {topics.shape}')
     unique_topics = topics.drop_duplicates()
     logg(f'number of unique topics: {unique_topics.shape}')
@@ -257,11 +265,14 @@ def main():
         .drop(topic_columns, axis=1)
     )
 
-    tpx_path = join(LDA_PATH, version, corpus_type, 'topics')
+    tpx_path = join(LDA_PATH, version, 'bow', 'topics')
     if rerank:
         file = join(tpx_path, f'{dataset}_reranker-eval.csv')
     else:
-        file = join(tpx_path, f'{dataset}_{version}_{corpus_type}_topic-scores.csv')
+        file = join(
+            tpx_path,
+            f'{dataset}{"_"+lsi if lsi else ""}_{version}_{corpus_type}_topic-scores.csv'
+        )
     if exists(file):
         file = file.replace('.csv', f'_{str(time()).split(".")[0]}.csv')
 

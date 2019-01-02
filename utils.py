@@ -214,11 +214,15 @@ def set_index(df):
     return df
 
 
-def load_scores(dataset, version, corpus_type, metrics, params, nbtopics, logg=print, rerank=False):
+def load_scores(
+        dataset, version, corpus_type, metrics, params, nbtopics, lsi=False, logg=print, rerank=False
+):
     dfs = []
     tpx_path = join(LDA_PATH, version, corpus_type, 'topics')
     if rerank:
         file_prefix = join(tpx_path, f'{dataset}_reranker-eval')
+    elif lsi:
+        file_prefix = join(tpx_path, f'{dataset}_lsi_{version}_{corpus_type}_topic-scores')
     else:
         file_prefix = join(tpx_path, f'{dataset}_{version}_{corpus_type}_topic-scores')
     try:
@@ -514,7 +518,12 @@ def load(*args, logger=None, logg=print):
 
     # --- scores ---
     elif purpose in {'score', 'scores'}:
-        return load_scores(dataset, version, corpus_type, metrics, params, nbtopics, logg=logg)
+        if 'lsi' in args:
+            return load_scores(
+                dataset, version, corpus_type, metrics, params, nbtopics, lsi=True, logg=logg
+            )
+        else:
+            return load_scores(dataset, version, corpus_type, metrics, params, nbtopics, logg=logg)
 
     # --- pipelines ---
     elif purpose in {'nlp', 'simple', 'smpl', 'wiki', 'wiki_phrases', 'phrases', 'etl', None}:
@@ -826,7 +835,8 @@ def main():
 
     # for x in load('phrases'):
     #     print(x)
-    tprint(load('dewac1', 'rerank', 100, 'e42'))
+    # tprint(load('dewac1', 'topics', 'lsi', 10, 25))
+    tprint(load('dewac', 'scores', 'lsi'))
     # from itertools import islice
     # for d in islice(load('dewik'), 2):
     #     tprint(d, 2)

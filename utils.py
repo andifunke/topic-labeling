@@ -17,8 +17,8 @@ from pandas.errors import DtypeWarning
 
 from constants import (
     ETL_PATH, NLP_PATH, SMPL_PATH, LDA_PATH, DSETS, PARAMS, NBTOPICS, METRICS, VERSIONS,
-    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH
-)
+    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH,
+    TPX_PATH)
 
 try:
     from tabulate import tabulate
@@ -290,7 +290,11 @@ def load(*args, logger=None, logg=print):
     nbtopics = []
     metrics = []
     deprecated = False
-    dsets = list(DSETS.keys()) + list(DSETS.values()) + ['gurevych', 'gur', 'simlex', 'ws']
+    dsets = (
+            list(DSETS.keys())
+            + list(DSETS.values())
+            + ['gurevych', 'gur', 'simlex', 'ws', 'rel', 'similarity', 'survey']
+    )
 
     if isinstance(args, str):
         args = [args]
@@ -430,21 +434,33 @@ def load(*args, logger=None, logg=print):
 
     # --- topics ---
     elif purpose in {'topic', 'topics'}:
+        cols = ['Lemma1', 'Lemma2']
         if dataset in ['gur', 'gurevych']:
             file = join(ETL_PATH, 'gurevych_datasets.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
-            return df[['Token1', 'Token2']]
+            return df[cols]
         elif dataset in ['simlex']:
             file = join(ETL_PATH, 'simlex999.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
-            return df[['Token1', 'Token2']]
+            return df[cols]
         elif dataset in ['ws']:
             file = join(ETL_PATH, 'ws353.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
-            return df[['Token1', 'Token2']]
+            return df[cols]
+        elif dataset in ['rel', 'similarity']:
+            file = join(ETL_PATH, 'similarity_datasets.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1])
+            return df[cols]
+        elif dataset in ['survey']:
+            file = join(TPX_PATH, 'survey_topics.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1, 2, 3])
+            survey_cols = [f'term{i}' for i in range(20)]
+            return df[survey_cols]
 
         file = join(
             LDA_PATH, version, corpus_type, 'topics',
@@ -516,6 +532,16 @@ def load(*args, logger=None, logg=print):
             file = join(ETL_PATH, 'ws353.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
+            return df
+        elif dataset in ['rel', 'similarity']:
+            file = join(ETL_PATH, 'similarity_datasets.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1])
+            return df
+        elif dataset in ['survey']:
+            file = join(TPX_PATH, 'survey_topics.csv')
+            logg(f'Reading {file}')
+            df = pd.read_csv(file, header=0, index_col=[0, 1, 2, 3])
             return df
 
         if purpose in {'etl', None}:
@@ -800,7 +826,7 @@ def main():
 
     # for x in load('phrases'):
     #     print(x)
-    tprint(load('dewi', 'deprecated'), 10)
+    tprint(load('dewac1', 'rerank', 100, 'e42'))
     # from itertools import islice
     # for d in islice(load('dewik'), 2):
     #     tprint(d, 2)

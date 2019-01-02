@@ -57,7 +57,7 @@ def mean_similarity(topic, kvs):
 
 def eval_coherence(
         topics, dictionary, corpus=None, texts=None, keyed_vectors=None, metrics=None, window_size=None,
-        suffix='', cores=1, logg=print
+        suffix='', cores=1, logg=print, topn=10
 ):
     if not (corpus or texts or keyed_vectors):
         logg('provide corpus, texts and/or keyed_vectors')
@@ -102,7 +102,7 @@ def eval_coherence(
             corpus=corpus,
             texts=txt,
             coherence=metric,
-            topn=10,
+            topn=topn,
             window_size=window_size,
             processes=cores,
             keyed_vectors=keyed_vectors
@@ -162,9 +162,9 @@ def main():
 
     purpose = 'rerank' if rerank else 'topics'
     topics = load(purpose, dataset, version, corpus_type, *params, *nbtopics, logg=logg)
-    logg(f'number of topics: {len(topics)}')
+    logg(f'number of topics: {topics.shape}')
     unique_topics = topics.drop_duplicates()
-    logg(f'number of unique topics: {len(unique_topics)}')
+    logg(f'number of unique topics: {unique_topics.shape}')
     wiki_dict = load('dict', 'dewiki', 'unfiltered', logg=logg)
 
     dfs = []
@@ -176,7 +176,7 @@ def main():
         df = eval_coherence(
             topics=unique_topics, dictionary=dictionary, corpus=corpus, texts=texts,
             keyed_vectors=None, metrics=None, window_size=None,
-            suffix='', cores=cores, logg=logg,
+            suffix='', cores=cores, logg=logg, topn=topn,
         )
         del dictionary, corpus, texts
         gc.collect()
@@ -186,7 +186,7 @@ def main():
         df = eval_coherence(
             topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=wiki_texts,
             keyed_vectors=None, metrics=None, window_size=None,
-            suffix='_wikt', cores=cores, logg=logg,
+            suffix='_wikt', cores=cores, logg=logg, topn=topn,
         )
         gc.collect()
         dfs.append(df)
@@ -194,7 +194,7 @@ def main():
         df = eval_coherence(
             unique_topics, wiki_dict, corpus=None, texts=wiki_texts,
             keyed_vectors=None, metrics=['c_uci'], window_size=20,
-            suffix='_wikt_w20', cores=cores, logg=logg,
+            suffix='_wikt_w20', cores=cores, logg=logg, topn=topn,
         )
         del wiki_texts
         gc.collect()
@@ -216,7 +216,7 @@ def main():
         df = eval_coherence(
             topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=None,
             keyed_vectors=w2v, metrics=None, window_size=None,
-            suffix='_w2v', cores=cores, logg=logger.info,
+            suffix='_w2v', cores=cores, logg=logger.info, topn=topn,
         )
         gc.collect()
         dfs.append(df)
@@ -224,7 +224,7 @@ def main():
         df = eval_coherence(
             topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=None,
             keyed_vectors=ftx, metrics=None, window_size=None,
-            suffix='_ftx', cores=cores, logg=logger.info,
+            suffix='_ftx', cores=cores, logg=logger.info, topn=topn,
         )
         gc.collect()
         dfs.append(df)

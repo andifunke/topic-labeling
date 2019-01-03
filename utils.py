@@ -215,7 +215,7 @@ def set_index(df):
 
 
 def load_scores(
-        dataset, version, corpus_type, metrics, params, nbtopics, lsi=False, logg=print, rerank=False
+        dataset, version, corpus_type, metrics, params, nbtopics, logg=print, rerank=False, lsi=False
 ):
     dfs = []
     tpx_path = join(LDA_PATH, version, corpus_type, 'topics')
@@ -497,23 +497,32 @@ def load(*args, logger=None, logg=print):
                 df_ = df_.query('label_method in ["comb", "comb_ftx"]').applymap(lambda x: x[0])
             return reduce_df(df_, metrics, params, nbtopics)
 
-        fpath = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_{version}_{corpus_type}')
-        df = w2v = None
-        if 'w2v' in args or 'ftx' not in args:
+        df = None
+        if 'rerank' in args:
+            fpath = join(LDA_PATH, version, corpus_type, 'topics', dataset)
             try:
-                file = fpath + '_label-candidates.csv'
-                df = w2v = _load_label_file(file)
+                file = fpath + '_reranker-candidates.csv'
+                df = _load_label_file(file)
             except Exception as e:
                 logg(e)
-        if 'ftx' in args or 'w2v' not in args:
-            try:
-                file = fpath + '_label-candidates_ftx.csv'
-                df = ftx = _load_label_file(file)
-                if w2v is not None:
-                    ftx = ftx.query('label_method != "d2v"')
-                    df = w2v.append(ftx).sort_index()
-            except Exception as e:
-                logg(e)
+        else:
+            fpath = join(LDA_PATH, version, corpus_type, 'topics', f'{dataset}_{version}_{corpus_type}')
+            df = w2v = None
+            if 'w2v' in args or 'ftx' not in args:
+                try:
+                    file = fpath + '_label-candidates.csv'
+                    df = w2v = _load_label_file(file)
+                except Exception as e:
+                    logg(e)
+            if 'ftx' in args or 'w2v' not in args:
+                try:
+                    file = fpath + '_label-candidates_ftx.csv'
+                    df = ftx = _load_label_file(file)
+                    if w2v is not None:
+                        ftx = ftx.query('label_method != "d2v"')
+                        df = w2v.append(ftx).sort_index()
+                except Exception as e:
+                    logg(e)
         return df
 
     # --- scores ---
@@ -521,6 +530,10 @@ def load(*args, logger=None, logg=print):
         if 'lsi' in args:
             return load_scores(
                 dataset, version, corpus_type, metrics, params, nbtopics, lsi=True, logg=logg
+            )
+        elif 'rerank' in args:
+            return load_scores(
+                dataset, version, corpus_type, metrics, params, nbtopics, rerank=True, logg=logg
             )
         else:
             return load_scores(dataset, version, corpus_type, metrics, params, nbtopics, logg=logg)
@@ -836,7 +849,7 @@ def main():
     # for x in load('phrases'):
     #     print(x)
     # tprint(load('dewac1', 'topics', 'lsi', 10, 25))
-    tprint(load('dewac', 'scores', 'lsi'))
+    tprint(load('dewac1', 'labels', 'rerank', 'e42', 100))#.query('metric == "w2v_matches"'))
     # from itertools import islice
     # for d in islice(load('dewik'), 2):
     #     tprint(d, 2)

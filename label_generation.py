@@ -249,6 +249,10 @@ def parse_args():
     parser.set_defaults(tfidf=False)
 
     parser.add_argument("--metrics", nargs='*', type=str, required=False, default=['ref'])
+    parser.add_argument('--rerank', dest='rerank', action='store_true', required=False)
+    parser.add_argument('--no-rerank', dest='rerank', action='store_false', required=False)
+    parser.set_defaults(rerank=False)
+
     parser.add_argument("--params", nargs='*', type=str, required=False, default=['e42'])
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=[100])
     parser.add_argument("--total_num_topics", type=int, required=False, default=None)
@@ -294,7 +298,7 @@ def parse_args():
     return (
         args.topics_file, args.labels_file, args.d2v_indices, args.w2v_indices,
         args.d2v_path, args.w2v_path, args.use_ftx,
-        args.dataset, args.version, corpus_type,
+        args.dataset, args.version, corpus_type, args.rerank,
         args.metrics, args.params, args.nbtopics, args.total_num_topics,
         args.max_title_length, args.min_doc_length, args.nblabels, print_sample, args
     )
@@ -305,7 +309,7 @@ def main():
     (
         topics_file, labels_file, d2v_indices_file, w2v_indices_file,
         d2v_path, w2v_path, use_ftx,
-        dataset, version, corpus_type,
+        dataset, version, corpus_type, rerank,
         metrics, params, nbtopics, total_num_topics,
         max_title_length, min_doc_length, nb_labels, print_sample, args
     ) = parse_args()
@@ -323,9 +327,12 @@ def main():
             print_sample=print_sample,
         )
     else:
-        topics = load(
-            'topics', dataset, version, corpus_type, *metrics, *params, *nbtopics, logger=logger
-        )
+        if rerank:
+            topics = load('rerank', dataset, version, *params, *nbtopics, logger=logger)
+            topics = topics.query('metric in @metrics')
+            print(topics)
+        else:
+            topics = load('topics', dataset, version, corpus_type, *params, *nbtopics, logger=logger)
 
     d2v_docvecs, d2v_wv, w2v_wv = load_embeddings(
         d2v_path=d2v_path,

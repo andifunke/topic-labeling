@@ -18,8 +18,9 @@ import numpy as np
 import re
 import os
 import argparse
+import pandas as pd
 
-from constants import DATA_BASE
+from constants import DATA_BASE, DSETS
 from rank_labels_train_svm import load_topics, load_labels, load_pageranks, generate_lt_feature, \
     change_format, prepare_features, convert_dataset
 
@@ -30,7 +31,7 @@ args = parser.parse_args()
 
 # Global parameters for the model.
 ratings_version = args.ratings_version
-svm_path = join(DATA_BASE, 'supervised_ranker')
+svm_path = join(DATA_BASE, 'ranker')
 topics_path = join(svm_path, 'topics.csv')
 labels_path = join(svm_path, f'ratings_{ratings_version}.csv')
 svm_model = join(svm_path, f'svm_model_{ratings_version}')
@@ -38,6 +39,16 @@ tmp_file_path = join(svm_path, f"test_temp_{ratings_version}.dat")
 output_path = join(svm_path, f"supervised_labels_{ratings_version}")
 svm_classify_path = join(svm_path, 'svm_rank_classify')
 pagerank_path = join(svm_path, 'pagerank-titles-sorted_de_categories_removed.txt')
+tesets = ['dewac']
+datasets = [DSETS.get(d, d) for d in tesets]
+testsets = ('_' + '-'.join(tesets)) if tesets else ''
+
+trsets = ['N']
+trainsets = ('_'+'-'.join(trsets)) if trsets else ''
+svm_model = join(svm_path, f'svm_model_{ratings_version}{trainsets}')
+output_path = join(
+    svm_path, f"supervised_labels_{ratings_version}__testset{testsets}__trainset{trainsets}"
+)
 
 
 def chunks(l, n):
@@ -69,6 +80,10 @@ def predict(test_set, pred_chunk_size, tmp_file, svm_classifier_file, svm_model_
 
     pred_chunks = chunks(pred_list, pred_chunk_size)
     test_chunks = chunks(test_set, pred_chunk_size)
+    df_pred = pd.DataFrame.from_records(pred_chunks)
+    df_test = pd.DataFrame.from_records(test_chunks)
+    df_pred.to_csv(out_file+'_pred.csv')
+    df_test.to_csv(out_file+'_features.csv')
     list_max = []
     for j in range(len(pred_chunks)):
         max_sort = np.array(pred_chunks[j]).argsort()[::-1][:int(args.num_top_labels)]
@@ -78,14 +93,13 @@ def predict(test_set, pred_chunk_size, tmp_file, svm_classifier_file, svm_model_
     print("Printing Labels for supervised model")
     g = open(out_file, 'w')
     for cnt, (x, y) in enumerate(zip(test_chunks, list_max)):
-        print("Top " + args.num_top_labels + " labels for topic " + str(cnt) + " are:")
+        # print("Top " + args.num_top_labels + " labels for topic " + str(cnt) + " are:")
         g.write("Top " + args.num_top_labels + " labels for topic " + str(cnt) + " are:" + "\n")
         for i2 in y:
             m = re.search('# (.*)', x[i2])
-            print(m.group(1))
+            # print(m.group(1))
             g.write(m.group(1) + "\n")
-
-        print()
+        # print()
         g.write("\n")
     g.close()
 
@@ -96,15 +110,16 @@ def predict(test_set, pred_chunk_size, tmp_file, svm_classifier_file, svm_model_
 
 
 def main():
-    topics_list = load_topics(topics_path)
-    _, labels_list = load_labels(labels_path)
+    print(datasets)
+    topics_dict, topic_ids = load_topics(topics_path, datasets)
+    _, labels_dict = load_labels(labels_path, topic_ids, datasets)
     p_rank_dict = load_pageranks(pagerank_path)
-    letter_trigram_feature = generate_lt_feature(labels_list, topics_list)
+    letter_trigram_feature = generate_lt_feature(labels_dict, topics_dict)
     lt_dict = change_format(letter_trigram_feature)
-    feature_dataset = prepare_features(lt_dict, p_rank_dict, topics_list, labels=None)
+    feature_dataset = prepare_features(lt_dict, p_rank_dict, topics_dict, labels=None)
     print("All features generated")
     test_list = convert_dataset(feature_dataset)
-    nb_labels = len(labels_list[0])
+    nb_labels = len(list(labels_dict.items())[0][1])
     predict(test_list, nb_labels, tmp_file_path, svm_classify_path, svm_model, output_path)
 
 

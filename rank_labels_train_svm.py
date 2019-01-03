@@ -13,7 +13,7 @@ January 2019, Andreas Funke)
 """
 
 import re
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, OrderedDict
 from os.path import join
 
 import pandas as pd
@@ -21,7 +21,7 @@ import numpy as np
 import os
 from scipy.spatial.distance import cosine
 
-from constants import DATA_BASE
+from constants import DATA_BASE, DSETS
 
 pd.options.display.max_columns = 80
 pd.options.display.max_rows = 100
@@ -29,17 +29,20 @@ pd.options.display.width = 1000
 
 
 # Global parameters for the model.
-ratings_version = 'all'
-svm_path = join(DATA_BASE, 'supervised_ranker')
+ratings_version = ['all', 'removed_constants', 'cleaned_part', 'cleaned_full'][-1]
+svm_path = join(DATA_BASE, 'ranker')
 labels_path = join(svm_path, f'ratings_{ratings_version}.csv')  # label dataset with ratings
-output_svm_model = join(svm_path, f'svm_model_{ratings_version}')  # path for trained SVM model
-tmp_file_path = join(svm_path, f"train_temp_{ratings_version}.dat")
 
 svm_learn_path = join(svm_path, 'svm_rank_learn')  # path to SVM rank trainer binary
 pagerank_path = join(svm_path, 'pagerank-titles-sorted_de_categories_removed.txt')  # pagerank file
 topics_path = join(svm_path, 'topics.csv')  # topic dataset with topic terms
 svm_hyperparameter = 0.1  # The SVM hyperparameter.
 omit_underscores = False  # alternative way to create trigrams (treating phrases as multiple tokens)
+dsets = ['O', 'P', 'N', 'dewac']
+datasets = [DSETS.get(d, d) for d in dsets]
+dstr = ('_'+'-'.join(dsets)) if dsets else ''
+output_svm_model = join(svm_path, f'svm_model_{ratings_version}{dstr}')  # path for trained SVM model
+tmp_file_path = join(svm_path, f"train_temp_{ratings_version}{dstr}.dat")
 
 FEATURES = ['letter_trigram', 'prank', 'lab_length', 'common_words']
 
@@ -70,18 +73,25 @@ def load_pageranks(file):
     return p_rank_dict
 
 
-def load_topics(file):
+def load_topics(file, datassetz=None):
     """ reading topic terms. """
     topics = pd.read_csv(file)
+    if datassetz:
+        topics = topics[topics.domain.isin(datassetz)]
+        print(topics.head())
     topics = topics.applymap(normalize)
     topics = topics.drop('domain', axis=1, errors='ignore')
-    topic_list = topics.set_index('topic_id').T.to_dict('list')
-    return topic_list
+    topic_dict = topics.set_index('topic_id').T.to_dict('list')
+    topic_ids = list(topics.index)
+    return topic_dict, topic_ids
 
 
-def load_labels(file):
+def load_labels(file, topic_ids, datassetz=None):
     """Reading topic labels."""
     labels = pd.read_csv(file)
+    if datassetz:
+        labels = labels[labels.topic_id.isin(topic_ids)]
+        print(labels.head())
     labels.label = labels.label.apply(normalize)
     topic_labels_without_topic_id = list(labels)
     topic_labels_without_topic_id.remove('topic_id')
@@ -90,15 +100,15 @@ def load_labels(file):
     labels['avg'] = labels['total'] / num_raters
     topic_groups = labels.groupby('topic_id')
 
-    labels_list = []
-    for group in topic_groups:
+    labels_dict = OrderedDict()
+    for tpxid, group in topic_groups:
         temp2 = []
-        temp = list(group[1].label)
+        temp = list(group.label)
         for elem in temp:
             elem = elem.replace(" ", "_")
             temp2.append(elem)
-        labels_list.append(temp2)
-    return labels, labels_list
+        labels_dict[tpxid] = temp2
+    return labels, labels_dict
 
 
 def get_topic_lt(tpx):
@@ -167,11 +177,11 @@ def get_lt_ranks(lab_list, topic_list, num):
     return final_list
 
 
-def generate_lt_feature(labels_list, topic_list):
+def generate_lt_feature(labels_list, topic_dict):
     """ Generates letter trigram feature """
     temp_lt = []
-    for j in range(len(topic_list)):
-        temp_lt.append(get_lt_ranks(labels_list[j], topic_list, j))
+    for k, v in topic_dict.items():
+        temp_lt.append(get_lt_ranks(labels_list[k], topic_dict, k))
     lt_feature = [item for sublist in temp_lt for item in sublist]
     print("Letter trigram feature generated")
     return lt_feature
@@ -198,8 +208,7 @@ def prepare_features(letter_tg_dict, page_rank_dict, topic_list, labels=None):
     cols = ['label', 'topic_id', 'letter_trigram', 'prank', 'lab_length', 'common_words', 'avg_val']
     frame = pd.DataFrame()
 
-    for idx in range(len(letter_tg_dict)):
-        a = letter_tg_dict[idx]
+    for idx, a in letter_tg_dict.items():
         temp_frame = pd.DataFrame()
         for t_label in a:
             new_list = []  # The list created to get values for dataframe.
@@ -241,11 +250,13 @@ def prepare_features(letter_tg_dict, page_rank_dict, topic_list, labels=None):
             temp = pd.Series(new_list, index=cols)
             temp_frame = temp_frame.append(temp, ignore_index=True)
             temp_frame = temp_frame.fillna(0)
+
         for item in FEATURES:
+            # Feature normalization per topic.
             temp_frame[item] = (temp_frame[item] - temp_frame[item].mean()) / \
-                               (temp_frame[item].max() - temp_frame[
-                                   item].min())  # Feature normalization per topic.
+                               (temp_frame[item].max() - temp_frame[item].min())
         frame = frame.append(temp_frame, ignore_index=True)
+    frame = frame.fillna(0)
     return frame
 
 
@@ -287,12 +298,12 @@ def train(train_set, tmp_file, svm_learn_file):
 
 
 def main():
-    topics_list = load_topics(topics_path)
-    labels, labels_list = load_labels(labels_path)
+    topics_dict, topic_ids = load_topics(topics_path, datasets)
+    labels, labels_dict = load_labels(labels_path, topic_ids, datasets)
     p_rank_dict = load_pageranks(pagerank_path)
-    letter_trigram_feature = generate_lt_feature(labels_list, topics_list)
+    letter_trigram_feature = generate_lt_feature(labels_dict, topics_dict)
     lt_dict = change_format(letter_trigram_feature)
-    feature_dataset = prepare_features(lt_dict, p_rank_dict, topics_list, labels=labels)
+    feature_dataset = prepare_features(lt_dict, p_rank_dict, topics_dict, labels=labels)
     print("All features generated")
     train_list = convert_dataset(feature_dataset)
     train(train_list, tmp_file_path, svm_learn_path)

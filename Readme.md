@@ -1,7 +1,7 @@
-| Last modified |
-| -------------:|
-| *2019-01-09* |
+| Last modified: *2019-01-09* |
+|-------------:|
 
+![alt text](img/wordcloud2.png "Logo")
 
 # Topic Labeling
 
@@ -32,7 +32,8 @@ annotated datasets for **a)** measuring topic model quality and evaluating topic
 
 #### Requirements
 
-Python ≥ 3.6 is required. Other main requirements are *pandas 0.23.4*, *spaCy 2.0.11* and *gensim 3.5* 
+Python ≥ 3.6 is required. Other main requirements are [pandas](https://pandas.pydata.org/) 0.23.4, 
+[spaCy](https://spacy.io/) 2.0.11 and [gensim](https://radimrehurek.com/gensim/) 3.5 
 (with some additional proprietary fixes on which we will expand later). Please refer to 
 [Requirements.txt](Requirements.txt) for details on the required python modules.
 
@@ -80,10 +81,10 @@ for academia.
 
 #### 1.2 Crawling datasets from the web
 
-  - [faz/focus](src/scrapy/readme.txt): use the provided scrapy-spiders to fetch news-articles from the 
-    web.
+  - [faz/focus](src/scrapy/readme.txt): use the provided [scrapy](https://scrapy.org/) -spiders to fetch 
+    news-articles from the web.
   - [OnlineParticipation](https://github.com/Liebeck/OnlineParticipationDatasets): Follow the 
-    instructions in the linked repository to download these collections.
+    instructions in the linked repository to download this collection.
 
 After download, the datasets are assumed to reside inside [data/corpora](data/corpora). Please refer to 
 [data/readme.txt](data/readme.txt) for detailed instructions on how to arrange the files. 

@@ -1,0 +1,1 @@
+default folder for images and plots.

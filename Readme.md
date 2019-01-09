@@ -1,12 +1,12 @@
-<div align=left>Last modified: *2019-01-09* </div>
+<div align=left>Last modified: 2019-01-09 </div>
 
 ---
 
 # <div align=right>Topic Labeling</div>
 
-<img align="left" width="300" height="200" src="img/wordcloud2.png" style="margin:10px">
+<img align="left" width="400" height="400" src="img/wordcloud.png" style="margin:10px">
 
-<p align=left>Topic Labeling is the process of finding or generating appropriate labels to document topics 
+<p align=left>Topic Labeling is the process of finding or generating appropriate labels to document topics
 which were derived from the multinomial topic distributions over words inferred from a topic model
 architecture such as *Latent Dirichlet Allocation* (LDA). Topics are usually represented by their top-10
 terms, i.e. by the words with the highest probability in a topic distribution. Topic labels should be

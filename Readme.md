@@ -1,7 +1,7 @@
 | Last modified: *2019-01-09* |
 |-------------:|
 
-![alt text](img/wordcloud2.png "Logo")
+<img align="right" width="300" height="200" src="img/wordloud2.png">
 
 # Topic Labeling
 
@@ -86,7 +86,7 @@ for academia.
   - [OnlineParticipation](https://github.com/Liebeck/OnlineParticipationDatasets): Follow the 
     instructions in the linked repository to download this collection.
 
-After download, the datasets are assumed to reside inside [data/corpora](data/corpora). Please refer to 
+After download, the datasets are assumed to reside inside [data/corpora/](data/corpora). Please refer to 
 [data/readme.txt](data/readme.txt) for detailed instructions on how to arrange the files. 
 If you prefer a different file tree you might want to change to respective paths inside 
 import_datasets.py.

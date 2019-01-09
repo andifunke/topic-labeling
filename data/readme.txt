@@ -1,6 +1,6 @@
-default folder for corpora, processed data and additional required and optional data.
+Default folder for corpora, processed data and additional required and optional data.
 
-The assumed location of the data is as follows.
+The assumed location of the data is as follows:
 
 # raw corpora
 

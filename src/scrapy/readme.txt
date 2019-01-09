@@ -1,4 +1,4 @@
-To fetch new-articles from one of the following sources, run:
+To fetch news-articles from one of the following sources, run:
 
 >>> scrapy crawl faz
 

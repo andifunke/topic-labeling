@@ -65,7 +65,7 @@ are:
 6) **FAZ**
 7) **Focus**
 9) **News** *(combining FAZ and Focus)*
-10) **Online-Participation**
+10) **Online Participation**
 
 #### 1.1 Collecting freely available and edited datasets
 

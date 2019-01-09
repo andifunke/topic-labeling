@@ -168,6 +168,7 @@ venv.bak/
 /xternal
 scrapy/feeds/*
 data/corpora/*
+!data/corpora/German_datasets.ods
 logs/*
 !logs/readme.txt
 

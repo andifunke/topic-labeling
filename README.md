@@ -31,12 +31,13 @@ annotated datasets for **a)** measuring topic model quality and evaluating topic
 **b)** generating a gold-standard for topic labeling for the German language.
 
 
-#### Requirements
+#### Requirements and Setup
 
-Python ≥ 3.6 is required. Other main requirements are [pandas](https://pandas.pydata.org/) 0.23.4,
-[spaCy](https://spacy.io/) 2.0.11 and [gensim](https://radimrehurek.com/gensim/) 3.5
-(with some additional proprietary fixes on which we will expand later). Please refer to
-[Requirements.txt](Requirements.txt) for details on the required python modules.
+```bash
+conda create -n tl python=3.6.* jupyter
+conda activate tl
+pip install -r requirements.txt
+```
 
 You will also need to download text-corpora, a few additional data files and external tools,
 but we will guide you step-by-step throughout this process.

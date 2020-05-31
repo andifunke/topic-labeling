@@ -33,6 +33,8 @@ def similarities(topic, topn, ignore_unknown=True, sim_func=Synset.sim_lch, agg_
     arr = np.add(arr, arr.T)
     if ignore_unknown:
         arr[arr == 0] = np.nan
+    # TODO: fill diagonal with 1
+    #  but shouldn't make a difference to correlation since it adds a constant offset
     return np.nanmean(arr)
 
 
@@ -60,6 +62,7 @@ def main():
     topics['lch'] = sstopics.progress_apply(
         similarities, axis=1, sim_func=Synset.sim_lch, agg_func=max, topn=topn
     )
+    # TODO: should be the other way around !
     topics['lch_ignr_unkwn'] = sstopics.progress_apply(
         similarities, axis=1, sim_func=Synset.sim_lch, agg_func=max, topn=topn, ignore_unknown=False
     )

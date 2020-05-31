@@ -76,7 +76,7 @@ def eval_coherence(
             else:
                 metrics += ['c_w2v']
 
-    # add out of vocabulariy terms dictionary and documents
+    # add out of vocabulary terms dictionary and documents
     in_dict = topics.applymap(lambda x: x in dictionary.token2id)
     oov = topics[~in_dict]
     oov = oov.apply(set)

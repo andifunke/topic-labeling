@@ -183,3 +183,5 @@ pbs_*.sh
 *todo*
 *test*
 Trash*
+tmp
+tmp/

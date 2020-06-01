@@ -1,6 +1,7 @@
 # coding: utf-8
 import argparse
 import json
+import warnings
 from collections import defaultdict
 from os import makedirs
 from os.path import join, exists
@@ -11,10 +12,8 @@ import pandas as pd
 from gensim.models import CoherenceModel
 from pandas.core.common import SettingWithCopyWarning
 
-from constants import DATASETS, METRICS, PARAMS, NBTOPICS, LDA_PATH, PLACEHOLDER
-import warnings
-
-from utils import TopicsLoader, load, init_logging, log_args
+from topic_labeling.constants import DATASETS, METRICS, PARAMS, NB_TOPICS, LDA_PATH, PLACEHOLDER
+from topic_labeling.utils import TopicsLoader, load, init_logging, log_args
 
 warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -659,7 +658,7 @@ def parse_args():
     parser.add_argument("--params", nargs='*', type=str, required=False,
                         default=PARAMS)
     parser.add_argument("--nbtopics", nargs='*', type=int, required=False,
-                        default=NBTOPICS)
+                        default=NB_TOPICS)
 
     args = parser.parse_args()
     args.dataset = DATASETS.get(args.dataset, args.dataset)

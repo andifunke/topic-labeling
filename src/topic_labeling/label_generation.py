@@ -3,19 +3,20 @@
 import argparse
 import pickle
 import re
+import warnings
 from os.path import join, exists
 from time import time
 
 import pandas as pd
-from numpy import dot, float32 as REAL, sqrt, newaxis
 from gensim import matutils
 from gensim.models import Word2Vec, Doc2Vec
+from numpy import dot, float32 as REAL, sqrt, newaxis
 
-from topic_reranking import METRICS
-from utils import init_logging, log_args, load, tprint
-from constants import ETL_PATH, PARAMS, NBTOPICS, LDA_PATH, EMB_PATH, DSETS
+from topic_labeling.constants import (
+    ETL_PATH, PARAMS, NB_TOPICS, LDA_PATH, EMB_PATH, DATASETS_FULL, METRICS
+)
+from topic_labeling.utils import init_logging, log_args, load
 
-import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=UserWarning)
 
@@ -60,7 +61,8 @@ def get_labels(topic, nb_labels, d2v_docvecs, d2v_wv, w2v_wv, w2v_indexed, d_ind
         else:
             # Unit vector
             meanword2vec = matutils.unitvec(tempword2vec).astype(REAL)
-            # dot product of all possible labels in word2vec vocab with the unit vector of topic word
+            # dot product of all possible labels in word2vec vocab with the unit vector of topic
+            # word
             distsword2vec = dot(w2v_indexed, meanword2vec)
             """
             This next section of code checks if the topic word is also a potential label in trained 
@@ -116,7 +118,8 @@ def get_labels(topic, nb_labels, d2v_docvecs, d2v_wv, w2v_wv, w2v_indexed, d_ind
     newlist_doc2vec = sorted(set(newlist_doc2vec))
     newlist_word2vec = sorted(set(newlist_word2vec))
 
-    # Finally again get the labels from indices. We searched for the score from both d2v and w2v models
+    # Finally again get the labels from indices. We searched for the score from both d2v and w2v
+    # models
     resultlist_doc2vecnew = [
         (d2v_docvecs.index_to_doctag(d_indices[elem]), float(avgdoc2vec[elem]))
         for elem in newlist_doc2vec
@@ -126,7 +129,8 @@ def get_labels(topic, nb_labels, d2v_docvecs, d2v_wv, w2v_wv, w2v_indexed, d_ind
         for elem in newlist_word2vec
     ]
 
-    # Finally get the combined score with the label. The label used will be of doc2vec not of word2vec.
+    # Finally get the combined score with the label. The label used will be of doc2vec not of
+    # word2vec.
     new_score = []
     for item in resultlist_word2vecnew:
         k, v = item
@@ -268,9 +272,9 @@ def parse_args():
     if 'all' in args.params:
         args.params = PARAMS
     if -1 in args.nbtopics:
-        args.nbtopics = NBTOPICS
+        args.nbtopics = NB_TOPICS
 
-    args.dataset = DSETS.get(args.dataset, args.dataset)
+    args.dataset = DATASETS_FULL.get(args.dataset, args.dataset)
     corpus_type = 'tfidf' if args.tfidf else 'bow'
 
     if args.labels_file is None:
@@ -332,7 +336,9 @@ def main():
             topics = topics.query('metric in @metrics')
             print(topics)
         else:
-            topics = load('topics', dataset, version, corpus_type, *params, *nbtopics, logger=logger)
+            topics = load(
+                'topics', dataset, version, corpus_type, *params, *nbtopics, logger=logger
+            )
 
     d2v_docvecs, d2v_wv, w2v_wv = load_embeddings(
         d2v_path=d2v_path,

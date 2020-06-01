@@ -1,9 +1,9 @@
+import argparse
 import gc
+import json
 from itertools import chain
 from os import makedirs
 from os.path import join, exists
-import json
-import argparse
 
 import numpy as np
 import pandas as pd
@@ -11,8 +11,8 @@ from gensim.matutils import kullback_leibler, hellinger, jaccard_distance, jense
 from gensim.models import LdaModel, CoherenceModel
 from gensim.models.callbacks import Metric
 
-from constants import DATASETS, NBTOPICS, PARAMS, LDA_PATH
-from utils import init_logging, log_args, load
+from topic_labeling.constants import DATASETS, PARAMS, LDA_PATH, NB_TOPICS
+from topic_labeling.utils import init_logging, log_args, load
 
 np.set_printoptions(precision=3, threshold=11, formatter={'float': '{: 0.3f}'.format})
 LOGG = None
@@ -305,7 +305,7 @@ def parse_args():
     parser.add_argument("--version", type=str, required=False, default='noun')
     parser.add_argument("--logger", type=str, required=False, default='shell')
     parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
-    parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)
+    parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NB_TOPICS)
     parser.add_argument("--epochs", type=int, required=False, default=20)
     parser.add_argument("--cores", type=int, required=False, default=4)
 

@@ -1,18 +1,20 @@
 # coding: utf-8
 
-from os.path import join
-import re
-from time import time
-import pandas as pd
 import locale
+import re
 import xml.etree.ElementTree as et
-from html import unescape
 from datetime import datetime
-from constants import (
+from html import unescape
+from os.path import join
+from time import time
+
+import pandas as pd
+
+from topic_labeling.constants import (
     DATA_BASE, ETL_PATH, META, DATASET, SUBSET, ID, ID2, TITLE,
-    TAGS, TIME, DESCR, TEXT, LINKS, DATA, HASH
+    TAGS, TIME, DESCRIPTION, TEXT, LINKS, DATA, HASH
 )
-from utils import hms_string
+from topic_labeling.utils import hms_string
 
 locale.setlocale(locale.LC_ALL, '')
 
@@ -85,7 +87,7 @@ def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000)
             else:
                 # on event end collect data and meta data
                 if tag == 'title':
-                    row[TITLE], row[DESCR] = split_title(elem.text)
+                    row[TITLE], row[DESCRIPTION] = split_title(elem.text)
                 elif tag == 'ns':
                     # namespace 0 == article
                     if int(elem.text) == 0:
@@ -97,13 +99,15 @@ def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000)
                         row[ID] = int(elem.text)
                         row[ID2] = 0
                 elif tag == 'timestamp':
-                    row[TIME] = datetime.strptime(elem.text.replace('Z', 'UTC'), '%Y-%m-%dT%H:%M:%S%Z')
+                    row[TIME] = datetime.strptime(
+                        elem.text.replace('Z', 'UTC'), '%Y-%m-%dT%H:%M:%S%Z'
+                    )
                     # 2018-07-29T18:22:20Z
                 elif tag == 'redirect':
                     is_redirect = True
                     row[SUBSET] = "REDIRECT"
-                    row[LINKS], row[DESCR] = split_title(elem.get('title'))
-                    row[TAGS] = (row[LINKS], row[DESCR])
+                    row[LINKS], row[DESCRIPTION] = split_title(elem.get('title'))
+                    row[TAGS] = (row[LINKS], row[DESCRIPTION])
                 elif tag == 'text':
                     # accept only if namespace == 0
                     if is_article:
@@ -143,9 +147,10 @@ def parse_xml(infile, outfile, iterations, batch_size=100000, print_every=10000)
     batch_writer.write_rows(rows)
 
 
-### --- Regex patterns for the following Markdown parser ---
+# --- Regex patterns for the following Markdown parser ---
 
-# matches against: [[Kategorie:Soziologische Systemtheorie]], [[Kategorie:Fiktive Person|Smithee, Alan]]
+# matches against:
+# [[Kategorie:Soziologische Systemtheorie]], [[Kategorie:Fiktive Person|Smithee, Alan]]
 category = r"\[\[Kategorie:(?P<cat>[\w ]+)(?:\|.*)?\]\]"
 re_category = re.compile(category)
 
@@ -164,7 +169,9 @@ bullet = r"^[\*:] *"
 bullet2 = r"^\|.*"
 meta = r"\[\[\w+:.*?\]\]"
 footer = r"== (Bibliographie|Literatur|Weblinks|Einzelnachweise) ==(?s:.)*"
-re_meta = re.compile(r"(%s|%s|%s|%s|%s|%s)" % (chars, emph, bullet, bullet2, meta, footer), re.MULTILINE)
+re_meta = re.compile(
+    r"(%s|%s|%s|%s|%s|%s)" % (chars, emph, bullet, bullet2, meta, footer), re.MULTILINE
+)
 
 # => merge ^
 remove = r'(' + r'|'.join([refs, tags, table, chars, emph, bullet, bullet2, meta, footer]) + r')'
@@ -189,12 +196,12 @@ re_lf = re.compile(lf)
 
 def parse_markdown(text):
     """
-    This is actucally not a real parser since it keeps no internal states. Therefore nested structures
-    are a bit of a problem and a few artifacty may remain. Also the regexes are a bit nasty and need to
-    read the text multiple times. Maybe I'm doing a new version at some point, but for the time being
-    it's working sufficiently well.
+    This is actucally not a real parser since it keeps no internal states. Therefore nested
+    structures are a bit of a problem and a few artifacty may remain. Also the regexes are a bit
+    nasty and need to read the text multiple times. Maybe I'm doing a new version at some point,
+    but for the time being it's working sufficiently well.
     """
-    # replace html escapings
+    # replace html escaping
     text = unescape(text)
 
     # extract categories
@@ -233,7 +240,7 @@ def parse_markdown(text):
 
     text = re_link.sub(replace_links, text)
 
-    # repeat for nested structures, performancewise not perfect
+    # repeat for nested structures, performance-wise not perfect
     n = 1
     while n > 0:
         text, n = re_infobox.subn('', text)

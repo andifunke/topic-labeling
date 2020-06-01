@@ -12,16 +12,16 @@ You will need binary svm_learn from SVM rank. URL probvided in readme. Update th
 January 2019, Andreas Funke)
 """
 
+import os
 import re
 from collections import defaultdict, Counter, OrderedDict
 from os.path import join
 
-import pandas as pd
 import numpy as np
-import os
+import pandas as pd
 from scipy.spatial.distance import cosine
 
-from constants import DATA_BASE, DSETS
+from topic_labeling.constants import DATA_BASE, DATASETS_FULL
 
 pd.options.display.max_columns = 80
 pd.options.display.max_rows = 100
@@ -39,7 +39,7 @@ topics_path = join(svm_path, 'topics.csv')  # topic dataset with topic terms
 svm_hyperparameter = 0.1  # The SVM hyperparameter.
 omit_underscores = False  # alternative way to create trigrams (treating phrases as multiple tokens)
 dsets = ['O', 'P', 'N', 'dewac']
-datasets = [DSETS.get(d, d) for d in dsets]
+datasets = [DATASETS_FULL.get(d, d) for d in dsets]
 dstr = ('_'+'-'.join(dsets)) if dsets else ''
 output_svm_model = join(svm_path, f'svm_model_{ratings_version}{dstr}')  # path for trained SVM model
 tmp_file_path = join(svm_path, f"train_temp_{ratings_version}{dstr}.dat")

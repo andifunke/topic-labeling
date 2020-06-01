@@ -4,8 +4,8 @@ from os.path import join
 
 import pandas as pd
 
-from constants import ETL_PATH, DSETS, POS_N
-from utils import multiload
+from topic_labeling.constants import ETL_PATH, DATASETS_FULL, POS_N
+from topic_labeling.utils import multiload
 
 
 def get_best_text(grp):
@@ -34,14 +34,15 @@ def get_best_text(grp):
 def generate_and_save_map(df, dataset):
     df = df.to_frame().rename(columns={'text': 'counts'}).reset_index()
     df = df.groupby('token').apply(get_best_text)
-    file = f'{DSETS.get(dataset, dataset)}_lemmatization_map.pickle'
+    file = f'{DATASETS_FULL.get(dataset, dataset)}_lemmatization_map.pickle'
     print(f'Writing {file}')
     df.to_pickle(join(ETL_PATH, file))
     gc.collect()
 
 
 def main():
-    # the following regex are mainly there in order to reduce the vocabulary-size of the dewac corpus
+    # the following regex are mainly there in order to reduce the vocabulary-size of the dewac
+    # corpus
     digits = r'[0-9.,/=:;&#\!\?\*"\'\-\(\)\[\]]+'
     web = r'.*?(http:|www\.|\.html|\.htm|\.php|\.de|\.net|\.com|\.at|\.org|\.info).*'
     start = r'[/&\-ï",\'\$\(\)\*\.]+.*'

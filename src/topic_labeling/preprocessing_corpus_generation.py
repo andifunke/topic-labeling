@@ -1,20 +1,20 @@
+import argparse
+import gc
+import json
 import re
 from os import listdir, makedirs
 from os.path import join, isfile, exists
 from random import shuffle
-import json
-import argparse
-import gc
 
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import TfidfModel
 
-from utils import init_logging, log_args
-from constants import (
-    SMPL_PATH, POS, NOUN, PROPN, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS,
-    GOOD_IDS, NER, NPHRASE, VERB, ADJ, ADV, LDA_PATH,
-    NOUN_PATTERN, POS_N, POS_NV, POS_NVA)
+from topic_labeling.constants import (
+    SIMPLE_PATH, POS, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS, GOOD_IDS, LDA_PATH, NOUN_PATTERN,
+    POS_N, POS_NV, POS_NVA
+)
+from topic_labeling.utils import init_logging, log_args
 
 
 def docs_to_lists(token_series):
@@ -47,7 +47,7 @@ def texts2corpus(
 
 def make_texts(dataset, nbfiles, pos_tags, logg=print):
     sub_dir = 'dewiki' if dataset.startswith('dewi') else 'wiki_phrases'
-    dir_path = join(SMPL_PATH, sub_dir)
+    dir_path = join(SIMPLE_PATH, sub_dir)
 
     if dataset in {'S', 'speeches'}:
         prefixes = r'^(E|P).*'

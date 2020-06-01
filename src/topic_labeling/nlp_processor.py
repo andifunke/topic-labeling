@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
 
+import gc
 from os import makedirs
 from os.path import exists, join
 from time import time
-import spacy
-import pandas as pd
-import gc
 
-from constants import (
-    VOC_PATH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX,
-    TOKEN, SENT_IDX, HASH, NOUN_PHRASE, NLP_PATH, PUNCT, SPACE, NUM, DET, TITLE, DESCR, ETL_PATH
+import pandas as pd
+import spacy
+
+from topic_labeling.constants import (
+    VOC_PATH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX, TOKEN,
+    SENT_IDX, HASH, NOUN_PHRASE, NLP_PATH, PUNCT, TITLE, ETL_PATH, DESCRIPTION
 )
-from nlp_lemmatizer_plus import LemmatizerPlus
-from utils import tprint
+from topic_labeling.nlp_lemmatizer_plus import LemmatizerPlus
+from topic_labeling.utils import tprint
 
 FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
 
@@ -130,7 +131,7 @@ class NLPProcessor(object):
 
     def read(self, f, start=0, stop=None):
         """ reads a dataframe from pickle format """
-        df = pd.read_pickle(f)[[TITLE, DESCR, TEXT]].iloc[start:stop]
+        df = pd.read_pickle(f)[[TITLE, DESCRIPTION, TEXT]].iloc[start:stop]
         # lazy hack for dewiki_new
         if 'dewiki' in f:
             goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))

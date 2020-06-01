@@ -2,5 +2,8 @@ numpy==1.15.*
 tqdm==4.29.*
 pandas==0.23.*
 gensim==3.5.*
+psutil
+pygermanet
 spacy==2.0.*
+spacy-iwnlp
 scrapy==1.5.*

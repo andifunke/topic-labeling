@@ -1,10 +1,10 @@
 # coding: utf-8
+import argparse
 import multiprocessing as mp
 from os import makedirs
 from os.path import join, exists
 
 from gensim.models.callbacks import CallbackAny2Vec
-import argparse
 
 
 class EpochLogger(CallbackAny2Vec):

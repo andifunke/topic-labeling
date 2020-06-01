@@ -3,26 +3,28 @@ Author:         Shraey Bhatia
 Date:           October 2016
 File: 		supervised_labels.py
 
-This python code gives the top supervised labels for that topic. The paramters needed are passed
-through get_labels.py. It generates letter_trigram,pagerank, Topic overlap and num of words in
-features. Then puts it into SVM classify format and finally uses the already trained supervised model
-to make ranking predictions and get the best label. You will need SVM classify binary from SVM rank.
-The URL is provided in readme.
+This python code gives the top supervised labels for that topic. The parameters needed are passed
+through get_labels.py. It generates letter_trigram, pagerank, Topic overlap and num of words in
+features. Then puts it into SVM classify format and finally uses the already trained supervised
+model to make ranking predictions and get the best label. You will need SVM classify binary from
+SVM rank. The URL is provided in readme.
 
 (adapted and refactored to Python 3 and our current data scheme.
 January 2019, Andreas Funke)
 """
+import argparse
+import os
+import re
 from os.path import join
 
 import numpy as np
-import re
-import os
-import argparse
 import pandas as pd
 
-from constants import DATA_BASE, DSETS
-from rank_labels_train_svm import load_topics, load_labels, load_pageranks, generate_lt_feature, \
-    change_format, prepare_features, convert_dataset
+from topic_labeling.constants import DATA_BASE, DATASETS_FULL
+from topic_labeling.rank_labels_train_svm import (
+    load_topics, load_labels, load_pageranks, generate_lt_feature, change_format, prepare_features,
+    convert_dataset
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_top_labels")  # number of top labels
@@ -40,7 +42,7 @@ output_path = join(svm_path, f"supervised_labels_{ratings_version}")
 svm_classify_path = join(svm_path, 'svm_rank_classify')
 pagerank_path = join(svm_path, 'pagerank-titles-sorted_de_categories_removed.txt')
 tesets = ['dewac']
-datasets = [DSETS.get(d, d) for d in tesets]
+datasets = [DATASETS_FULL.get(d, d) for d in tesets]
 testsets = ('_' + '-'.join(tesets)) if tesets else ''
 
 trsets = ['N']

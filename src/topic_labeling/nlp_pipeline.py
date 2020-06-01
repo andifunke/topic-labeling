@@ -5,14 +5,13 @@ from os import listdir
 from os.path import isfile, join
 from time import time
 
-import options
-from utils import init_logging
+from topic_labeling.utils import init_logging
 
+from topic_labeling import options
 options.update_from_args()
-from options import CORPUS_PREFIXES, DE, STORE, START, BATCH_SIZE, BATCHES
-
-from constants import FULL_PATH
-from nlp_processor import NLPProcessor
+from topic_labeling.constants import FULL_PATH
+from topic_labeling.nlp_processor import NLPProcessor
+from topic_labeling.options import CORPUS_PREFIXES, DE, STORE, START, BATCH_SIZE, BATCHES
 
 
 if __name__ == "__main__":

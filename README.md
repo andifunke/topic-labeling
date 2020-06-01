@@ -15,7 +15,7 @@ coherent with these topic terms and represent the common theme that these terms 
 This project proposes a framework to apply topic models on a text-corpus and eventually topic labels
 on the generated topics. The framework and its NLP-pipeline is focused on corpora from the German
 language, but can be adjusted to any language of your choice. The Labeling methodology is based on an
-approach by [Bhatia et.al.](http://www.aclweb.org/anthology/C16-1091) using neural embedded
+approach by [Bhatia et al.](http://www.aclweb.org/anthology/C16-1091) using neural embedded
 Wikipedia-titles as label candidates and ranking the most similar candidates with a SVR-ranker model.
 We have transferred this approach to the Python 3 world and gently adapted the code to out framework.
 
@@ -98,7 +98,7 @@ import_datasets.py.
 
 ***! The following instructions are currently subject to revision ...***
 
-1) **Preprocessing:**
+1) **Pre-processing:**
     - ETL-pipeline &rarr; NLP-pipeline &rarr; Phrase-extraction (aka 'simple') pipeline &rarr; MM-corpus
 
 2) **Training:**

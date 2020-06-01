@@ -5,9 +5,9 @@ import numpy as np
 from pygermanet import load_germanet, Synset
 from tqdm import tqdm
 
-from constants import LDA_PATH
-from evaluate_topics import parse_args
-from utils import load, init_logging, log_args
+from topic_labeling.constants import LDA_PATH
+from topic_labeling.evaluate_topics import parse_args
+from topic_labeling.utils import load, init_logging, log_args
 
 np.set_printoptions(precision=3)
 gn = load_germanet()
@@ -44,7 +44,9 @@ def main():
         use_coherence, use_w2v, rerank, lsi, args
     ) = parse_args()
 
-    logger = init_logging(name=f'Eval_topics_on_germanet_{dataset}', basic=False, to_stdout=True, to_file=True)
+    logger = init_logging(
+        name=f'Eval_topics_on_germanet_{dataset}', basic=False, to_stdout=True, to_file=True
+    )
     log_args(logger, args)
     logg = logger.info
 
@@ -64,25 +66,29 @@ def main():
     )
     # TODO: should be the other way around !
     topics['lch_ignr_unkwn'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.sim_lch, agg_func=max, topn=topn, ignore_unknown=False
+        similarities, axis=1, sim_func=Synset.sim_lch, agg_func=max, topn=topn,
+        ignore_unknown=False
     )
     topics['res'] = sstopics.progress_apply(
         similarities, axis=1, sim_func=Synset.sim_res, agg_func=max, topn=topn
     )
     topics['res_ignr_unkwn'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.sim_res, agg_func=max, topn=topn, ignore_unknown=False
+        similarities, axis=1, sim_func=Synset.sim_res, agg_func=max, topn=topn,
+        ignore_unknown=False
     )
     topics['jcn'] = sstopics.progress_apply(
         similarities, axis=1, sim_func=Synset.dist_jcn, agg_func=min, topn=topn
     )
     topics['jcn_ignr_unkwn'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.dist_jcn, agg_func=min, topn=topn, ignore_unknown=False
+        similarities, axis=1, sim_func=Synset.dist_jcn, agg_func=min, topn=topn,
+        ignore_unknown=False
     )
     topics['lin'] = sstopics.progress_apply(
         similarities, axis=1, sim_func=Synset.sim_lin, agg_func=max, topn=topn
     )
     topics['lin_ignr_unkwn'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.sim_lin, agg_func=max, topn=topn, ignore_unknown=False
+        similarities, axis=1, sim_func=Synset.sim_lin, agg_func=max, topn=topn,
+        ignore_unknown=False
     )
 
     topics = topics.iloc[:, topn:]

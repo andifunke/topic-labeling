@@ -2,12 +2,12 @@ import json
 import logging
 import re
 import sys
+import warnings
 from genericpath import exists
 from itertools import chain
 from os import makedirs, listdir
 from os.path import join
 from pprint import pformat
-import warnings
 
 import gensim
 import pandas as pd
@@ -15,10 +15,10 @@ from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import Doc2Vec, Word2Vec, FastText, LdaModel, LsiModel
 from pandas.errors import DtypeWarning
 
-from constants import (
-    ETL_PATH, NLP_PATH, SMPL_PATH, LDA_PATH, DSETS, PARAMS, NBTOPICS, METRICS, VERSIONS,
-    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH,
-    TPX_PATH)
+from topic_labeling.constants import (
+    ETL_PATH, NLP_PATH, SIMPLE_PATH, LDA_PATH, DATASETS_FULL, PARAMS, NB_TOPICS, METRICS, VERSIONS,
+    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH, TPX_PATH
+)
 
 try:
     from tabulate import tabulate
@@ -135,11 +135,11 @@ def multiload(dataset, purpose='etl', deprecated=False):
 
     if purpose is not None and purpose.lower() in ['simple', 'smpl', 'phrase']:
         if dewac:
-            dpath = join(SMPL_PATH, 'wiki_phrases')
+            dpath = join(SIMPLE_PATH, 'wiki_phrases')
             pattern = re.compile(r'^dewac_[0-9]{2}_simple_wiki_phrases\.pickle')
             files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
         else:
-            dpath = join(SMPL_PATH, 'dewiki')
+            dpath = join(SIMPLE_PATH, 'dewiki')
             pattern = re.compile(r'^dewiki_[0-9]+_[0-9]+__[0-9]+_simple\.pickle')
             files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
     elif purpose is not None and purpose.lower() == 'nlp':
@@ -295,8 +295,8 @@ def load(*args, logger=None, logg=print):
     metrics = []
     deprecated = False
     dsets = (
-            list(DSETS.keys())
-            + list(DSETS.values())
+            list(DATASETS_FULL.keys())
+            + list(DATASETS_FULL.values())
             + ['gurevych', 'gur', 'simlex', 'ws', 'rel', 'similarity', 'survey']
     )
 
@@ -316,7 +316,7 @@ def load(*args, logger=None, logg=print):
                 dataset = arg
                 break
         elif not dataset and arg in dsets:
-            dataset = DSETS.get(arg, arg)
+            dataset = DATASETS_FULL.get(arg, arg)
         elif not purpose and arg in purposes:
             purpose = arg
         elif not purpose and any([s in arg for s in ['d2v', 'w2v', 'ftx'] if isinstance(arg, str)]):
@@ -324,7 +324,7 @@ def load(*args, logger=None, logg=print):
             dataset = arg
         elif arg in PARAMS:
             params.append(arg)
-        elif arg in NBTOPICS:
+        elif arg in NB_TOPICS:
             nbtopics.append(arg)
         elif arg in METRICS:
             metrics.append(arg)
@@ -573,23 +573,23 @@ def load(*args, logger=None, logg=print):
             directory = NLP_PATH
             suffix = '_nlp'
         elif purpose in {'simple', 'smpl'}:
-            directory = SMPL_PATH
+            directory = SIMPLE_PATH
             suffix = '_simple'
         elif purpose in {'wiki', 'wiki_phrases', 'phrases'}:
-            directory = join(SMPL_PATH, 'wiki_phrases')
+            directory = join(SIMPLE_PATH, 'wiki_phrases')
             suffix = '_simple_wiki_phrases'
         else:
             logg('oops')
             return
         if dataset == 'speeches':
             file = [
-                join(directory, f'{DSETS["E"]}{suffix}.pickle'),
-                join(directory, f'{DSETS["P"]}{suffix}.pickle')
+                join(directory, f'{DATASETS_FULL["E"]}{suffix}.pickle'),
+                join(directory, f'{DATASETS_FULL["P"]}{suffix}.pickle')
             ]
         elif dataset == 'news':
             file = [
-                join(directory, f'{DSETS["FA"]}{suffix}.pickle'),
-                join(directory, f'{DSETS["FO"]}{suffix}.pickle')
+                join(directory, f'{DATASETS_FULL["FA"]}{suffix}.pickle'),
+                join(directory, f'{DATASETS_FULL["FO"]}{suffix}.pickle')
             ]
         elif dataset == 'dewac1':
             file = join(directory, f'{dataset.replace("dewac1", "dewac_01")}{suffix}.pickle')
@@ -693,7 +693,7 @@ class TopicsLoader(object):
             include_corpus=False, include_texts=False,
             logger=None, logg=print
     ):
-        self.dataset = DSETS.get(dataset, dataset)
+        self.dataset = DATASETS_FULL.get(dataset, dataset)
         self.version = version
         self.param_ids = [param_ids] if isinstance(param_ids, str) else param_ids
         self.nb_topics_list = [nbs_topics] if isinstance(nbs_topics, int) else nbs_topics

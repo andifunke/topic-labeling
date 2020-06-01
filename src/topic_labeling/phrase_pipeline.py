@@ -10,15 +10,15 @@ from os.path import join, isfile
 from time import time
 import psutil
 
-from utils import init_logging
+from topic_labeling.utils import init_logging
 
 process = psutil.Process(getpid())
 import numpy as np
 import pandas as pd
 import re
-from constants import (
+from topic_labeling.constants import (
     NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, TEXT, TOKEN, TOK_IDX, POS, ENT_IOB,
-    ETL_PATH, SPACE, SMPL_PATH, BAD_FIRST_PHRASE_TOKEN, PUNCT
+    ETL_PATH, SPACE, SIMPLE_PATH, BAD_FIRST_PHRASE_TOKEN, PUNCT
 )
 from tqdm import tqdm
 tqdm.pandas()
@@ -324,7 +324,7 @@ def main(corpus, batch_size=None):
         if (batch_size is not None and (i % batch_size == 0)) or (i == length):
             logg('process {:d}:{:d}'.format(last_cnt, i))
             df_glued = process_subset(pd.concat(groups_tmp))
-            write_path = join(SMPL_PATH, corpus + '__{:d}_simple.pickle'.format(i))
+            write_path = join(SIMPLE_PATH, corpus + '__{:d}_simple.pickle'.format(i))
             logg(memstr())
             logg('collect: %d' % gc.collect())
             logg(memstr())
@@ -344,9 +344,9 @@ def main(corpus, batch_size=None):
 
 
 if __name__ == "__main__":
-    from options import update_from_args
+    from topic_labeling.options import update_from_args
     update_from_args()
-    from options import CORPUS_PREFIXES
+    from topic_labeling.options import CORPUS_PREFIXES
     logger = init_logging('Phrase_extraction')
     LOG_FUNC = logger.info
 

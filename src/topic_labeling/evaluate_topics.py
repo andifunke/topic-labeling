@@ -1,5 +1,6 @@
 import argparse
 import gc
+import warnings
 from os.path import join, exists
 from time import time
 
@@ -7,9 +8,9 @@ import numpy as np
 import pandas as pd
 from gensim.models import CoherenceModel
 
-from constants import PARAMS, NBTOPICS, DATASETS, LDA_PATH, DSETS
-from utils import init_logging, load, log_args
-import warnings
+from topic_labeling.constants import PARAMS, LDA_PATH, DATASETS_FULL, NB_TOPICS
+from topic_labeling.utils import init_logging, load, log_args
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
@@ -56,8 +57,8 @@ def mean_similarity(topic, kvs):
 
 
 def eval_coherence(
-        topics, dictionary, corpus=None, texts=None, keyed_vectors=None, metrics=None, window_size=None,
-        suffix='', cores=1, logg=print, topn=10
+        topics, dictionary, corpus=None, texts=None, keyed_vectors=None, metrics=None,
+        window_size=None, suffix='', cores=1, logg=print, topn=10
 ):
     if not (corpus or texts or keyed_vectors):
         logg('provide corpus, texts and/or keyed_vectors')
@@ -134,7 +135,7 @@ def parse_args():
     parser.add_argument('--no-lsi', dest='lsi', action='store_false', required=False)
     parser.set_defaults(lsi=False)
     parser.add_argument("--params", nargs='*', type=str, required=False, default=PARAMS)
-    parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NBTOPICS)
+    parser.add_argument("--nbtopics", nargs='*', type=int, required=False, default=NB_TOPICS)
     parser.add_argument("--topn", type=int, required=False, default=-1)
     parser.add_argument("--cores", type=int, required=False, default=4)
     parser.add_argument("--method", type=str, required=False, default='both',
@@ -142,7 +143,7 @@ def parse_args():
 
     args = parser.parse_args()
 
-    args.dataset = DSETS.get(args.dataset, args.dataset)
+    args.dataset = DATASETS_FULL.get(args.dataset, args.dataset)
     corpus_type = "tfidf" if args.tfidf else "bow"
     lsi = "lsi" if args.lsi else ""
     use_coherence = (args.method in ['coherence', 'both'])
@@ -243,25 +244,35 @@ def main():
         ps = unique_topics.apply(lambda x: pairwise_similarity(x, kvs, ignore_oov=True), axis=1)
         ps2 = unique_topics.apply(lambda x: pairwise_similarity(x, kvs, ignore_oov=False), axis=1)
         df_sims = pd.concat(
-            {'mean_similarity': ms, 'pairwise_similarity_ignore_oov': ps, 'pairwise_similarity': ps2},
+            {
+                'mean_similarity': ms,
+                'pairwise_similarity_ignore_oov': ps,
+                'pairwise_similarity': ps2
+            },
             axis=1
         )
         del d2v, w2v, ftx
         gc.collect()
 
     dfs = pd.concat(dfs, axis=1)
-    dfs = dfs.stack().apply(pd.Series).rename(columns={0: 'score', 1: 'stdev', 2: 'support'}).unstack()
+    dfs = (
+        dfs
+        .stack()
+        .apply(pd.Series)
+        .rename(columns={0: 'score', 1: 'stdev', 2: 'support'})
+        .unstack()
+    )
     if df_sims is not None:
         dfs = pd.concat([dfs, df_sims], axis=1)
 
     # restore scores for all topics from results of unique topics
     topics.columns = pd.MultiIndex.from_tuples([('terms', t) for t in list(topics.columns)])
     topic_columns = list(topics.columns)
-    fillna = lambda grp: grp.fillna(method='ffill') if len(grp) > 1 else grp
     dfs = (
         topics
         .join(dfs)
-        .groupby(topic_columns).apply(fillna)
+        .groupby(topic_columns)
+        .apply(lambda grp: grp.fillna(method='ffill') if len(grp) > 1 else grp)
         .drop(topic_columns, axis=1)
     )
 

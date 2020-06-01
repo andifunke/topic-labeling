@@ -1,15 +1,16 @@
 # coding: utf-8
+import gc
 from os import listdir, makedirs
 from os.path import isfile, join, exists
-import gc
 from time import time
 
 import numpy
 import pandas as pd
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
-from constants import ETL_PATH, SMPL_PATH, TOKEN, HASH, TEXT, EMB_PATH
-from train_utils import parse_args, EpochSaver, EpochLogger
-from utils import init_logging, log_args
+
+from topic_labeling.constants import ETL_PATH, SIMPLE_PATH, TOKEN, HASH, TEXT, EMB_PATH
+from topic_labeling.train_utils import parse_args, EpochSaver, EpochLogger
+from topic_labeling.utils import init_logging, log_args
 
 
 class Documents(object):
@@ -75,7 +76,7 @@ def main():
     logger = init_logging(name=model_name, basic=True, to_file=True, to_stdout=False)
     log_args(logger, args)
 
-    input_dir = join(SMPL_PATH, 'dewiki')
+    input_dir = join(SIMPLE_PATH, 'dewiki')
     model_dir = join(EMB_PATH, model_name)
     if not exists(model_dir):
         makedirs(model_dir)

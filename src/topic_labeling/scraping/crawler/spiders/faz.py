@@ -4,7 +4,7 @@ import datetime
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 
-from crawler.items import CrawlerItem
+from topic_labeling.scraping.crawler.items import CrawlerItem
 
 
 class FazSpider(CrawlSpider):

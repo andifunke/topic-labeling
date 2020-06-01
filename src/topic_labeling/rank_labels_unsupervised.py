@@ -3,20 +3,21 @@ Author:         Shraey Bhatia
 Date:           October 2016
 File:           unsupervised_labels.py
 
-This file will take candidate labels and give the best labels from them using unsupervised way which is
-just going to be based on letter trigram ranking.
+This file will take candidate labels and give the best labels from them using unsupervised way
+which is just going to be based on letter trigram ranking.
 
 (gently adapted to Python 3 and our current data scheme. We use one csv-file for topics and labels.
 January 2019, Andreas Funke)
 """
 
-import pandas as pd
-import numpy as np
-from scipy.spatial.distance import cosine
-from collections import Counter
 import argparse
+from collections import Counter
 
-from utils import tprint
+import numpy as np
+import pandas as pd
+from scipy.spatial.distance import cosine
+
+from topic_labeling.utils import tprint
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_unsup_labels")  # The number of unsupervised labels.

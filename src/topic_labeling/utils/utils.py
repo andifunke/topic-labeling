@@ -15,8 +15,8 @@ from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import Doc2Vec, Word2Vec, FastText, LdaModel, LsiModel
 from pandas.errors import DtypeWarning
 
-from topic_labeling.constants import (
-    ETL_PATH, NLP_PATH, SIMPLE_PATH, LDA_PATH, DATASETS_FULL, PARAMS, NB_TOPICS, METRICS, VERSIONS,
+from topic_labeling.utils.constants import (
+    OUT_PATH, NLP_PATH, SIMPLE_PATH, LDA_PATH, DATASETS_FULL, PARAMS, NB_TOPICS, METRICS, VERSIONS,
     EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH, TPX_PATH
 )
 
@@ -151,7 +151,7 @@ def multiload(dataset, purpose='etl', deprecated=False):
             pattern = re.compile(r'^dewiki_[0-9]+_[0-9]+_nlp\.pickle')
             files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
     else:
-        dpath = ETL_PATH
+        dpath = OUT_PATH
         if dewac:
             pattern = re.compile(r'^dewac_[0-9]{2}\.pickle')
             files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
@@ -272,13 +272,13 @@ def load(*args, logger=None, logg=print):
         return
 
     single = {
-        'hashmap': join(ETL_PATH, 'dewiki_hashmap.pickle'),
-        'meta': join(ETL_PATH, 'dewiki_metadata.pickle'),
-        'phrases': join(ETL_PATH, 'dewiki_phrases_lemmatized.pickle'),
-        'links': join(ETL_PATH, 'dewiki_links.pickle'),
-        'categories': join(ETL_PATH, 'dewiki_categories.pickle'),
-        'disamb': join(ETL_PATH, 'dewiki_disambiguation.pickle'),
-        'wikt': join(ETL_PATH, 'wiktionary_lemmatization_map.pickle'),
+        'hashmap': join(OUT_PATH, 'dewiki_hashmap.pickle'),
+        'meta': join(OUT_PATH, 'dewiki_metadata.pickle'),
+        'phrases': join(OUT_PATH, 'dewiki_phrases_lemmatized.pickle'),
+        'links': join(OUT_PATH, 'dewiki_links.pickle'),
+        'categories': join(OUT_PATH, 'dewiki_categories.pickle'),
+        'disamb': join(OUT_PATH, 'dewiki_disambiguation.pickle'),
+        'wikt': join(OUT_PATH, 'wiktionary_lemmatization_map.pickle'),
     }
     dataset = None
     purposes = {
@@ -355,13 +355,13 @@ def load(*args, logger=None, logg=print):
 
     # --- good_ideas ---
     elif purpose == 'goodids' and dataset in ['dewac', 'dewiki']:
-        file = join(ETL_PATH, f'{dataset}_good_ids.pickle')
+        file = join(OUT_PATH, f'{dataset}_good_ids.pickle')
         logg(f'Loading {file}')
         return pd.read_pickle(file)
 
     # --- lemmap ---
     elif purpose == 'lemmap':
-        file = join(ETL_PATH, f'{dataset}_lemmatization_map.pickle')
+        file = join(OUT_PATH, f'{dataset}_lemmatization_map.pickle')
         logg(f'Loading {file}')
         return pd.read_pickle(file)
 
@@ -440,22 +440,22 @@ def load(*args, logger=None, logg=print):
     elif purpose in {'topic', 'topics'}:
         cols = ['Lemma1', 'Lemma2']
         if dataset in ['gur', 'gurevych']:
-            file = join(ETL_PATH, 'gurevych_datasets.csv')
+            file = join(OUT_PATH, 'gurevych_datasets.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df[cols]
         elif dataset in ['simlex']:
-            file = join(ETL_PATH, 'simlex999.csv')
+            file = join(OUT_PATH, 'simlex999.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df[cols]
         elif dataset in ['ws']:
-            file = join(ETL_PATH, 'ws353.csv')
+            file = join(OUT_PATH, 'ws353.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df[cols]
         elif dataset in ['rel', 'similarity']:
-            file = join(ETL_PATH, 'similarity_datasets.csv')
+            file = join(OUT_PATH, 'similarity_datasets.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df[cols]
@@ -541,22 +541,22 @@ def load(*args, logger=None, logg=print):
     # --- pipelines ---
     elif purpose in {'nlp', 'simple', 'smpl', 'wiki', 'wiki_phrases', 'phrases', 'etl', None}:
         if dataset in ['gur', 'gurevych']:
-            file = join(ETL_PATH, 'gurevych_datasets.csv')
+            file = join(OUT_PATH, 'gurevych_datasets.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df
         elif dataset in ['simlex']:
-            file = join(ETL_PATH, 'simlex999.csv')
+            file = join(OUT_PATH, 'simlex999.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df
         elif dataset in ['ws']:
-            file = join(ETL_PATH, 'ws353.csv')
+            file = join(OUT_PATH, 'ws353.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df
         elif dataset in ['rel', 'similarity']:
-            file = join(ETL_PATH, 'similarity_datasets.csv')
+            file = join(OUT_PATH, 'similarity_datasets.csv')
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df
@@ -567,7 +567,7 @@ def load(*args, logger=None, logg=print):
             return df
 
         if purpose in {'etl', None}:
-            directory = ETL_PATH
+            directory = OUT_PATH
             suffix = ''
         elif purpose == 'nlp':
             directory = NLP_PATH
@@ -598,7 +598,7 @@ def load(*args, logger=None, logg=print):
             return pd.concat(dfs)
         else:
             if purpose in {'etl', None} and deprecated and dataset in {'FAZ', 'FOCUS'}:
-                directory = join(ETL_PATH, 'deprecated')
+                directory = join(OUT_PATH, 'deprecated')
                 if dataset == 'FAZ':
                     file = [
                         join(directory, 'FAZ.pickle.gz'),

@@ -185,3 +185,5 @@ pbs_*.sh
 Trash*
 tmp
 tmp/
+data
+data/

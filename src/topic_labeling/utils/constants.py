@@ -1,29 +1,31 @@
 # -*- coding: utf-8 -*-
 import re
 from itertools import chain
-from os.path import join
+from pathlib import Path
 
 
 # --- default constants definitions ---
 
 # - default paths -
-DATA_BASE = "../data"
-etl_base = "preprocessed"
-ETL_PATH = join(DATA_BASE, etl_base)
-LOCAL_PATH = etl_base
-FULL_PATH = join(DATA_BASE, LOCAL_PATH)
-nlp_base = "preprocessed/nlp"
-NLP_PATH = join(DATA_BASE, nlp_base)
-simple_base = "preprocessed/simple"
-SIMPLE_PATH = join(DATA_BASE, simple_base)
-tmp_base = "preprocessed/tmp"
-TMP_PATH = join(DATA_BASE, tmp_base)
-SPACY_PATH = join(NLP_PATH, 'spacy_model')
-VOC_PATH = join(SPACY_PATH, 'vocab')
-LDA_PATH = join(ETL_PATH, 'LDA_model')
-LSI_PATH = join(ETL_PATH, 'LSI_model')
-EMB_PATH = join(ETL_PATH, 'embeddings')
-TPX_PATH = join(LDA_PATH, 'noun', 'bow', 'topics')
+UTILS_DIR = Path(__file__).resolve().parent
+PACKAGE_DIR = UTILS_DIR.parent
+SRC_DIR = PACKAGE_DIR.parent
+PROJECT_DIR = SRC_DIR.parent
+
+DATA_BASE = PROJECT_DIR / 'data'
+OUT_PATH = DATA_BASE / 'out'
+# FULL_PATH = DATA_BASE, LOCAL_PATH
+NLP_PATH = OUT_PATH / 'nlp'
+SIMPLE_PATH = OUT_PATH / 'simple'
+TMP_PATH = DATA_BASE / 'tmp'
+SPACY_PATH = NLP_PATH / 'spacy_model'
+VOC_PATH = SPACY_PATH / 'vocab'
+LDA_PATH = OUT_PATH / 'LDA_model'
+LSI_PATH = OUT_PATH / 'LSI_model'
+EMB_PATH = OUT_PATH / 'embeddings'
+TPX_PATH = LDA_PATH / 'noun' / 'bow' / 'topics'
+MODELS_PATH = OUT_PATH / 'models'
+MM_PATH = OUT_PATH / 'mm_corpora'
 
 # - data scheme -
 DATASET = 'dataset'
@@ -192,6 +194,6 @@ BAD_FIRST_PHRASE_TOKEN = {
 }
 
 GOOD_IDS = {
-    'dewac': join(ETL_PATH, 'dewac_good_ids.pickle'),
-    'dewiki': join(ETL_PATH, 'dewiki_good_ids.pickle'),
+    'dewac': OUT_PATH / 'dewac_good_ids.pickle',
+    'dewiki': OUT_PATH / 'dewiki_good_ids.pickle',
 }

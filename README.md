@@ -83,7 +83,7 @@ for academia.
 
 #### 1.2 Crawling datasets from the web
 
-  - [faz/focus](src/scrapy/readme.txt): use the provided [scrapy](https://scrapy.org/) -spiders to fetch
+  - [faz/focus](src/topic_labeling/scraping/readme.txt): use the provided [scrapy](https://scrapy.org/) -spiders to fetch
     news-articles from the web.
   - [OnlineParticipation](https://github.com/Liebeck/OnlineParticipationDatasets): Follow the
     instructions in the linked repository to download this collection.
@@ -120,32 +120,32 @@ import_datasets.py.
 
 ###### Information
 
-- [overview_project.ipynb](overview_project.ipynb):<br>
+- [overview_project.ipynb](notebooks/overview_project.ipynb):<br>
 an early overview of the project. This notebook is fairly outdated, though.
 
-- [overview_stats.ipynb](overview_stats.ipynb):<br>
+- [overview_stats.ipynb](notebooks/overview_stats.ipynb):<br>
 statistics about the datasets. Somewhat outdated.
 
-- [overview_dewiki.ipynb](overview_dewiki.ipynb):<br>
+- [overview_dewiki.ipynb](notebooks/overview_dewiki.ipynb):<br>
 an overview over the different corpus-files and stages of processing for the **dewiki** dataset.
 Is also informative for other datasets. The **dewiki** dataset is however usually more complex than
 other datasets.
 
-- [overview_netl.ipynb](overview_netl.ipynb):<br>
+- [overview_netl.ipynb](notebooks/overview_netl.ipynb):<br>
 provides an overview over the labeling methods and gold standard datasets from Lau et.al. (2011) and
 Bhatia et.al (2016). This serves just a reference.
 
 ###### Helper utilities
 
-- [constants.py](constants.py):<br>
+- [constants.py](src/topic_labeling/constants.py):<br>
 defines constants for the project used in most of the scripts and notebooks.
 
-- [utils.py](utils.py):<br>
+- [utils.py](src/topic_labeling/utils.py):<br>
 provides some helper functions for printing/logging and loading of data which are used universally.
 Earlier scripts may not make full usage of the functions provided here.
 
-- [options.py](options.py):<br>
-provides argument parsing in the preprocessing pipelines. Has been replaced lately by more convenient
+- [options.py](src/topic_labeling/options.py):<br>
+provides argument parsing in the pre-processing pipelines. Has been replaced lately by more convenient
 methods in the **utils** module.
 
 - [scrapy](scrapy):<br>
@@ -153,19 +153,19 @@ the crawler includes two working spiders for faz.net and focus.de. The choice fo
 merely due to alphabetical reasons.
 
 
-#### Preprocessing:
+#### Pre-processing:
 
 ###### ETL-pipeline
 
-- [etl_pipeline.ipynb](etl_pipeline.ipynb):<br>
+- [etl_pipeline.ipynb](notebooks/etl_pipeline.ipynb):<br>
 converts the raw datasets (e.g. crawled feeds) to the common data scheme. Adds unique document ids.
 Does not contain extraction methods for Wikipedia \[&rarr; refer to etl_wikipedia.py\]. It is desirable
 to replace this notebook with a standard python script.
 
-- [etl_wikipedia_addon.ipynb](etl_wikipedia_addon.ipynb):<br>
+- [etl_wikipedia_addon.ipynb](notebooks/etl_wikipedia_addon.ipynb):<br>
 converts results from wiki-extractor to the common data scheme.
 
-- [etl_wikipedia.py](etl_wikipedia.py):<br>
+- [etl_wikipedia.py](notebooks/etl_wikipedia.py):<br>
 first extraction of wikipedia. Has later been replaced with wiki extractor but still provides useful
 extraction of links and categories in Wikipedia articles.
 
@@ -175,7 +175,7 @@ extraction of links and categories in Wikipedia articles.
 full nlp-pipeline based on the spacy framework and the German language models. Includes tokenization,
 sentence splitting, POS-tagging, lemmatization (based on an extension of the IWNLP lemmatizer), named
 entity recognition and dependency parser (for noun-chunk tagging). Already fixes some common
-misclassification issues, but in general the accuracy of the spacy nlp-pipeline could be further
+mis-classification issues, but in general the accuracy of the spacy nlp-pipeline could be further
 improved.
 
 - [nlp_processor.py](nlp_processor.py):<br>

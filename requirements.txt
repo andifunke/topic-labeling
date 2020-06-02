@@ -7,3 +7,4 @@ pygermanet
 spacy==2.0.*
 spacy-iwnlp
 scrapy==1.5.*
+tabulate

@@ -26,6 +26,7 @@ EMB_PATH = OUT_PATH / 'embeddings'
 TPX_PATH = LDA_PATH / 'noun' / 'bow' / 'topics'
 MODELS_PATH = OUT_PATH / 'models'
 MM_PATH = OUT_PATH / 'mm_corpora'
+SEMD_PATH = OUT_PATH / 'SemD'
 
 # - data scheme -
 DATASET = 'dataset'
@@ -178,7 +179,7 @@ BAD_TOKENS_DICT = {
 BAD_TOKENS = set(chain(*BAD_TOKENS_DICT.values()))
 PLACEHOLDER = '[[PLACEHOLDER]]'
 MINIMAL_PATTERN = re.compile(r'.\.')
-NOUN_PATTERN = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöüß].*')
+WORD_PATTERN = re.compile(r'^([0-9]+.*?)*?[A-Za-zÄÖÜäöüß].*')
 POS_N = [NOUN, PROPN, NER, NPHRASE]
 POS_NV = [NOUN, PROPN, NER, NPHRASE, VERB]
 POS_NVA = [NOUN, PROPN, NER, NPHRASE, VERB, ADJ, ADV]

@@ -2,38 +2,77 @@ import argparse
 import gc
 import json
 import re
+from collections import Counter
 from random import shuffle
+from typing import Iterable, List
 
+import numpy as np
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
+from gensim.matutils import corpus2csc
 from gensim.models import TfidfModel
 
 from topic_labeling.utils.constants import (
     SIMPLE_PATH, POS, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS, GOOD_IDS, LDA_PATH, WORD_PATTERN,
-    POS_N, POS_NV, POS_NVA, MM_PATH
+    POS_N, POS_NV, POS_NVA, MM_PATH, SEMD_PATH
 )
 from topic_labeling.utils.utils import init_logging, log_args
 
 
 def docs_to_lists(token_series):
-    return tuple(token_series.tolist())
+    return token_series.tolist()
+
+
+def log_transform(corpus, dictionary):
+    # take the log
+    # sparse_matrix = corpus2csc(corpus)
+    # print(sparse_matrix)
+    # sparse_matrix.data = np.log(sparse_matrix.data)
+    # print(sparse_matrix)
+
+    # calculate entropy
+    entropy = Counter()
+    for context in corpus:
+        for index, value in context:
+            corpus_freq = dictionary.dfs[index]
+            p_c = value / corpus_freq
+            ic = p_c * np.log(p_c)
+            # print(index, value, corpus_freq, p_c, ic)
+            entropy[index] -= ic
+
+    # calculate transformed value
+    log_corpus = [[(i, np.log(v) / entropy[i]) for i, v in context] for context in corpus]
+
+    return log_corpus
+
+
+def remove_infrequent_words(contexts, min_freq):
+    print(f'Filtering word with total frequency < {min_freq}')
+    counter = Counter(token for context in contexts for token in context)
+    filtered = [
+        list(filter(lambda x: counter[x] > min_freq, (token for token in context)))
+        for context in contexts
+    ]
+    print(contexts[0])
+    print(filtered[0])
+    return filtered
 
 
 def texts2corpus(
-        documents, tfidf=False, stopwords=None, filter_below=5, filter_above=0.5, keep_n=100000,
+        contexts, tfidf=False, stopwords=None, min_contexts=40, filter_above=1, keep_n=200_000,
         logg=print
 ):
     logg(f'generating {"tfidf" if tfidf else "bow"} corpus and dictionary')
 
-    dictionary = Dictionary(documents, prune_at=None)
-    dictionary.filter_extremes(no_below=filter_below, no_above=filter_above, keep_n=keep_n)
+    dictionary = Dictionary(contexts, prune_at=None)
+    dictionary.filter_extremes(no_below=min_contexts, no_above=filter_above, keep_n=keep_n)
 
     # filter some noise (e.g. special characters)
     if stopwords:
         stopword_ids = [dictionary.token2id[token] for token in stopwords]
         dictionary.filter_tokens(bad_ids=stopword_ids, good_ids=None)
 
-    bow_corpus = [dictionary.doc2bow(text) for text in documents]
+    bow_corpus = [dictionary.doc2bow(text) for text in contexts]
     if tfidf:
         tfidf_model = TfidfModel(bow_corpus)
         corpus = tfidf_model[bow_corpus]
@@ -43,7 +82,19 @@ def texts2corpus(
     return corpus, dictionary
 
 
-def make_texts(dataset, nb_files, pos_tags, logg=print):
+def chunks_from_documents(documents: Iterable, window_size: int) -> List:
+    contexts = []
+    for document in documents:
+        if len(document) > window_size:
+            chunks = [document[x:x+window_size] for x in range(0, len(document), window_size)]
+            contexts += chunks
+        else:
+            contexts.append(document)
+
+    return contexts
+
+
+def make_contexts(dataset, nb_files, pos_tags, window_size=1000, logg=print):
     sub_dir = 'dewiki' if dataset.startswith('dewi') else 'wiki_phrases'
     dir_path = SIMPLE_PATH / sub_dir
 
@@ -93,21 +144,30 @@ def make_texts(dataset, nb_files, pos_tags, logg=print):
         # using only certain POS tags
         if pos_tags:
             df = df[df.POS.isin(pos_tags)]
+
         df[TOKEN] = df[TOKEN].map(lambda x: x.strip('-/'))
         # TODO: next line probably redundant
-        df = df[df.token.str.len() > 1]
-        df = df[~df.token.isin(BAD_TOKENS)]
-        print(len(df))
+
+        # df = df[df.token.str.len() > 1]
+        # df = df[~df.token.isin(BAD_TOKENS)]
+
+        # TODO: do we want to remove non-work tokens?
         df = df[df.token.str.match(WORD_PATTERN)]
-        print(len(df))
         nb_words += len(df)
         logg(f'    remaining number of words: {len(df)}')
 
         # groupby sorts the documents by hash-id
         # which is equal to shuffling the dataset before building the model
-        df = df.groupby([HASH])[TOKEN].agg(docs_to_lists)
-        logg(f'    number of documents: {len(df)}')
-        texts += df.values.tolist()
+        df = df.groupby([HASH], sort=True)[TOKEN].agg(docs_to_lists)
+        documents = df.values.tolist()
+        logg(f'    number of documents: {len(documents)}')
+        if window_size > 0:
+            contexts = chunks_from_documents(documents, window_size)
+        else:
+            contexts = documents
+
+        logg(f'    number of contexts: {len(contexts)}')
+        texts += contexts
 
     # re-shuffle documents
     if len(files) > 1:
@@ -128,6 +188,9 @@ def parse_args():
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--version", type=str, required=False, default='default')
     parser.add_argument("--nb-files", type=int, required=False, default=None)
+    parser.add_argument("--window", type=int, required=False, default=1000)
+    parser.add_argument("--min_word_freq", type=int, required=False, default=50)
+    parser.add_argument("--min_contexts", type=int, required=False, default=40)
     parser.add_argument("--pos_tags", nargs='*', type=str, required=False)
 
     parser.add_argument('--tfidf', dest='tfidf', action='store_true', required=False)
@@ -151,33 +214,38 @@ def parse_args():
             args.pos_tags = POS_N
     args.pos_tags = set(args.pos_tags)
 
-    return args.dataset, args.version, args.nb_files, args.pos_tags, args.tfidf, args
+    return args
 
 
 def main():
-    dataset, version, nb_files, pos_tags, tfidf, args = parse_args()
+    args = parse_args()
 
-    corpus_type = "tfidf" if tfidf else "bow"
+    corpus_type = "tfidf" if args.tfidf else "bow"
 
     logger = init_logging(
-        name=f'MM_{dataset}_{corpus_type}', basic=False, to_stdout=True, to_file=True
+        name=f'MM_{args.dataset}_{corpus_type}', basic=False, to_stdout=True, to_file=True
     )
     logg = logger.info if logger else print
     log_args(logger, args)
 
-    texts, stats, nb_files = make_texts(dataset, nb_files, pos_tags, logg=logg)
+    contexts, stats, nb_files = make_contexts(
+        args.dataset, args.nb_files, args.pos_tags, window_size=args.window, logg=logg
+    )
+
+    if args.min_word_freq > 0:
+        contexts = remove_infrequent_words(contexts, args.min_word_freq)
 
     gc.collect()
 
-    file_name = f'{dataset}{nb_files if nb_files else ""}_{version}'
-    directory = MM_PATH / version
+    file_name = f'{args.dataset}{nb_files if nb_files else ""}_{args.version}'
+    directory = SEMD_PATH / args.version
     directory.mkdir(exist_ok=True, parents=True)
 
     # --- saving texts ---
     file_path = directory / f'{file_name}_texts.json'
     logg(f'Saving {file_path}')
     with open(file_path, 'w') as fp:
-        json.dump(texts, fp, ensure_ascii=False)
+        json.dump(contexts, fp, ensure_ascii=False)
 
     # --- saving stats ---
     file_path = directory / f'{file_name}_stats.json'
@@ -188,8 +256,10 @@ def main():
     # generate and save the dataset as bow or tfidf corpus in Matrix Market format,
     # including dictionary, texts (json) and some stats about corpus size (json)
     corpus, dictionary = texts2corpus(
-        texts, tfidf=tfidf, filter_below=5, filter_above=0.5, logg=logg
+        contexts, tfidf=args.tfidf, stopwords=None, min_contexts=args.min_contexts,
+        filter_above=1, logg=logg
     )
+    log_corpus = log_transform(corpus, dictionary)
 
     file_name += f'_{corpus_type}'
     directory = directory / corpus_type
@@ -199,6 +269,11 @@ def main():
     file_path = directory / f'{file_name}.mm'
     logg(f'Saving {file_path}')
     MmCorpus.serialize(str(file_path), corpus)
+
+    # --- saving log-corpus ---
+    file_path = directory / f'{file_name}_logs.mm'
+    logg(f'Saving {file_path}')
+    MmCorpus.serialize(str(file_path), log_corpus)
 
     # --- saving dictionary ---
     file_path = directory / f'{file_name}.dict'

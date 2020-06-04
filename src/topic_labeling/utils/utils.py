@@ -17,7 +17,7 @@ from pandas.errors import DtypeWarning
 
 from topic_labeling.utils.constants import (
     OUT_PATH, NLP_PATH, SIMPLE_PATH, LDA_PATH, DATASETS_FULL, PARAMS, NB_TOPICS, METRICS, VERSIONS,
-    EMB_PATH, CORPUS_TYPE, NOUN_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH, TPX_PATH
+    EMB_PATH, CORPUS_TYPE, WORD_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_PATH, TPX_PATH
 )
 
 try:
@@ -350,7 +350,7 @@ def load(*args, logger=None, logg=print):
         df = pd.read_pickle(single[dataset])
         if 'phrases' in args and 'minimal' in args:
             df = df.set_index('token').text
-            df = df[df.str.match(NOUN_PATTERN)]
+            df = df[df.str.match(WORD_PATTERN)]
         return df
 
     # --- good_ideas ---
@@ -750,7 +750,7 @@ class TopicsLoader(object):
                     for term in model.get_topic_terms(i, topn=self.topn*2):
                         token = model.id2word[term[0]]
                         weight = term[1]
-                        if self.filter_terms and (token in BAD_TOKENS or NOUN_PATTERN.match(token)):
+                        if self.filter_terms and (token in BAD_TOKENS or WORD_PATTERN.match(token)):
                             continue
                         else:
                             tokens.append(token)

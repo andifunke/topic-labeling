@@ -11,8 +11,8 @@ from gensim.matutils import kullback_leibler, hellinger, jaccard_distance, jense
 from gensim.models import LdaModel, CoherenceModel
 from gensim.models.callbacks import Metric
 
-from topic_labeling.constants import DATASETS, PARAMS, LDA_PATH, NB_TOPICS
-from topic_labeling.utils import init_logging, log_args, load
+from topic_labeling.utils.constants import DATASETS, PARAMS, LDA_PATH, NB_TOPICS
+from topic_labeling.utils.utils import init_logging, log_args, load
 
 np.set_printoptions(precision=3, threshold=11, formatter={'float': '{: 0.3f}'.format})
 LOGG = None

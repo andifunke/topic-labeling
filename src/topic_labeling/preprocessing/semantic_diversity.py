@@ -3,20 +3,67 @@ import gc
 import json
 import re
 from collections import Counter
+from itertools import chain
 from random import shuffle
 from typing import Iterable, List
 
 import numpy as np
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
-from gensim.matutils import corpus2csc
-from gensim.models import TfidfModel
+from gensim.models import TfidfModel, LsiModel
 
+from topic_labeling.topic_modeling.lda import split_corpus
 from topic_labeling.utils.constants import (
-    SIMPLE_PATH, POS, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS, GOOD_IDS, LDA_PATH, WORD_PATTERN,
-    POS_N, POS_NV, POS_NVA, MM_PATH, SEMD_PATH
+    SIMPLE_PATH, POS, TOKEN, HASH, PUNCT, DATASETS, GOOD_IDS, WORD_PATTERN,
+    POS_N, POS_NV, POS_NVA, SEMD_PATH
 )
 from topic_labeling.utils.utils import init_logging, log_args
+
+
+def lsi(
+        corpus, dictionary, model_path, nbs_topics=(300,), use_callbacks=False,
+        cache_in_memory=False
+):
+
+    model_class = 'LSI_model'
+    _split_ = '_split' if use_callbacks else ''
+
+    # # --- logging ---
+    logger = init_logging(name=model_class, basic=False, to_stdout=True, to_file=True)
+    logg = logger.info
+
+    # corpus = MmCorpus(data_file)
+    if cache_in_memory:
+        logg("Loading corpus into memory")
+        corpus = list(corpus)
+    if use_callbacks:
+        train, test = split_corpus(corpus)
+    else:
+        train, test = corpus, []
+    logg(f"Size of... train_set={len(train)}, test_set={len(test)}")
+
+    # --- train ---
+    top_n = 20
+    columns = [f'term{x}' for x in range(top_n)] + [f'weight{x}' for x in range(top_n)]
+    for nb_topics in nbs_topics:
+        gc.collect()
+
+        logg(f"Running {model_class} with {nb_topics} topics")
+        model = LsiModel(corpus=train, num_topics=nb_topics, id2word=dictionary)
+
+        model_dir = model_path.parent
+        model_dir.mkdir(exist_ok=True, parents=True)
+
+        # --- save topics ---
+        topics = model.show_topics(num_words=top_n, formatted=False)
+        topics = [list(chain(*zip(*topic[1]))) for topic in topics]
+        topics = pd.DataFrame(topics, columns=columns)
+        logg(f"Saving topics to {model_path}.csv")
+        topics.to_csv(f'{model_path}.csv')
+
+        # --- save model ---
+        logg(f'Saving model to {model_path}')
+        model.save(str(model_path))
 
 
 def docs_to_lists(token_series):
@@ -47,7 +94,7 @@ def log_transform(corpus, dictionary):
 
 
 def remove_infrequent_words(contexts, min_freq):
-    print(f'Filtering word with total frequency < {min_freq}')
+    print(f"Filtering words with total frequency < {min_freq}")
     counter = Counter(token for context in contexts for token in context)
     filtered = [
         list(filter(lambda x: counter[x] > min_freq, (token for token in context)))
@@ -62,7 +109,7 @@ def texts2corpus(
         contexts, tfidf=False, stopwords=None, min_contexts=40, filter_above=1, keep_n=200_000,
         logg=print
 ):
-    logg(f'generating {"tfidf" if tfidf else "bow"} corpus and dictionary')
+    logg(f"Generating {'tfidf' if tfidf else 'bow'} corpus and dictionary")
 
     dictionary = Dictionary(contexts, prune_at=None)
     dictionary.filter_extremes(no_below=min_contexts, no_above=filter_above, keep_n=keep_n)
@@ -108,7 +155,7 @@ def make_contexts(dataset, nb_files, pos_tags, window_size=1000, logg=print):
     files = sorted([f for f in dir_path.iterdir() if f.is_file() and pattern.match(f.name)])
 
     if not files:
-        logg(f'No files found for dataset "{dataset}"')
+        logg(f"No files found for dataset '{dataset}'")
         exit()
 
     files = files[:nb_files]
@@ -122,16 +169,16 @@ def make_contexts(dataset, nb_files, pos_tags, window_size=1000, logg=print):
         good_ids = pd.read_pickle(GOOD_IDS[dataset])
 
     if nb_files is not None:
-        logg(f'processing {nb_files} files')
+        logg(f"Processing {nb_files} files")
 
     nb_words = 0
     texts = []
     for filename in files:
         gc.collect()
 
-        logg(f'reading {filename}')
+        logg(f"Reading {filename}")
         df = pd.read_pickle(filename)
-        logg(f'    initial number of words: {len(df)}')
+        logg(f"    initial number of words: {len(df)}")
 
         # some datasets have already been filtered, so this may not affect the data
         if good_ids is not None:
@@ -154,19 +201,19 @@ def make_contexts(dataset, nb_files, pos_tags, window_size=1000, logg=print):
         # TODO: do we want to remove non-work tokens?
         df = df[df.token.str.match(WORD_PATTERN)]
         nb_words += len(df)
-        logg(f'    remaining number of words: {len(df)}')
+        logg(f"    remaining number of words: {len(df)}")
 
         # groupby sorts the documents by hash-id
         # which is equal to shuffling the dataset before building the model
         df = df.groupby([HASH], sort=True)[TOKEN].agg(docs_to_lists)
         documents = df.values.tolist()
-        logg(f'    number of documents: {len(documents)}')
+        logg(f"    number of documents: {len(documents)}")
         if window_size > 0:
             contexts = chunks_from_documents(documents, window_size)
         else:
             contexts = documents
 
-        logg(f'    number of contexts: {len(contexts)}')
+        logg(f"    number of contexts: {len(contexts)}")
         texts += contexts
 
     # re-shuffle documents
@@ -176,8 +223,8 @@ def make_contexts(dataset, nb_files, pos_tags, window_size=1000, logg=print):
         nb_files = min(nb_files, len(files))
 
     nb_docs = len(texts)
-    logg(f'total number of documents: {nb_docs}')
-    logg(f'total number of words: {nb_words}')
+    logg(f"Total number of documents: {nb_docs}")
+    logg(f"Total number of words: {nb_words}")
     stats = dict(dataset=dataset, pos_set=sorted(pos_tags), nb_docs=nb_docs, nb_words=nb_words)
     return texts, stats, nb_files
 
@@ -185,13 +232,13 @@ def make_contexts(dataset, nb_files, pos_tags, window_size=1000, logg=print):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--dataset", type=str, required=True)
-    parser.add_argument("--version", type=str, required=False, default='default')
-    parser.add_argument("--nb-files", type=int, required=False, default=None)
-    parser.add_argument("--window", type=int, required=False, default=1000)
-    parser.add_argument("--min_word_freq", type=int, required=False, default=50)
-    parser.add_argument("--min_contexts", type=int, required=False, default=40)
-    parser.add_argument("--pos_tags", nargs='*', type=str, required=False)
+    parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--version', type=str, required=False, default='default')
+    parser.add_argument('--nb-files', type=int, required=False, default=None)
+    parser.add_argument('--window', type=int, required=False, default=1000)
+    parser.add_argument('--min_word_freq', type=int, required=False, default=50)
+    parser.add_argument('--min_contexts', type=int, required=False, default=40)
+    parser.add_argument('--pos_tags', nargs='*', type=str, required=False)
 
     parser.add_argument('--tfidf', dest='tfidf', action='store_true', required=False)
     parser.add_argument('--no-tfidf', dest='tfidf', action='store_false', required=False)
@@ -220,10 +267,10 @@ def parse_args():
 def main():
     args = parse_args()
 
-    corpus_type = "tfidf" if args.tfidf else "bow"
+    corpus_type = 'tfidf' if args.tfidf else 'entropy'
 
     logger = init_logging(
-        name=f'MM_{args.dataset}_{corpus_type}', basic=False, to_stdout=True, to_file=True
+        name=f"MM_{args.dataset}_{corpus_type}", basic=False, to_stdout=True, to_file=True
     )
     logg = logger.info if logger else print
     log_args(logger, args)
@@ -243,13 +290,13 @@ def main():
 
     # --- saving texts ---
     file_path = directory / f'{file_name}_texts.json'
-    logg(f'Saving {file_path}')
+    logg(f"Saving {file_path}")
     with open(file_path, 'w') as fp:
         json.dump(contexts, fp, ensure_ascii=False)
 
     # --- saving stats ---
     file_path = directory / f'{file_name}_stats.json'
-    logg(f'Saving {file_path}')
+    logg(f"Saving {file_path}")
     with open(file_path, 'w') as fp:
         json.dump(stats, fp)
 
@@ -267,18 +314,23 @@ def main():
 
     # --- saving corpus ---
     file_path = directory / f'{file_name}.mm'
-    logg(f'Saving {file_path}')
+    logg(f"Saving {file_path}")
     MmCorpus.serialize(str(file_path), corpus)
 
     # --- saving log-corpus ---
     file_path = directory / f'{file_name}_logs.mm'
-    logg(f'Saving {file_path}')
+    logg(f"Saving {file_path}")
     MmCorpus.serialize(str(file_path), log_corpus)
 
     # --- saving dictionary ---
     file_path = directory / f'{file_name}.dict'
-    logg(f'Saving {file_path}')
+    logg(f"Saving {file_path}")
     dictionary.save(str(file_path))
+
+    lsi(
+        corpus=log_corpus, dictionary=dictionary, model_path=directory / 'LSI', nbs_topics=(300,),
+        use_callbacks=False, cache_in_memory=False
+    )
 
 
 if __name__ == '__main__':

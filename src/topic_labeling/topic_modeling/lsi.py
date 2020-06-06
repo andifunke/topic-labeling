@@ -7,9 +7,9 @@ import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import LsiModel
 
-from topic_labeling.constants import LDA_PATH, LSI_PATH
-from topic_labeling.train_lda import parse_args, split_corpus
-from topic_labeling.utils import init_logging, log_args
+from topic_labeling.utils.constants import LDA_PATH, LSI_PATH
+from topic_labeling.topic_modeling.lda import parse_args, split_corpus
+from topic_labeling.utils.utils import init_logging, log_args
 
 
 def main():

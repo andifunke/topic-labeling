@@ -3,13 +3,13 @@ import gc
 import json
 import re
 from collections import Counter
-from itertools import chain
 from random import shuffle
 from typing import Iterable, List
 
 import numpy as np
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
+from gensim.matutils import corpus2dense
 from gensim.models import TfidfModel, LsiModel
 
 from topic_labeling.topic_modeling.lda import split_corpus
@@ -20,10 +20,7 @@ from topic_labeling.utils.constants import (
 from topic_labeling.utils.utils import init_logging, log_args
 
 
-def lsi(
-        corpus, dictionary, model_path, nbs_topics=(300,), use_callbacks=False,
-        cache_in_memory=False
-):
+def lsi(corpus, dictionary, nb_topics=300, use_callbacks=False, cache_in_memory=False):
 
     model_class = 'LSI_model'
     _split_ = '_split' if use_callbacks else ''
@@ -43,27 +40,16 @@ def lsi(
     logg(f"Size of... train_set={len(train)}, test_set={len(test)}")
 
     # --- train ---
-    top_n = 20
-    columns = [f'term{x}' for x in range(top_n)] + [f'weight{x}' for x in range(top_n)]
-    for nb_topics in nbs_topics:
-        gc.collect()
+    logg(f"Running {model_class} with {nb_topics} topics")
+    model = LsiModel(corpus=train, num_topics=nb_topics, id2word=dictionary, dtype=np.float32)
 
-        logg(f"Running {model_class} with {nb_topics} topics")
-        model = LsiModel(corpus=train, num_topics=nb_topics, id2word=dictionary)
+    # --- get vectors ---
+    term_vectors = model.projection.u
 
-        model_dir = model_path.parent
-        model_dir.mkdir(exist_ok=True, parents=True)
+    lsi_corpus = model[corpus]
+    document_vectors = corpus2dense(lsi_corpus, 300, num_docs=len(corpus)).T
 
-        # --- save topics ---
-        topics = model.show_topics(num_words=top_n, formatted=False)
-        topics = [list(chain(*zip(*topic[1]))) for topic in topics]
-        topics = pd.DataFrame(topics, columns=columns)
-        logg(f"Saving topics to {model_path}.csv")
-        topics.to_csv(f'{model_path}.csv')
-
-        # --- save model ---
-        logg(f'Saving model to {model_path}')
-        model.save(str(model_path))
+    return model, document_vectors, term_vectors
 
 
 def docs_to_lists(token_series):
@@ -142,7 +128,7 @@ def chunks_from_documents(documents: Iterable, window_size: int) -> List:
 
 
 def make_contexts(dataset, nb_files, pos_tags, window_size=1000, logg=print):
-    sub_dir = 'dewiki' if dataset.startswith('dewi') else 'wiki_phrases'
+    sub_dir = 'dewiki' if dataset.startswith('dewiki') else 'wiki_phrases'
     dir_path = SIMPLE_PATH / sub_dir
 
     if dataset in {'S', 'speeches'}:
@@ -327,10 +313,26 @@ def main():
     logg(f"Saving {file_path}")
     dictionary.save(str(file_path))
 
-    lsi(
-        corpus=log_corpus, dictionary=dictionary, model_path=directory / 'LSI', nbs_topics=(300,),
-        use_callbacks=False, cache_in_memory=False
+    # --- apply LSI ---
+    model, document_vectors, term_vectors = lsi(
+        corpus=log_corpus, dictionary=dictionary, nb_topics=300,
+        use_callbacks=False, cache_in_memory=True
     )
+
+    # --- save model ---
+    file_path = directory / f'lsi.model'
+    logg(f"Saving model to {file_path}")
+    model.save(str(file_path))
+
+    # --- save document vectors ---
+    file_path = directory / f'lsi_document_vectors.csv'
+    logg(f"Saving document vectors to {file_path}")
+    np.savetxt(file_path, document_vectors, delimiter=",")
+
+    # --- save document vectors ---
+    file_path = directory / f'lsi_term_vectors.csv'
+    logg(f"Saving document vectors to {file_path}")
+    np.savetxt(file_path, term_vectors, delimiter=",")
 
 
 if __name__ == '__main__':

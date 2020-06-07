@@ -5,6 +5,7 @@ gensim==3.8.*
 psutil
 pygermanet
 spacy==2.0.*
-spacy-iwnlp
+scikit-learn==0.23.1
 scrapy==1.5.*
+spacy-iwnlp
 tabulate

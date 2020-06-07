@@ -12,6 +12,7 @@ import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.matutils import corpus2dense, corpus2csc
 from gensim.models import TfidfModel, LsiModel
+from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
 
 from topic_labeling.topic_modeling.lda import split_corpus
@@ -87,29 +88,22 @@ def parse_args():
     return args
 
 
-def calculate_semantic_diversity(dictionary, corpus, document_vectors, contexts):
-
-    def _per_word_calculation(word):
-        pass
+def calculate_semantic_diversity(terms, dictionary, corpus, document_vectors):
 
     csc_matrix = corpus2csc(corpus, dtype=np.float32)
-    csc_matrix_t = csc_matrix.transpose()
 
-    for i, term in enumerate(dictionary.token2id.keys()):
+    semd_values = {}
+    for term in tqdm(terms, total=len(terms)):
         term_id = dictionary.token2id[term]
-        assert i == term_id, f'{i}, {term}, {term_id}'
-        term_docs = csc_matrix_t.getrow(term_id)
-        term_docs2 = term_docs.nonzero()[1]
-        print(term_docs2)
-        term_docs3 = []
-        for j, context in enumerate(contexts):
-            if term in context:
-                print(j, context)
-                term_docs3.append(j)
-        print(term_docs3)
-        print()
-        # TODO: work in progress
+        term_docs_sparse = csc_matrix.getrow(term_id)
+        term_doc_ids = term_docs_sparse.nonzero()[1]
+        term_doc_vectors = document_vectors[term_doc_ids]
+        similarities = cosine_similarity(term_doc_vectors)
+        avg_similarity = np.mean(similarities)
+        semd = -np.log10(avg_similarity)
+        semd_values[term] = semd
 
+    return pd.Series(semd_values)
 
 
 def lsi_transform(corpus, dictionary, nb_topics=300, use_callbacks=False, cache_in_memory=False):
@@ -451,7 +445,7 @@ def get_document_vectors(corpus, dictionary, args, directory, file_name):
         # --- load document vectors ---
         file_path = directory / f'{file_name}_lsi_document_vectors.csv'
         print(f"Loading document vectors from {file_path}")
-        document_vectors = pd.read_csv(file_path)
+        document_vectors = pd.read_csv(file_path, index_col=0)
 
     return document_vectors
 
@@ -469,7 +463,12 @@ def main():
     document_vectors = get_document_vectors(corpus, dictionary, args, directory, file_name)
 
     # --- calculate semd for vocabulary ---
-    semd_values = calculate_semantic_diversity(dictionary, corpus, document_vectors, contexts)
+    if args.terms:
+        with open(args.terms) as fp:
+            terms = fp.readlines()
+    else:
+        terms = dictionary.token2id.keys()
+    semd_values = calculate_semantic_diversity(terms, dictionary, corpus, document_vectors.values)
 
     # - save SemD values for vocabulary -
     file_path = directory / f'{file_name}_semd_values.csv'

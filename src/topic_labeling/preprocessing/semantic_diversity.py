@@ -3,6 +3,7 @@ import gc
 import json
 import re
 from collections import Counter
+from pathlib import Path
 from random import shuffle
 from time import time
 from typing import Iterable, List
@@ -35,6 +36,7 @@ def parse_args():
     parser.add_argument('--min-contexts', type=int, required=False, default=40)
     parser.add_argument('--nb-topics', type=int, required=False, default=300)
     parser.add_argument('--pos-tags', nargs='*', type=str, required=False)
+    parser.add_argument('--terms', type=str, required=False, help="File path containing terms")
 
     parser.add_argument(
         '--tfidf', dest='tfidf', action='store_true', required=False
@@ -89,27 +91,26 @@ def parse_args():
 
 
 def calculate_semantic_diversity(terms, dictionary, corpus, document_vectors):
-
     csc_matrix = corpus2csc(corpus, dtype=np.float32)
 
     semd_values = {}
     for term in tqdm(terms, total=len(terms)):
-        term_id = dictionary.token2id[term]
-        term_docs_sparse = csc_matrix.getrow(term_id)
-        term_doc_ids = term_docs_sparse.nonzero()[1]
-        term_doc_vectors = document_vectors[term_doc_ids]
-        similarities = cosine_similarity(term_doc_vectors)
-        avg_similarity = np.mean(similarities)
-        semd = -np.log10(avg_similarity)
-        semd_values[term] = semd
+        try:
+            term_id = dictionary.token2id[term]
+            term_docs_sparse = csc_matrix.getrow(term_id)
+            term_doc_ids = term_docs_sparse.nonzero()[1]
+            term_doc_vectors = document_vectors[term_doc_ids]
+            similarities = cosine_similarity(term_doc_vectors)
+            avg_similarity = np.mean(similarities)
+            semd = -np.log10(avg_similarity)
+            semd_values[term] = semd
+        except KeyError:
+            semd_values[term] = np.nan
 
     return pd.Series(semd_values)
 
 
 def lsi_transform(corpus, dictionary, nb_topics=300, use_callbacks=False, cache_in_memory=False):
-    _split_ = '_split' if use_callbacks else ''
-
-    # corpus = MmCorpus(data_file)
     if cache_in_memory:
         print("Loading corpus into memory")
         corpus = list(corpus)
@@ -139,12 +140,6 @@ def docs_to_lists(token_series):
 
 
 def entropy_transform(corpus, dictionary, epsilon=.0001):
-    # take the log
-    # sparse_matrix = corpus2csc(corpus)
-    # print(sparse_matrix)
-    # sparse_matrix.data = np.log(sparse_matrix.data)
-    # print(sparse_matrix)
-
     # calculate "entropy" per token
     entropy = Counter()
     for context in corpus:
@@ -155,7 +150,6 @@ def entropy_transform(corpus, dictionary, epsilon=.0001):
             # print(index, value, corpus_freq, p_c, ic)
             entropy[index] += p_c * ic
             if entropy[index] == 0:
-                # TODO: this case should actually be avoided by the removal of infrequent words.
                 raise ValueError(
                     f"Entropy calculated as 0\n"
                     f"{index}, {value}, {dictionary.id2token[index]}"
@@ -178,7 +172,6 @@ def tfidf_transform(bow_corpus):
 
 def calculate_chunks(df, window):
     print(f"Calculating chunks")
-    # TODO: this shouldn't take so long
     t0 = time()
 
     def _chunk(group):
@@ -464,14 +457,17 @@ def main():
 
     # --- calculate semd for vocabulary ---
     if args.terms:
-        with open(args.terms) as fp:
-            terms = fp.readlines()
+        terms_path = Path(args.terms).resolve()
+        with open(terms_path) as fp:
+            terms = [line.strip() for line in fp.readlines()]
+            print(terms)
+        file_path = terms_path.with_suffix('.semd')
     else:
         terms = dictionary.token2id.keys()
+        file_path = directory / f'{file_name}.semd'
     semd_values = calculate_semantic_diversity(terms, dictionary, corpus, document_vectors.values)
 
     # - save SemD values for vocabulary -
-    file_path = directory / f'{file_name}_semd_values.csv'
     print(f"Saving SemD values to {file_path}")
     semd_values.to_csv(file_path)
 

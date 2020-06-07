@@ -16,10 +16,8 @@ from tqdm import tqdm
 
 from topic_labeling.topic_modeling.lda import split_corpus
 from topic_labeling.utils.constants import (
-    SIMPLE_PATH, POS, TOKEN, HASH, PUNCT, DATASETS, GOOD_IDS, WORD_PATTERN,
-    POS_N, POS_NV, POS_NVA, SEMD_PATH
+    SIMPLE_PATH, POS, TOKEN, HASH, PUNCT, DATASETS, POS_N, POS_NV, POS_NVA, SEMD_PATH
 )
-from topic_labeling.utils.utils import init_logging, log_args
 
 
 tqdm.pandas()
@@ -37,20 +35,36 @@ def parse_args():
     parser.add_argument('--nb-topics', type=int, required=False, default=300)
     parser.add_argument('--pos-tags', nargs='*', type=str, required=False)
 
-    parser.add_argument('--tfidf', dest='tfidf', action='store_true', required=False)
-    parser.add_argument('--no-tfidf', dest='tfidf', action='store_false', required=False)
+    parser.add_argument(
+        '--tfidf', dest='tfidf', action='store_true', required=False
+    )
+    parser.add_argument(
+        '--no-tfidf', dest='tfidf', action='store_false', required=False
+    )
     parser.set_defaults(tfidf=False)
 
-    parser.add_argument('--make-contexts', dest='make_contexts', action='store_true')
-    parser.add_argument('--load-contexts', dest='make_contexts', action='store_false')
+    parser.add_argument(
+        '--make-contexts', dest='make_contexts', action='store_true', required=False
+    )
+    parser.add_argument(
+        '--load-contexts', dest='make_contexts', action='store_false', required=False
+    )
     parser.set_defaults(make_contexts=True)
 
-    parser.add_argument('--make-corpus', dest='make_corpus', action='store_true')
-    parser.add_argument('--load-corpus', dest='make_corpus', action='store_false')
+    parser.add_argument(
+        '--make-corpus', dest='make_corpus', action='store_true', required=False
+    )
+    parser.add_argument(
+        '--load-corpus', dest='make_corpus', action='store_false', required=False
+    )
     parser.set_defaults(make_corpus=True)
 
-    parser.add_argument('--make-lsi', dest='make_lsi', action='store_true')
-    parser.add_argument('--load-lsi', dest='make_lsi', action='store_false')
+    parser.add_argument(
+        '--make-lsi', dest='make_lsi', action='store_true', required=False
+    )
+    parser.add_argument(
+        '--load-lsi', dest='make_lsi', action='store_false', required=False
+    )
     parser.set_defaults(make_lsi=True)
 
     args = parser.parse_args()
@@ -130,30 +144,34 @@ def docs_to_lists(token_series):
     return token_series.tolist()
 
 
-def entropy_transform(corpus, dictionary):
+def entropy_transform(corpus, dictionary, epsilon=.0001):
     # take the log
     # sparse_matrix = corpus2csc(corpus)
     # print(sparse_matrix)
     # sparse_matrix.data = np.log(sparse_matrix.data)
     # print(sparse_matrix)
 
-    # calculate "entropy"
-    # TODO: While this is exactly the algorithm described in the paper it is certainly not right.
+    # calculate "entropy" per token
     entropy = Counter()
     for context in corpus:
         for index, value in context:
             corpus_freq = dictionary.dfs[index]
             p_c = value / corpus_freq
-            ic = p_c * np.log(p_c)
+            ic = -np.log(p_c)
             # print(index, value, corpus_freq, p_c, ic)
-            entropy[index] -= ic
+            entropy[index] += p_c * ic
             if entropy[index] == 0:
                 # TODO: this case should actually be avoided by the removal of infrequent words.
-                print(index, value, dictionary.id2token[index])
-                print()
+                raise ValueError(
+                    f"Entropy calculated as 0\n"
+                    f"{index}, {value}, {dictionary.id2token[index]}"
+                )
 
     # calculate transformed value
-    entropy_corpus = [[(i, np.log(v) / entropy[i]) for i, v in context] for context in corpus]
+    entropy_corpus = [
+        [(i, (np.log(v) + epsilon) / entropy[i]) for i, v in context]
+        for context in corpus
+    ]
 
     return entropy_corpus
 
@@ -303,20 +321,7 @@ def make_contexts(
     return texts, stats, nb_files
 
 
-def main():
-    args = parse_args()
-
-    corpus_type = 'tfidf' if args.tfidf else 'entropy'
-    logger = init_logging(
-        name=f"MM_{args.dataset}_{corpus_type}", basic=False, to_stdout=True, to_file=True
-    )
-    log_args(logger, args)
-
-    file_name = f'{args.dataset}_{args.version}'
-    directory = SEMD_PATH / args.version
-    directory.mkdir(exist_ok=True, parents=True)
-
-    # --- Make of Load the contexts ---
+def get_contexts(args, directory, file_name):
     if args.make_contexts:
         # - make contexts -
         contexts, stats, nb_files = make_contexts(
@@ -349,24 +354,37 @@ def main():
         with open(file_path, 'r') as fp:
             contexts = [c.split() for c in fp.readlines()]
 
-    # --- Make or Load a Matrix Market corpus which will be either entropy-normalized
-    #     or tf-idf transformed ---
+    return contexts
+
+
+def get_corpus(contexts, args, directory, file_name):
     if args.make_corpus:
         # - make bow corpus -
-        corpus, dictionary = texts2corpus(contexts, stopwords=None)
+        bow_corpus, dictionary = texts2corpus(contexts, stopwords=None)
 
         # - save dictionary -
         file_path = directory / f'{file_name}.dict'
         print(f"Saving {file_path}")
         dictionary.save(str(file_path))
 
+        # - save dictionary frequencies as plain text -
+        dict_table = pd.Series(dictionary.token2id).to_frame(name='idx')
+        dict_table['freq'] = dict_table['idx'].map(dictionary.cfs.get)
+        dict_table = dict_table.reset_index()
+        dict_table = dict_table.set_index('idx', drop=True).rename({'index': 'token'}, axis=1)
+        dict_table = dict_table.sort_index()
+        file_path = directory / f'{file_name}_dict.csv'
+        print(f"Saving {file_path}")
+        # dictionary.save_as_text(file_path, sort_by_word=False)
+        dict_table.to_csv(file_path, sep='\t')
+
         # - save bow corpus -
         file_path = directory / f'{file_name}_bow.mm'
         print(f"Saving {file_path}")
-        MmCorpus.serialize(str(file_path), corpus)
+        MmCorpus.serialize(str(file_path), bow_corpus)
 
         # - log transform and entropy-normalize corpus -
-        entropy_corpus = entropy_transform(corpus, dictionary)
+        entropy_corpus = entropy_transform(bow_corpus, dictionary)
 
         # - save entropy-normalized corpus -
         file_path = directory / f'{file_name}_entropy.mm'
@@ -374,12 +392,12 @@ def main():
         MmCorpus.serialize(str(file_path), entropy_corpus)
 
         # - tfidf transform corpus -
-        tfidf_corpus = tfidf_transform(corpus)
+        tfidf_corpus = tfidf_transform(bow_corpus)
 
         # - save entropy-normalized corpus -
         file_path = directory / f'{file_name}_tfidf.mm'
         print(f"Saving {file_path}")
-        MmCorpus.serialize(str(file_path), entropy_corpus)
+        MmCorpus.serialize(str(file_path), tfidf_corpus)
 
         if args.tfidf:
             file_name += '_tfidf'
@@ -405,7 +423,10 @@ def main():
         print(f"Loading corpus from {file_path}")
         corpus = MmCorpus(str(file_path))
 
-    # --- apply LSI ---
+    return corpus, dictionary
+
+
+def get_document_vectors(corpus, dictionary, args, directory, file_name):
     if args.make_lsi:
         model, document_vectors, term_vectors = lsi_transform(
             corpus=corpus, dictionary=dictionary, nb_topics=args.nb_topics,
@@ -431,6 +452,21 @@ def main():
         file_path = directory / f'{file_name}_lsi_document_vectors.csv'
         print(f"Loading document vectors from {file_path}")
         document_vectors = pd.read_csv(file_path)
+
+    return document_vectors
+
+
+def main():
+    args = parse_args()
+    print(args)
+
+    file_name = f'{args.dataset}_{args.version}'
+    directory = SEMD_PATH / args.version
+    directory.mkdir(exist_ok=True, parents=True)
+
+    contexts = get_contexts(args, directory, file_name)
+    corpus, dictionary = get_corpus(contexts, args, directory, file_name)
+    document_vectors = get_document_vectors(corpus, dictionary, args, directory, file_name)
 
     # --- calculate semd for vocabulary ---
     semd_values = calculate_semantic_diversity(dictionary, corpus, document_vectors, contexts)

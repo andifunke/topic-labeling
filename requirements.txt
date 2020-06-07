@@ -1,6 +1,6 @@
 numpy==1.15.*
-tqdm==4.29.*
-pandas==0.23.*
+tqdm==4.44.*
+pandas==0.25.*
 gensim==3.8.*
 psutil
 pygermanet

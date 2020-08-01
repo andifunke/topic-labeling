@@ -30,6 +30,7 @@ MM_DIR = OUT_DIR / 'mm_corpora'
 SEMD_DIR = OUT_DIR / 'SemD'
 IWNLP_DIR = DATA_DIR / 'IWNLP'
 IWNLP_FILE = IWNLP_DIR / 'IWNLP.Lemmatizer_20181001.json'
+LEMM_DIR = OUT_DIR / 'lemmatization'
 
 # - data scheme -
 DATASET = 'dataset'

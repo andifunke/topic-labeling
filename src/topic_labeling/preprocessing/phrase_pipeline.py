@@ -10,15 +10,15 @@ from os.path import join, isfile
 from time import time
 import psutil
 
-from topic_labeling.utils import init_logging
+from topic_labeling.utils.utils import init_logging
 
 process = psutil.Process(getpid())
 import numpy as np
 import pandas as pd
 import re
-from topic_labeling.constants import (
-    NLP_PATH, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, TEXT, TOKEN, TOK_IDX, POS, ENT_IOB,
-    ETL_PATH, SPACE, SIMPLE_PATH, BAD_FIRST_PHRASE_TOKEN, PUNCT
+from topic_labeling.utils.constants import (
+    NLP_DIR, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, TEXT, TOKEN, TOK_IDX, POS, ENT_IOB,
+    ETL_DIR, SPACE, PHRASES_DIR, BAD_FIRST_PHRASE_TOKEN, PUNCT
 )
 from tqdm import tqdm
 tqdm.pandas()
@@ -114,14 +114,14 @@ def aggregate_streets(column):
 def remove_title(x):
     """ apply this function only on the dewac corpus.
      It removes the rows up to the first line feed (inclusive), i.e. the document title. """
-    ln_argmx = (x.text.values == '\n').argmax()
-    return x[ln_argmx+1:]
+    ln_argmax = (x.text.values == '\n').argmax()
+    return x[ln_argmax+1:]
 
 
 def preprocess_dewac(df):
     global GOOD_IDS_DEWAC
     if GOOD_IDS_DEWAC is None:
-        GOOD_IDS_DEWAC = pd.read_pickle(join(ETL_PATH, 'dewac_good_ids.pickle'))
+        GOOD_IDS_DEWAC = pd.read_pickle(join(ETL_DIR, 'dewac_good_ids.pickle'))
     df = df[df.hash.isin(GOOD_IDS_DEWAC.index)]
     df = (
         df
@@ -135,7 +135,7 @@ def preprocess_dewac(df):
 def preprocess_dewiki(df):
     global GOOD_IDS_DEWIKI
     if GOOD_IDS_DEWIKI is None:
-        GOOD_IDS_DEWIKI = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
+        GOOD_IDS_DEWIKI = pd.read_pickle(join(ETL_DIR, 'dewiki_good_ids.pickle'))
     df = df[df.hash.isin(GOOD_IDS_DEWIKI.index)]
     return df
 
@@ -157,7 +157,7 @@ def insert_wikipedia_phrases(df):
     # TODO: ignore n-grams beyond sentence segments
     global PS
     if PS is None:
-        p = pd.read_pickle(join(ETL_PATH, 'dewiki_phrases_lemmatized.pickle'))
+        p = pd.read_pickle(join(ETL_DIR, 'dewiki_phrases_lemmatized.pickle'))
         p = p[p.title_len > 1]
         PS = set(p.text.append(p.token))
 
@@ -198,7 +198,7 @@ def process_subset(df):
             POS='NER',  # annotations
             ent_iob='P',
         )
-        .astype({  # set annoation columns as categorical for memory savings
+        .astype({  # set annotation columns as categorical for memory savings
             POS: "category",
             ENT_IOB: "category",
             ENT_TYPE: "category"
@@ -296,19 +296,15 @@ def process_subset(df):
 def main(corpus, batch_size=None):
     t0 = time()
 
-    fpath = join(NLP_PATH, corpus + '_nlp.pickle')
-    logg("reading from " + fpath)
-    df_main = pd.read_pickle(fpath)
+    file_path = join(NLP_DIR, corpus + '_nlp.pickle')
+    logg("reading from " + file_path)
+    df_main = pd.read_pickle(file_path)
     logg(memstr())
 
     if corpus.startswith('dewac'):
         df_main = preprocess_dewac(df_main)
     elif corpus.startswith('dewiki'):
         df_main = preprocess_dewiki(df_main)
-
-    # fixes wrong POS tagging for punctuation
-    mask_punct = df_main[TOKEN].isin(list('[]<>/–%{}'))
-    df_main.loc[mask_punct, POS] = PUNCT
 
     df_main = df_main.groupby(HASH, sort=False)
     length = len(df_main)
@@ -324,7 +320,7 @@ def main(corpus, batch_size=None):
         if (batch_size is not None and (i % batch_size == 0)) or (i == length):
             logg('process {:d}:{:d}'.format(last_cnt, i))
             df_glued = process_subset(pd.concat(groups_tmp))
-            write_path = join(SIMPLE_PATH, corpus + '__{:d}_simple.pickle'.format(i))
+            write_path = join(PHRASES_DIR, corpus + '__{:d}_simple.pickle'.format(i))
             logg(memstr())
             logg('collect: %d' % gc.collect())
             logg(memstr())
@@ -344,9 +340,7 @@ def main(corpus, batch_size=None):
 
 
 if __name__ == "__main__":
-    from topic_labeling.options import update_from_args
-    update_from_args()
-    from topic_labeling.options import CORPUS_PREFIXES
+    from topic_labeling.utils.options import CORPUS_PREFIXES
     logger = init_logging('Phrase_extraction')
     LOG_FUNC = logger.info
 
@@ -356,8 +350,8 @@ if __name__ == "__main__":
     prefixes = r'^(' + '|'.join(CORPUS_PREFIXES) + r').'
     pattern = re.compile(prefixes)
     files = sorted([
-        f for f in listdir(NLP_PATH)
-        if (isfile(join(NLP_PATH, f)) and pattern.match(f))
+        f for f in listdir(NLP_DIR)
+        if (isfile(join(NLP_DIR, f)) and pattern.match(f))
     ])
 
     for name in files:

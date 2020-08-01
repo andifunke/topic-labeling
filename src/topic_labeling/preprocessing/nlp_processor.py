@@ -162,7 +162,7 @@ class NLProcessor(object):
         mask_iwnlp = ~df[IWNLP].isnull()
         df.loc[mask_iwnlp, TOKEN] = df.loc[mask_iwnlp, IWNLP]
         df.loc[~mask_iwnlp, TOKEN] = df.loc[~mask_iwnlp, LEMMA]
-        # fixes wrong POS tagging for punctuation (TODO: untested at this step)
+        # fixes wrong POS tagging for punctuation
         mask_punct = df[TOKEN].isin(list('[]<>/–%'))
         df.loc[mask_punct, POS] = PUNCT
         # set an index for each sentence

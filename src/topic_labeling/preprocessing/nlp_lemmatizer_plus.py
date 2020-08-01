@@ -41,11 +41,19 @@ class LemmatizerPlus(object):
         pos = token.pos_
 
         # nothing to lemmatize here
-        if pos in {PHRASE, NPHRASE, PUNCT, SPACE, SYM}:
+        if pos in {PHRASE, NPHRASE, PUNCT, SYM}:
             return text
         # lemmatizations are odd on DET and NUM, so better leave it alone
         if pos in {DET, NUM}:
             return None
+        # custom lemmata for whitespace
+        if pos == SPACE:
+            text = token.text.strip(' ')
+            if text == '\n':
+                return '<newline>'
+            if text == '\t':
+                return '<tab>'
+            return '<space>'
 
         # Wiktionary has no POS PROPN
         if pos == PROPN:

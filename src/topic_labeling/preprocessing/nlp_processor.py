@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import csv
 import gc
 from os import makedirs
 from os.path import exists, join
@@ -54,19 +54,31 @@ class NLProcessor(object):
         # start the nlp pipeline
         logg(corpus_name + ": start processing")
         # self.check_docs(df); return
-        df = self.process_docs(df)
-        logg('collect: %d' % gc.collect())
+        reader = self.process_docs(df)
 
-        if kwargs.get('print', False):
-            # print dataframe
-            tprint(df, kwargs.get('head', 10))
         if store:
-            # store dataframe, free memory first
             if start or stop:
                 suffix = '_{:d}_{:d}_nlp'.format(start, stop-1)
             else:
                 suffix = '_nlp'
-            self.store(corpus_name, df, suffix=suffix)
+
+            makedirs(NLP_DIR, exist_ok=True)
+            filename = NLP_DIR / f'{corpus_name}{suffix}.csv'
+            self.logg(f'{corpus_name}: saving to {filename}')
+
+            with open(filename, 'w') as fp:
+                header = True
+                for doc in reader:
+                    try:
+                        doc.to_csv(
+                            fp, mode='a',
+                            sep='\t', quoting=csv.QUOTE_NONE,
+                            index=None, header=header
+                        )
+                    except:
+                        print(doc)
+                    header = False
+
         if vocab_to_disk:
             # stored with each corpus, in case anythings goes wrong
             logg("writing spacy vocab to disk: " + VOC_DIR)
@@ -84,14 +96,13 @@ class NLProcessor(object):
             for token in doc:
                 print(token.i, token.is_sent_start, token.text)
 
-    def process_docs(self, text_df, steps=100):
+    def process_docs(self, text_df):
         """ main function for sending the dataframes from the ETL pipeline to the NLP pipeline """
         # steps = max(min(steps, len(text_df)), 1)
         # step_len = max(100//steps, 1)
         # percent = max(len(text_df) // steps, 1)
         # done = 0
         chunk_idx = 0
-        docs = []
 
         # process each doc in corpus
         for i, kv in tqdm(enumerate(text_df.itertuples()), total=len(text_df)):
@@ -113,24 +124,22 @@ class NLProcessor(object):
                     noun_phrases[token.i] = chunk_idx
 
             # extract relevant attributes
-            attr = [[key,
-                     str(token.text), str(token.lemma_), token._.iwnlp_lemmas, str(token.pos_),
-                     int(token.i), 1 if (token.is_sent_start or token.i == 0) else 0,
-                     token.ent_iob_, token.ent_type_,
-                     noun_phrases.get(token.i, 0)
-                     ] for token in doc]
-            # add list of token to all docs
-            docs += attr
+            attr = [
+                {
+                    HASH: key,
+                    TEXT: str(token.text),
+                    LEMMA: str(token.lemma_),
+                    IWNLP: token._.iwnlp_lemmas,
+                    POS: str(token.pos_),
+                    TOK_IDX: int(token.i),
+                    SENT_START: 1 if (token.is_sent_start or token.i == 0) else 0,
+                    ENT_IOB: token.ent_iob_,
+                    ENT_TYPE: token.ent_type_,
+                    NOUN_PHRASE: noun_phrases.get(token.i, 0),
+                } for token in doc
+            ]
 
-        return self.df_from_docs(docs)
-
-    def store(self, corpus, df, suffix=''):
-        """Returns the file path where the dataframe was stores."""
-
-        makedirs(NLP_DIR, exist_ok=True)
-        filename = join(NLP_DIR, corpus + suffix + '.pickle')
-        self.logg(corpus + ': saving to ' + filename)
-        df.to_pickle(filename)
+            yield self.df_from_doc(attr)
 
     def read(self, f, start=0, stop=None):
         """Reads a dataframe from pickle format."""
@@ -145,35 +154,39 @@ class NLProcessor(object):
         return df.copy()
 
     @staticmethod
-    def df_from_docs(docs):
+    def df_from_doc(doc):
         """
         Creates a DataFrame from a given spacy.doc that contains only nouns and noun phrases.
 
-        :param docs: list of tokens (tuples with attributes) from spacy.doc
+        :param doc: list of tokens (tuples with attributes) from spacy.doc
         :return:    pandas.DataFrame
         """
-        df = pd.DataFrame(
-            docs,
-            columns=[
-                HASH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, NOUN_PHRASE
-            ],
-        )
+        df = pd.DataFrame.from_records(doc)
+        df[ENT_IOB] = df[ENT_IOB].astype("category")
+        df[ENT_TYPE] = df[ENT_TYPE].astype("category")
+
         # create Tokens from IWNLP lemmatization, else from spacy lemmatization (or original text)
         mask_iwnlp = ~df[IWNLP].isnull()
         df.loc[mask_iwnlp, TOKEN] = df.loc[mask_iwnlp, IWNLP]
         df.loc[~mask_iwnlp, TOKEN] = df.loc[~mask_iwnlp, LEMMA]
+
         # fixes wrong POS tagging for punctuation
         mask_punct = df[TOKEN].isin(list('[]<>/–%'))
         df.loc[mask_punct, POS] = PUNCT
+        df[POS] = df[POS].astype("category")
+
         # set an index for each sentence
         df[SENT_IDX] = df[SENT_START].cumsum()
+
         # set an index for each entity
         df[ENT_IDX] = (df[ENT_IOB] == 'B')
         df[ENT_IDX] = df[ENT_IDX].cumsum()
         df.loc[df[ENT_IOB] == 'O', ENT_IDX] = 0
-        # convert for space efficiency
-        df[POS] = df[POS].astype("category")
-        df[ENT_IOB] = df[ENT_IOB].astype("category")
-        df[ENT_TYPE] = df[ENT_TYPE].astype("category")
 
-        return df[FIELDS]
+        # fix whitespace tokens
+        df[TEXT] = df[TEXT].str.replace('\n', '<newline>')
+        df[TEXT] = df[TEXT].str.replace('\t', '<tab>')
+
+        df = df[FIELDS]
+
+        return df

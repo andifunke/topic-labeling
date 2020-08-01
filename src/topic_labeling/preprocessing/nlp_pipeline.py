@@ -5,20 +5,16 @@ from os import listdir
 from os.path import isfile, join
 from time import time
 
-from topic_labeling.utils import init_logging
-
-from topic_labeling import options
-options.update_from_args()
-from topic_labeling.constants import FULL_PATH
-from topic_labeling.nlp_processor import NLPProcessor
-from topic_labeling.options import CORPUS_PREFIXES, DE, STORE, START, BATCH_SIZE, BATCHES
+from topic_labeling.utils.utils import init_logging
+from topic_labeling.utils.options import CORPUS_PREFIXES, DE, STORE, START, BATCH_SIZE, BATCHES
+from topic_labeling.utils.constants import ETL_DIR
+from topic_labeling.preprocessing.nlp_processor import NLProcessor
 
 
 if __name__ == "__main__":
     t0 = time()
 
-    ### --- run ---
-    logger = init_logging('NLP')
+    logger = init_logging('NLP', to_stdout=True, to_file=False)
 
     def logg(msg):
         logger.info(msg)
@@ -29,10 +25,10 @@ if __name__ == "__main__":
     prefixes = r'^(' + '|'.join(CORPUS_PREFIXES) + r').'
     pattern = re.compile(prefixes)
     files = sorted([
-        f for f in listdir(FULL_PATH)
-        if (isfile(join(FULL_PATH, f)) and pattern.match(f))
+        f for f in listdir(ETL_DIR)
+        if (isfile(join(ETL_DIR, f)) and pattern.match(f))
     ])
-    processor = NLPProcessor(spacy_path=DE, logg=logg)
+    processor = NLProcessor(spacy_path=DE, logg=logg)
 
     start = START  # 550_000
     batch_size = BATCH_SIZE  # 50_000
@@ -40,11 +36,11 @@ if __name__ == "__main__":
 
     for name in files:
         corpus = name.split('.')[0]
-        fname = join(FULL_PATH, name)
+        filename = join(ETL_DIR, name)
         for i in range(1, batches+1):
             logg('>>> batch: {:d} >>>'.format(i))
             processor.read_process_store(
-                fname, corpus,
+                filename, corpus,
                 start=start,
                 stop=(start+batch_size) if batch_size else None,
                 store=STORE,

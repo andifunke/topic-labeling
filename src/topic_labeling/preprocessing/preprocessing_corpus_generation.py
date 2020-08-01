@@ -9,8 +9,8 @@ from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import TfidfModel
 
 from topic_labeling.utils.constants import (
-    SIMPLE_PATH, POS, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS, GOOD_IDS, LDA_PATH, WORD_PATTERN,
-    POS_N, POS_NV, POS_NVA, MM_PATH
+    PHRASES_DIR, POS, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS, GOOD_IDS, LDA_DIR, WORD_PATTERN,
+    POS_N, POS_NV, POS_NVA, MM_DIR
 )
 from topic_labeling.utils.utils import init_logging, log_args
 
@@ -45,7 +45,7 @@ def texts2corpus(
 
 def make_texts(dataset, nb_files, pos_tags, logg=print):
     sub_dir = 'dewiki' if dataset.startswith('dewi') else 'wiki_phrases'
-    dir_path = SIMPLE_PATH / sub_dir
+    dir_path = PHRASES_DIR / sub_dir
 
     if dataset in {'S', 'speeches'}:
         prefixes = r'^(E|P).*'
@@ -170,7 +170,7 @@ def main():
     gc.collect()
 
     file_name = f'{dataset}{nb_files if nb_files else ""}_{version}'
-    directory = MM_PATH / version
+    directory = MM_DIR / version
     directory.mkdir(exist_ok=True, parents=True)
 
     # --- saving texts ---

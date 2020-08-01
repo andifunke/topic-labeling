@@ -12,21 +12,24 @@ PACKAGE_DIR = UTILS_DIR.parent
 SRC_DIR = PACKAGE_DIR.parent
 PROJECT_DIR = SRC_DIR.parent
 
-DATA_BASE = PROJECT_DIR / 'data'
-OUT_PATH = DATA_BASE / 'out'
+DATA_DIR = PROJECT_DIR / 'data'
+OUT_DIR = DATA_DIR / 'out'
 # FULL_PATH = DATA_BASE, LOCAL_PATH
-NLP_PATH = OUT_PATH / 'nlp'
-SIMPLE_PATH = OUT_PATH / 'simple'
-TMP_PATH = DATA_BASE / 'tmp'
-SPACY_PATH = NLP_PATH / 'spacy_model'
-VOC_PATH = SPACY_PATH / 'vocab'
-LDA_PATH = OUT_PATH / 'LDA_model'
-LSI_PATH = OUT_PATH / 'LSI_model'
-EMB_PATH = OUT_PATH / 'embeddings'
-TPX_PATH = LDA_PATH / 'noun' / 'bow' / 'topics'
-MODELS_PATH = OUT_PATH / 'models'
-MM_PATH = OUT_PATH / 'mm_corpora'
-SEMD_PATH = OUT_PATH / 'SemD'
+ETL_DIR = OUT_DIR / 'etl'
+NLP_DIR = OUT_DIR / 'nlp'
+PHRASES_DIR = OUT_DIR / 'simple'
+TMP_DIR = DATA_DIR / 'tmp'
+SPACY_DIR = NLP_DIR / 'spacy_model'
+VOC_DIR = SPACY_DIR / 'vocab'
+LDA_DIR = OUT_DIR / 'LDA_model'
+LSI_DIR = OUT_DIR / 'LSI_model'
+EMB_DIR = OUT_DIR / 'embeddings'
+TPX_DIR = LDA_DIR / 'noun' / 'bow' / 'topics'
+MODELS_DIR = OUT_DIR / 'models'
+MM_DIR = OUT_DIR / 'mm_corpora'
+SEMD_DIR = OUT_DIR / 'SemD'
+IWNLP_DIR = DATA_DIR / 'IWNLP'
+IWNLP_FILE = IWNLP_DIR / 'IWNLP.Lemmatizer_20181001.json'
 
 # - data scheme -
 DATASET = 'dataset'
@@ -195,6 +198,6 @@ BAD_FIRST_PHRASE_TOKEN = {
 }
 
 GOOD_IDS = {
-    'dewac': OUT_PATH / 'dewac_good_ids.pickle',
-    'dewiki': OUT_PATH / 'dewiki_good_ids.pickle',
+    'dewac': OUT_DIR / 'dewac_good_ids.pickle',
+    'dewiki': OUT_DIR / 'dewiki_good_ids.pickle',
 }

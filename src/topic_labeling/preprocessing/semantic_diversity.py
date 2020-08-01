@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 from topic_labeling.topic_modeling.lda import split_corpus
 from topic_labeling.utils.constants import (
-    SIMPLE_PATH, POS, TOKEN, HASH, PUNCT, DATASETS, POS_N, POS_NV, POS_NVA, SEMD_PATH
+    PHRASES_DIR, POS, TOKEN, HASH, PUNCT, DATASETS, POS_N, POS_NV, POS_NVA, SEMD_DIR
 )
 
 
@@ -241,7 +241,7 @@ def make_contexts(
         dataset, min_freq=0, min_contexts=0, nb_files=None, pos_tags=None, window_size=1000
 ):
     sub_dir = 'dewiki' if dataset.startswith('dewiki') else 'wiki_phrases'
-    dir_path = SIMPLE_PATH / sub_dir
+    dir_path = PHRASES_DIR / sub_dir
 
     if dataset in {'S', 'speeches'}:
         prefixes = r'^(E|P).*'
@@ -448,7 +448,7 @@ def main():
     print(args)
 
     file_name = f'{args.dataset}_{args.version}'
-    directory = SEMD_PATH / args.version
+    directory = SEMD_DIR / args.version
     directory.mkdir(exist_ok=True, parents=True)
 
     contexts = get_contexts(args, directory, file_name)

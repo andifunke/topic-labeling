@@ -7,7 +7,7 @@ import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import LsiModel
 
-from topic_labeling.utils.constants import LDA_PATH, LSI_PATH
+from topic_labeling.utils.constants import LDA_DIR, LSI_DIR
 from topic_labeling.topic_modeling.lda import parse_args, split_corpus
 from topic_labeling.utils.utils import init_logging, log_args
 
@@ -22,7 +22,7 @@ def main():
     _split_ = "_split" if use_callbacks else ""
 
     data_name = f'{dataset}_{version}_{tfidf}'
-    data_dir = join(LDA_PATH, version, tfidf)
+    data_dir = join(LDA_DIR, version, tfidf)
 
     # --- logging ---
     logger = init_logging(name=data_name, basic=False, to_stdout=True, to_file=True)
@@ -56,7 +56,7 @@ def main():
         logg(f'Running {model_class} with {nbtopics} topics')
         model = LsiModel(corpus=train, num_topics=nbtopics, id2word=dictionary)
 
-        model_dir = join(LSI_PATH, version, tfidf, f'{_split_}')
+        model_dir = join(LSI_DIR, version, tfidf, f'{_split_}')
         model_path = join(model_dir, f'{dataset}_{model_class}{_split_}_{nbtopics}')
         if not exists(model_dir):
             makedirs(model_dir)

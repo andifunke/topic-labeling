@@ -7,20 +7,21 @@ from time import time
 
 import pandas as pd
 import spacy
+from tqdm import tqdm
 
-from topic_labeling.constants import (
-    VOC_PATH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX, TOKEN,
-    SENT_IDX, HASH, NOUN_PHRASE, NLP_PATH, PUNCT, TITLE, ETL_PATH, DESCRIPTION
+from topic_labeling.utils.constants import (
+    VOC_DIR, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX, TOKEN,
+    SENT_IDX, HASH, NOUN_PHRASE, NLP_DIR, PUNCT, TITLE, ETL_DIR, DESCRIPTION, IWNLP_FILE
 )
-from topic_labeling.nlp_lemmatizer_plus import LemmatizerPlus
-from topic_labeling.utils import tprint
+from topic_labeling.preprocessing.nlp_lemmatizer_plus import LemmatizerPlus
+from topic_labeling.utils.utils import tprint
 
 FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
 
 
-class NLPProcessor(object):
+class NLProcessor(object):
 
-    def __init__(self, spacy_path, lemmatizer_path='../data/IWNLP.Lemmatizer_20170501.json', logg=None):
+    def __init__(self, spacy_path, lemmatizer_path=IWNLP_FILE, logg=None):
         self.logg = logg if logg else print
 
         # ------ load spacy and iwnlp ------
@@ -28,9 +29,9 @@ class NLPProcessor(object):
         self.nlp = spacy.load(spacy_path)  # <-- load with dependency parser (slower)
         # nlp = spacy.load(de, disable=['parser'])
 
-        if exists(VOC_PATH):
-            logg("reading vocab from " + VOC_PATH)
-            self.nlp.vocab.from_disk(VOC_PATH)
+        if exists(VOC_DIR):
+            logg("reading vocab from " + VOC_DIR)
+            self.nlp.vocab.from_disk(VOC_DIR)
 
         logg("loading IWNLPWrapper")
         self.lemmatizer = LemmatizerPlus(lemmatizer_path, self.nlp)
@@ -68,13 +69,13 @@ class NLPProcessor(object):
             self.store(corpus_name, df, suffix=suffix)
         if vocab_to_disk:
             # stored with each corpus, in case anythings goes wrong
-            logg("writing spacy vocab to disk: " + VOC_PATH)
+            logg("writing spacy vocab to disk: " + VOC_DIR)
             # self.nlp.to_disk(SPACY_PATH)
-            makedirs(VOC_PATH, exist_ok=True)
-            self.nlp.vocab.to_disk(VOC_PATH)
+            makedirs(VOC_DIR, exist_ok=True)
+            self.nlp.vocab.to_disk(VOC_DIR)
 
         t1 = int(time() - t0)
-        logg("{:s}: done in {:02d}:{:02d}:{:02d}".format(corpus_name, t1//3600, (t1//60) % 60, t1 % 60))
+        logg(f"{corpus_name}: done in {t1//3600:02d}:{(t1//60) % 60:02d}:{t1 % 60:02d}")
 
     def check_docs(self, text_df):
         for i, kv in enumerate(text_df.itertuples()):
@@ -85,19 +86,20 @@ class NLPProcessor(object):
 
     def process_docs(self, text_df, steps=100):
         """ main function for sending the dataframes from the ETL pipeline to the NLP pipeline """
-        steps = max(min(steps, len(text_df)), 1)
-        step_len = max(100//steps, 1)
-        percent = max(len(text_df) // steps, 1)
-        chunk_idx = done = 0
+        # steps = max(min(steps, len(text_df)), 1)
+        # step_len = max(100//steps, 1)
+        # percent = max(len(text_df) // steps, 1)
+        # done = 0
+        chunk_idx = 0
         docs = []
 
         # process each doc in corpus
-        for i, kv in enumerate(text_df.itertuples()):
+        for i, kv in tqdm(enumerate(text_df.itertuples()), total=len(text_df)):
             # log progress
-            if i % percent == 0:
-                if i > 0:
-                    self.logg("  {:d}%: {:d} documents processed".format(done, i))
-                done += step_len
+            # if i % percent == 0:
+            #     if i > 0:
+            #         self.logg("  {:d}%: {:d} documents processed".format(done, i))
+            #     done += step_len
 
             key, title, descr, text = kv
             # build spacy doc
@@ -123,32 +125,39 @@ class NLPProcessor(object):
         return self.df_from_docs(docs)
 
     def store(self, corpus, df, suffix=''):
-        """returns the file path where the dataframe was stores"""
-        makedirs(NLP_PATH, exist_ok=True)
-        fname = join(NLP_PATH, corpus + suffix + '.pickle')
-        self.logg(corpus + ': saving to ' + fname)
-        df.to_pickle(fname)
+        """Returns the file path where the dataframe was stores."""
+
+        makedirs(NLP_DIR, exist_ok=True)
+        filename = join(NLP_DIR, corpus + suffix + '.pickle')
+        self.logg(corpus + ': saving to ' + filename)
+        df.to_pickle(filename)
 
     def read(self, f, start=0, stop=None):
-        """ reads a dataframe from pickle format """
+        """Reads a dataframe from pickle format."""
+
         df = pd.read_pickle(f)[[TITLE, DESCRIPTION, TEXT]].iloc[start:stop]
         # lazy hack for dewiki_new
         if 'dewiki' in f:
-            goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
-            df = df[df.index.isin(goodids.index)]
+            good_ids = pd.read_pickle(join(ETL_DIR, 'dewiki_good_ids.pickle'))
+            df = df[df.index.isin(good_ids.index)]
         self.logg('using {:d} documents'.format(len(df)))
+
         return df.copy()
 
     @staticmethod
     def df_from_docs(docs):
         """
-        Creates a pandas DataFrame from a given spacy.doc that contains only nouns and noun phrases.
+        Creates a DataFrame from a given spacy.doc that contains only nouns and noun phrases.
+
         :param docs: list of tokens (tuples with attributes) from spacy.doc
         :return:    pandas.DataFrame
         """
-        df = pd.DataFrame(docs,
-                          columns=[HASH, TEXT, LEMMA, IWNLP, POS,
-                                   TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, NOUN_PHRASE])
+        df = pd.DataFrame(
+            docs,
+            columns=[
+                HASH, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, NOUN_PHRASE
+            ],
+        )
         # create Tokens from IWNLP lemmatization, else from spacy lemmatization (or original text)
         mask_iwnlp = ~df[IWNLP].isnull()
         df.loc[mask_iwnlp, TOKEN] = df.loc[mask_iwnlp, IWNLP]
@@ -166,4 +175,5 @@ class NLPProcessor(object):
         df[POS] = df[POS].astype("category")
         df[ENT_IOB] = df[ENT_IOB].astype("category")
         df[ENT_TYPE] = df[ENT_TYPE].astype("category")
+
         return df[FIELDS]

@@ -11,7 +11,7 @@ from gensim.matutils import kullback_leibler, hellinger, jaccard_distance, jense
 from gensim.models import LdaModel, CoherenceModel
 from gensim.models.callbacks import Metric
 
-from topic_labeling.utils.constants import DATASETS, PARAMS, LDA_PATH, NB_TOPICS
+from topic_labeling.utils.constants import DATASETS, PARAMS, LDA_DIR, NB_TOPICS
 from topic_labeling.utils.utils import init_logging, log_args, load
 
 np.set_printoptions(precision=3, threshold=11, formatter={'float': '{: 0.3f}'.format})
@@ -419,7 +419,7 @@ def main():
             model = LdaModel(**kwargs)
             gc.collect()
 
-            model_dir = join(LDA_PATH, version, corpus_type, f'{param}{_split}')
+            model_dir = join(LDA_DIR, version, corpus_type, f'{param}{_split}')
             model_path = join(model_dir, f'{dataset}_LDAmodel_{param}{_split}_{nbtopics}_ep{epochs}')
             if not exists(model_dir):
                 makedirs(model_dir)

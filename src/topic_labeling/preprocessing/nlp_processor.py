@@ -14,23 +14,22 @@ from topic_labeling.utils.constants import (
     SENT_IDX, HASH, NOUN_PHRASE, NLP_DIR, PUNCT, TITLE, ETL_DIR, DESCRIPTION, IWNLP_FILE
 )
 from topic_labeling.preprocessing.nlp_lemmatizer_plus import LemmatizerPlus
-from topic_labeling.utils.utils import tprint
-
-FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
 
 
 class NLProcessor(object):
+
+    FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
 
     def __init__(self, spacy_path, lemmatizer_path=IWNLP_FILE, logg=None):
         self.logg = logg if logg else print
 
         # ------ load spacy and iwnlp ------
         logg("loading spacy")
-        self.nlp = spacy.load(spacy_path)  # <-- load with dependency parser (slower)
-        # nlp = spacy.load(de, disable=['parser'])
+        self.nlp = spacy.load(spacy_path)
+        # nlp = spacy.load(de, disable=['parser'])   # <-- load without dependency parser (fast)
 
         if exists(VOC_DIR):
-            logg("reading vocab from " + VOC_DIR)
+            logg(f"reading vocab from {VOC_DIR}")
             self.nlp.vocab.from_disk(VOC_DIR)
 
         logg("loading IWNLPWrapper")
@@ -38,50 +37,60 @@ class NLProcessor(object):
         self.nlp.add_pipe(self.lemmatizer)
         self.stringstore = self.nlp.vocab.strings
 
-    def read_process_store(self, file_path, corpus_name, store=True, vocab_to_disk=False,
-                           start=0, stop=None, **kwargs):
+    def read_process_store(
+            self, file_path, corpus_name, store=True, vocab_to_disk=False, start=0, stop=None,
+    ):
+        """
+        TODO
+
+        :param file_path:
+        :param corpus_name:
+        :param store:
+        :param vocab_to_disk:
+        :param start:
+        :param stop:
+        :return:
+        """
+
         logg = self.logg
-        logg("*** start new corpus: " + corpus_name)
+        logg(f"*** start new corpus: {corpus_name}")
         t0 = time()
 
         # read the etl dataframe
-        slicing = "[{:d}:{:d}]".format(start, stop) if (start or stop) else ''
-        logg("{}: reading corpus{} from {}".format(corpus_name, slicing, file_path))
+        slicing = f"[{start:d}:{stop:d}]" if (start or stop) else ''
+        logg(f"{corpus_name}: reading corpus{slicing} from {file_path}")
         df = self.read(file_path, start=start, stop=stop)
 
-        logg('collect: %d' % gc.collect())
+        logg(f"collect: {gc.collect()}")
 
         # start the nlp pipeline
-        logg(corpus_name + ": start processing")
+        logg(f"{corpus_name}: start processing")
         # self.check_docs(df); return
         reader = self.process_docs(df)
 
         if store:
             if start or stop:
-                suffix = '_{:d}_{:d}_nlp'.format(start, stop-1)
+                suffix = f'_{start:d}_{stop-1:d}_nlp'
             else:
                 suffix = '_nlp'
 
             makedirs(NLP_DIR, exist_ok=True)
             filename = NLP_DIR / f'{corpus_name}{suffix}.csv'
-            self.logg(f'{corpus_name}: saving to {filename}')
+            self.logg(f"{corpus_name}: saving to {filename}")
 
             with open(filename, 'w') as fp:
                 header = True
                 for doc in reader:
-                    try:
-                        doc.to_csv(
-                            fp, mode='a',
-                            sep='\t', quoting=csv.QUOTE_NONE,
-                            index=None, header=header
-                        )
-                    except:
-                        print(doc)
+                    doc.to_csv(
+                        fp, mode='a',
+                        sep='\t', quoting=csv.QUOTE_NONE,
+                        index=None, header=header
+                    )
                     header = False
 
         if vocab_to_disk:
             # stored with each corpus, in case anythings goes wrong
-            logg("writing spacy vocab to disk: " + VOC_DIR)
+            logg(f"writing spacy vocab to disk: {VOC_DIR}")
             # self.nlp.to_disk(SPACY_PATH)
             makedirs(VOC_DIR, exist_ok=True)
             self.nlp.vocab.to_disk(VOC_DIR)
@@ -97,31 +106,18 @@ class NLProcessor(object):
                 print(token.i, token.is_sent_start, token.text)
 
     def process_docs(self, text_df):
-        """ main function for sending the dataframes from the ETL pipeline to the NLP pipeline """
-        # steps = max(min(steps, len(text_df)), 1)
-        # step_len = max(100//steps, 1)
-        # percent = max(len(text_df) // steps, 1)
-        # done = 0
-        chunk_idx = 0
+        """Processes DataFrames from the ETL pipeline with the NLP pipeline."""
 
         # process each doc in corpus
         for i, kv in tqdm(enumerate(text_df.itertuples()), total=len(text_df)):
-            # log progress
-            # if i % percent == 0:
-            #     if i > 0:
-            #         self.logg("  {:d}%: {:d} documents processed".format(done, i))
-            #     done += step_len
-
             key, title, descr, text = kv
             # build spacy doc
             doc = self.nlp('\n'.join(filter(None, [title, descr, text])))
 
             # annotated phrases
-            noun_phrases = dict()
-            for chunk in doc.noun_chunks:
-                chunk_idx += 1
-                for token in chunk:
-                    noun_phrases[token.i] = chunk_idx
+            noun_chunks = {
+                token.i: idx for idx, chunk in enumerate(doc.noun_chunks) for token in chunk
+            }
 
             # extract relevant attributes
             attr = [
@@ -135,7 +131,7 @@ class NLProcessor(object):
                     SENT_START: 1 if (token.is_sent_start or token.i == 0) else 0,
                     ENT_IOB: token.ent_iob_,
                     ENT_TYPE: token.ent_type_,
-                    NOUN_PHRASE: noun_phrases.get(token.i, 0),
+                    NOUN_PHRASE: noun_chunks.get(token.i, 0),
                 } for token in doc
             ]
 
@@ -149,21 +145,21 @@ class NLProcessor(object):
         if 'dewiki' in f:
             good_ids = pd.read_pickle(join(ETL_DIR, 'dewiki_good_ids.pickle'))
             df = df[df.index.isin(good_ids.index)]
-        self.logg('using {:d} documents'.format(len(df)))
+        self.logg(f"using {len(df):d} documents")
 
-        return df.copy()
+        return df
 
-    @staticmethod
-    def df_from_doc(doc):
+    def df_from_doc(self, doc):
         """
         Creates a DataFrame from a given spacy.doc that contains only nouns and noun phrases.
 
         :param doc: list of tokens (tuples with attributes) from spacy.doc
         :return:    pandas.DataFrame
         """
+
         df = pd.DataFrame.from_records(doc)
-        df[ENT_IOB] = df[ENT_IOB].astype("category")
-        df[ENT_TYPE] = df[ENT_TYPE].astype("category")
+        df[ENT_IOB] = df[ENT_IOB].astype('category')
+        df[ENT_TYPE] = df[ENT_TYPE].astype('category')
 
         # create Tokens from IWNLP lemmatization, else from spacy lemmatization (or original text)
         mask_iwnlp = ~df[IWNLP].isnull()
@@ -173,7 +169,7 @@ class NLProcessor(object):
         # fixes wrong POS tagging for punctuation
         mask_punct = df[TOKEN].isin(list('[]<>/–%'))
         df.loc[mask_punct, POS] = PUNCT
-        df[POS] = df[POS].astype("category")
+        df[POS] = df[POS].astype('category')
 
         # set an index for each sentence
         df[SENT_IDX] = df[SENT_START].cumsum()
@@ -187,6 +183,6 @@ class NLProcessor(object):
         df[TEXT] = df[TEXT].str.replace('\n', '<newline>')
         df[TEXT] = df[TEXT].str.replace('\t', '<tab>')
 
-        df = df[FIELDS]
+        df = df[self.FIELDS]
 
         return df

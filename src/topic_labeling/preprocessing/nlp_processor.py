@@ -72,11 +72,11 @@ class NLProcessor(object):
         with open(filename, 'w') as fp:
             header = True
             for doc in reader:
-                doc.to_csv(
-                    fp, mode='a',
-                    sep='\t', quoting=csv.QUOTE_NONE,
-                    index=None, header=header
-                )
+                try:
+                    doc.to_csv(fp, sep='\t', quoting=csv.QUOTE_NONE, index=None, header=header)
+                except csv.Error as e:
+                    print(doc)
+                    raise e
                 header = False
 
         t1 = int(time() - t0)
@@ -166,6 +166,8 @@ class NLProcessor(object):
         # fix whitespace tokens
         df[TEXT] = df[TEXT].str.replace('\n', '<newline>')
         df[TEXT] = df[TEXT].str.replace('\t', '<tab>')
+        df[TEXT] = df[TEXT].str.replace(' ', '_')
+        df[TOKEN] = df[TOKEN].str.replace(' ', '_')
 
         df = df[self.FIELDS]
 

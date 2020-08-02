@@ -28,7 +28,7 @@ if __name__ == "__main__":
         f for f in listdir(ETL_DIR)
         if (isfile(join(ETL_DIR, f)) and pattern.match(f))
     ])
-    processor = NLProcessor(spacy_path=DE, logg=logg)
+    processor = NLProcessor(spacy_path=DE, log_fn=logg)
 
     start = START  # 550_000
     batch_size = BATCH_SIZE  # 50_000
@@ -38,15 +38,11 @@ if __name__ == "__main__":
         corpus = name.split('.')[0]
         filename = join(ETL_DIR, name)
         for i in range(1, batches+1):
-            logg('>>> batch: {:d} >>>'.format(i))
+            logg(f">>> batch: {i:d} >>>")
             processor.read_process_store(
                 filename, corpus,
                 start=start,
                 stop=(start+batch_size) if batch_size else None,
-                store=STORE,
-                # vocab_to_disk=STORE,
-                # print=True,
-                # head=1000,
             )
             if batch_size:
                 start += batch_size
@@ -54,4 +50,4 @@ if __name__ == "__main__":
                 break
 
     t1 = int(time() - t0)
-    logg("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
+    logg(f"all done in {t1//3600:02d}:{(t1//60) % 60:02d}:{t1 % 60:02d}")

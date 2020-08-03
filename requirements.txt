@@ -1,3 +1,5 @@
+beautifulsoup4==4.9.1
+ftfy==5.8
 numpy==1.15.*
 tqdm==4.44.*
 pandas==0.25.*

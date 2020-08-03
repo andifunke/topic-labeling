@@ -83,7 +83,7 @@ for academia.
 
 #### 1.2 Crawling datasets from the web
 
-  - [faz/focus](src/topic_labeling/scraping/readme.txt): use the provided [scrapy](https://scrapy.org/) -spiders to fetch
+  - [faz/focus](src/topiclabeling/scraping/readme.txt): use the provided [scrapy](https://scrapy.org/) -spiders to fetch
     news-articles from the web.
   - [OnlineParticipation](https://github.com/Liebeck/OnlineParticipationDatasets): Follow the
     instructions in the linked repository to download this collection.
@@ -137,14 +137,14 @@ Bhatia et.al (2016). This serves just a reference.
 
 ###### Helper utilities
 
-- [constants.py](src/topic_labeling/constants.py):<br>
+- [constants.py](src/topiclabeling/constants.py):<br>
 defines constants for the project used in most of the scripts and notebooks.
 
-- [utils.py](src/topic_labeling/utils.py):<br>
+- [utils.py](src/topiclabeling/utils.py):<br>
 provides some helper functions for printing/logging and loading of data which are used universally.
 Earlier scripts may not make full usage of the functions provided here.
 
-- [options.py](src/topic_labeling/options.py):<br>
+- [options.py](src/topiclabeling/options.py):<br>
 provides argument parsing in the pre-processing pipelines. Has been replaced lately by more convenient
 methods in the **utils** module.
 

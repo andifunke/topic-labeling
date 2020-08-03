@@ -17,7 +17,7 @@ import setuptools
 
 URL = "https://github.com/andifunke/topic-labeling"
 README = "README.md"
-PACKAGE = "topic-labeling"
+PACKAGE = "topiclabeling"
 PACKAGE_DIR = Path('./src') / PACKAGE.replace('-', '_')
 DEFAULT_SPACY_MODEL = 'de'
 
@@ -63,7 +63,7 @@ setuptools.setup(
     version=read_version(),
     author="Andreas Funke",
     author_email="andreas.funke@uni-duesseldorf.de",
-    description="The topic-labeling python package",
+    description="The topiclabeling python package",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     url=URL,

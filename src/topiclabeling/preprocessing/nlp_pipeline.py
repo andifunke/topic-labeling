@@ -12,7 +12,9 @@ if __name__ == "__main__":
     t0 = time()
 
     args = global_args()
-    logger = init_logging('NLP', to_stdout='stdout' in args.log, to_file='file' in args.log)
+    logger = init_logging(
+        'NLP', basic=False, to_stdout='stdout' in args.log, to_file='file' in args.log
+    )
 
     def logg(msg):
         logger.info(msg)

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import re
 from itertools import chain
 from pathlib import Path
@@ -7,6 +8,8 @@ from pathlib import Path
 # --- default constants definitions ---
 
 # - default paths -
+from typing import Union
+
 UTILS_DIR = Path(__file__).resolve().parent
 PACKAGE_DIR = UTILS_DIR.parent
 SRC_DIR = PACKAGE_DIR.parent
@@ -14,7 +17,7 @@ PROJECT_DIR = SRC_DIR.parent
 
 DATA_DIR = PROJECT_DIR / 'data'
 OUT_DIR = DATA_DIR / 'out'
-LOG_DIR = PROJECT_DIR / 'log'
+LOG_DIR = PROJECT_DIR / 'logs'
 # FULL_PATH = DATA_BASE, LOCAL_PATH
 ETL_DIR = OUT_DIR / 'etl'
 NLP_DIR = OUT_DIR / 'nlp'
@@ -203,3 +206,7 @@ GOOD_IDS = {
     'dewac': OUT_DIR / 'dewac_good_ids.pickle',
     'dewiki': OUT_DIR / 'dewiki_good_ids.pickle',
 }
+
+
+PathLike = Union[Path, os.PathLike, str]
+Number = Union[int, float]

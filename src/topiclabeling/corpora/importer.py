@@ -1,5 +1,6 @@
 import json
 import hashlib
+from pathlib import Path
 from typing import Iterable, Any
 
 import pandas as pd
@@ -11,7 +12,7 @@ from html import unescape
 
 from topiclabeling.utils.constants import (
     DATA_DIR, ETL_DIR, DATASET, SUBSET, ID, ID2,
-    TITLE, TIME, META, TEXT, DESCRIPTION, LINKS, TAGS, DATA, HASH
+    TITLE, TIME, META, TEXT, DESCRIPTION, LINKS, TAGS, DATA, HASH, PathLike
 )
 
 
@@ -49,7 +50,7 @@ class OnlineParticipationImporter(CorpusImporter):
 
     def __init__(self, corpus_path: PathLike = None):
 
-        self.corpus_path = DATA_DIR / self.LOCAL_PATH if corpus_path is None else corpus_path
+        self.corpus_path = DATA_DIR / self.LOCAL_PATH if corpus_path is None else Path(corpus_path)
         
     def transform_subset(self, source: Iterable[dict], subset_name: str):
         """
@@ -86,9 +87,9 @@ class OnlineParticipationImporter(CorpusImporter):
                     f"{doc['content']} .\n"
                     f"{doc['Voraussichtliche Rolle für die Stadt Wuppertal']} .\n"
                     f"{doc['Mehrwert der Idee für Wuppertal']} .\n"
-                    f"{doc['Eigene Rolle bei der Projektidee']} .\n"
-                    f"{doc['Geschätzte Umsetzungsdauer und Startschuss']} .\n"
-                    f"{doc['Kostenschätzung der Ideeneinreicher']} .\n"
+                    # f"{doc['Eigene Rolle bei der Projektidee']} .\n"
+                    # f"{doc['Geschätzte Umsetzungsdauer und Startschuss']} .\n"
+                    # f"{doc['Kostenschätzung der Ideeneinreicher']} .\n"
                 )
             else:
                 if 'category' in doc:
@@ -114,34 +115,33 @@ class OnlineParticipationImporter(CorpusImporter):
         print(f"process {self.CORPUS}")
 
         # --- read files ---
-        files = [f for f in listdir(self.CORPUS_PATH) if isfile(join(FULL_PATH, f))]
+        files = [f for f in self.corpus_path.iterdir() if f.is_file()]
 
         if number_of_subsets:
             number_of_subsets += start
             if number_of_subsets > len(files):
                 number_of_subsets = None
 
-        for name in files[start:number_of_subsets]:
-            if name[-9:-5] != 'flat':
+        for file_path in files[start:number_of_subsets]:
+            if file_path.name[-9:-5] != 'flat':
                 continue
 
-            fpath = join(FULL_PATH, name)
             try:
-                with open(fpath, 'r') as fp:
-                    print('open:', fpath)
+                with open(file_path, 'r') as fp:
+                    print('open:', file_path)
                     data = json.load(fp)
                     if not data:
                         continue
             except IOError:
-                print("Could not open", fpath)
+                print("Could not open", file_path)
                 continue
-            subset = name[6:-10]
+            subset = file_path.name[6:-10]
 
-            yield transform_subset(data, subset)
+            yield self.transform_subset(data, subset)
 
     def __call__(self):
-        dfs = [pd.DataFrame(item) for item in load_data()]
-        if dfs:
-            df = pd.concat(dfs)
-            del dfs
+        df = [pd.DataFrame(item) for item in self.load_data()]
+        if df:
+            df = pd.concat(df)
             df = df.set_index(HASH)[META + DATA]
+        return df

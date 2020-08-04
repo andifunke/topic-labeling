@@ -123,7 +123,7 @@ class NLProcessor(object):
 
         df = pd.read_pickle(f)[[TITLE, DESCRIPTION, TEXT]].iloc[start:stop]
         # lazy hack for dewiki_new
-        if 'dewiki' in f:
+        if 'dewiki' in f.name:
             good_ids = pd.read_pickle(ETL_DIR / 'dewiki_good_ids.pickle')
             df = df[df.index.isin(good_ids.index)]
         self.log(f"using {len(df):d} documents")

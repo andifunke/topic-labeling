@@ -13,14 +13,14 @@ def global_args():
     parser.set_defaults(store=True)
 
     # ints
-    parser.add_argument('--start', type=int, required=False)
-    parser.add_argument('--batch_size', type=int, required=False)
-    parser.add_argument('--batches', type=int, required=False)
+    parser.add_argument('--start', type=int, required=False, default=0)
+    parser.add_argument('--batch_size', type=int, required=False, default=None)
+    parser.add_argument('--batches', type=int, required=False, default=1)
 
     # strings / paths
-    parser.add_argument('--corpus', type=str, nargs='*', required=False)
+    parser.add_argument('--corpus', type=str, nargs='*', required=False, default='')
     parser.add_argument('--spacy_path', type=str, required=False, default='de')
-    parser.add_argument('--log', type=str, nargs='*', required=False, default=['file'],
+    parser.add_argument('--log', type=str, nargs='*', required=False, default=['stdout', 'file'],
                         choices=['stdout', 'file', 'none'])  # TODO: add exclusivity for 'none'
     parser.add_argument('--log_path', type=str, required=False, default=LOG_DIR)
 

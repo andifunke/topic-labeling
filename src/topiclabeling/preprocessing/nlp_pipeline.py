@@ -22,18 +22,17 @@ if __name__ == "__main__":
     # filter files for certain prefixes
     prefixes = r'^(' + '|'.join(args.corpus) + r').'
     pattern = re.compile(prefixes)
-    files = sorted(f for f in ETL_DIR.iterdir() if f.isfile() and pattern.match(f.name))
+    files = sorted(f for f in ETL_DIR.iterdir() if f.is_file() and pattern.match(f.name))
     processor = NLProcessor(spacy_path=args.spacy_path, log_fn=logg)
 
     start = args.start
 
-    for name in files:
-        corpus = name.split('.')[0]
-        filename = ETL_DIR / name
+    for file in files:
+        corpus = file.name.split('.')[0]
         for i in range(1, args.batches + 1):
             logg(f">>> batch: {i:d} >>>")
             processor.read_process_store(
-                filename, corpus,
+                file, corpus,
                 start=start,
                 stop=(start + args.batch_size) if args.batch_size else None,
             )

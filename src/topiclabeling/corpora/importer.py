@@ -3,8 +3,6 @@ import hashlib
 from typing import Iterable, Any
 
 import pandas as pd
-from os import listdir, makedirs
-from os.path import isfile, join
 from datetime import datetime
 import re
 import gzip
@@ -19,7 +17,7 @@ from topiclabeling.utils.constants import (
 
 class CorpusImporter:
 
-    @static
+    @staticmethod
     def write_dataframe(corpus, df):
         """Returns the file name where the dataframe was stores."""
 
@@ -30,8 +28,8 @@ class CorpusImporter:
 
         return file_name
 
-    @static
-    def hex_hash(obj: Any) -> str:
+    @staticmethod
+    def hexhash(obj: Any) -> str:
         """Hashes a string and returns the MD5 hexadecimal hash as a string."""
 
         story_hash = hashlib.md5(str(obj).strip().encode('utf8'))
@@ -39,8 +37,9 @@ class CorpusImporter:
 
         return hex_digest
 
-    @static
-    def write_document
+    @staticmethod
+    def write_document():
+        pass
 
 
 class OnlineParticipationImporter(CorpusImporter):
@@ -50,9 +49,8 @@ class OnlineParticipationImporter(CorpusImporter):
 
     def __init__(self, corpus_path: PathLike = None):
 
-        self.corpus_path = DATA_DIR / LOCAL_PATH if corpus_path is None else corpus_path
+        self.corpus_path = DATA_DIR / self.LOCAL_PATH if corpus_path is None else corpus_path
         
-
     def transform_subset(self, source: Iterable[dict], subset_name: str):
         """
         :param source: list or iterator of dictionaries in original key/value format
@@ -102,7 +100,7 @@ class OnlineParticipationImporter(CorpusImporter):
                 target[LINKS] = target[ID] if target[ID2] else None
                 target[TEXT] = doc['content']
 
-            target[HASH] = hex_hash(tuple([target[key] for key in META]))
+            target[HASH] = self.hexhash([target[key] for key in META])
 
             yield target
 

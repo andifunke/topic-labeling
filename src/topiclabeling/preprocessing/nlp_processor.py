@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 import csv
-from os import makedirs
-from os.path import exists, join
 from time import time
 
 import pandas as pd
 import spacy
-from ftfy import fix_encoding
+from ftfy import fix_text
 from tqdm import tqdm
 
 from topiclabeling.preprocessing.nlp_lemmatizer_plus import LemmatizerPlus
@@ -28,7 +26,7 @@ class NLProcessor(object):
         self.nlp = spacy.load(spacy_path)
         # nlp = spacy.load(de, disable=['parser'])   # <-- load without dependency parser (fast)
 
-        if exists(VOC_DIR):
+        if VOC_DIR.exists():
             self.log(f"reading vocab from {VOC_DIR}")
             self.nlp.vocab.from_disk(VOC_DIR)
 
@@ -66,7 +64,7 @@ class NLProcessor(object):
         else:
             suffix = '_nlp'
 
-        makedirs(NLP_DIR, exist_ok=True)
+        NLP_DIR.mkdir(exist_ok=True, parents=True)
         filename = NLP_DIR / f'{corpus_name}{suffix}.csv'
         self.log(f"{corpus_name}: saving to {filename}")
 
@@ -93,7 +91,8 @@ class NLProcessor(object):
             texts = [descr, text] if ignore_title else [title, descr, text]
             raw_text = '\n'.join(filter(None, texts))
             if fix_encoding_errors:
-                raw_text = fix_encoding(raw_text)
+                raw_text = raw_text.replace('\x00', ' ')
+                raw_text = fix_text(raw_text, fix_entities=True)
             doc = self.nlp(raw_text)
 
             # annotated phrases
@@ -125,7 +124,7 @@ class NLProcessor(object):
         df = pd.read_pickle(f)[[TITLE, DESCRIPTION, TEXT]].iloc[start:stop]
         # lazy hack for dewiki_new
         if 'dewiki' in f:
-            good_ids = pd.read_pickle(join(ETL_DIR, 'dewiki_good_ids.pickle'))
+            good_ids = pd.read_pickle(ETL_DIR / 'dewiki_good_ids.pickle')
             df = df[df.index.isin(good_ids.index)]
         self.log(f"using {len(df):d} documents")
 

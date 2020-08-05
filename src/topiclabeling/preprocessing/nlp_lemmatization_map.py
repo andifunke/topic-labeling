@@ -1,11 +1,11 @@
 import gc
 import re
-from os.path import join
 
 import pandas as pd
 
-from topiclabeling.constants import ETL_PATH, DATASETS_FULL, POS_N
-from topiclabeling.utils import multiload
+from topiclabeling.utils.constants import ETL_DIR, DATASETS_FULL, POS_N
+from topiclabeling.utils.logging import logg
+from topiclabeling.utils.utils import multiload
 
 
 def get_best_text(grp):
@@ -35,8 +35,8 @@ def generate_and_save_map(df, dataset):
     df = df.to_frame().rename(columns={'text': 'counts'}).reset_index()
     df = df.groupby('token').apply(get_best_text)
     file = f'{DATASETS_FULL.get(dataset, dataset)}_lemmatization_map.pickle'
-    print(f'Writing {file}')
-    df.to_pickle(join(ETL_PATH, file))
+    logg(f'Writing {file}')
+    df.to_pickle(ETL_DIR / file)
     gc.collect()
 
 

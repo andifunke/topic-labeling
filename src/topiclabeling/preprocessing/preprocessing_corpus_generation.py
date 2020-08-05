@@ -9,10 +9,10 @@ from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import TfidfModel
 
 from topiclabeling.utils.constants import (
-    PHRASES_DIR, POS, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS, GOOD_IDS, LDA_DIR, WORD_PATTERN,
+    PHRASES_DIR, POS, TOKEN, HASH, PUNCT, BAD_TOKENS, DATASETS, GOOD_IDS, WORD_PATTERN,
     POS_N, POS_NV, POS_NVA, MM_DIR
 )
-from topiclabeling.utils.utils import init_logging, log_args
+from topiclabeling.utils.logging import init_logging, log_args, logg
 
 
 def docs_to_lists(token_series):
@@ -21,7 +21,6 @@ def docs_to_lists(token_series):
 
 def texts2corpus(
         documents, tfidf=False, stopwords=None, filter_below=5, filter_above=0.5, keep_n=100000,
-        logg=print
 ):
     logg(f'generating {"tfidf" if tfidf else "bow"} corpus and dictionary')
 
@@ -43,7 +42,7 @@ def texts2corpus(
     return corpus, dictionary
 
 
-def make_texts(dataset, nb_files, pos_tags, logg=print):
+def make_texts(dataset, nb_files, pos_tags):
     sub_dir = 'dewiki' if dataset.startswith('dewi') else 'wiki_phrases'
     dir_path = PHRASES_DIR / sub_dir
 
@@ -159,13 +158,10 @@ def main():
 
     corpus_type = "tfidf" if tfidf else "bow"
 
-    logger = init_logging(
-        name=f'MM_{dataset}_{corpus_type}', basic=False, to_stdout=True, to_file=True
-    )
-    logg = logger.info if logger else print
-    log_args(logger, args)
+    init_logging(name=f'MM_{dataset}_{corpus_type}', to_stdout=True, to_file=True)
+    log_args(args)
 
-    texts, stats, nb_files = make_texts(dataset, nb_files, pos_tags, logg=logg)
+    texts, stats, nb_files = make_texts(dataset, nb_files, pos_tags)
 
     gc.collect()
 
@@ -187,9 +183,7 @@ def main():
 
     # generate and save the dataset as bow or tfidf corpus in Matrix Market format,
     # including dictionary, texts (json) and some stats about corpus size (json)
-    corpus, dictionary = texts2corpus(
-        texts, tfidf=tfidf, filter_below=5, filter_above=0.5, logg=logg
-    )
+    corpus, dictionary = texts2corpus(texts, tfidf=tfidf, filter_below=5, filter_above=0.5)
 
     file_name += f'_{corpus_type}'
     directory = directory / corpus_type

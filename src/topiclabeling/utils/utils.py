@@ -1,52 +1,20 @@
 import json
-import logging
 import re
-import sys
-import warnings
-from genericpath import exists
 from itertools import chain
-from os import makedirs, listdir
+from os import listdir
 from os.path import join
-from pprint import pformat
 
-import gensim
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
 from gensim.models import Doc2Vec, Word2Vec, FastText, LdaModel, LsiModel
-from pandas.errors import DtypeWarning
 
 from topiclabeling.utils.constants import (
     OUT_DIR, NLP_DIR, PHRASES_DIR, LDA_DIR, DATASETS_FULL, PARAMS, NB_TOPICS, METRICS, VERSIONS,
     EMB_DIR, CORPUS_TYPE, WORD_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_DIR, TPX_DIR
 )
 
-try:
-    from tabulate import tabulate
-except ImportError as ie:
-    print(ie)
 
-warnings.simplefilter(action='ignore', category=DtypeWarning)
-
-
-def tprint(df, head=0, floatfmt=None, to_latex=False):
-    if df is None:
-        return
-    shape = df.shape
-    if head > 0:
-        df = df.head(head)
-    elif head < 0:
-        df = df.tail(-head)
-    kwargs = dict()
-    if floatfmt is not None:
-        kwargs['floatfmt'] = floatfmt
-    try:
-        print(tabulate(df, headers="keys", tablefmt="pipe", showindex="always", **kwargs))
-    except:
-        print(df)
-    print('shape:', shape, '\n')
-
-    if to_latex:
-        print(df.to_latex(bold_rows=True))
+# warnings.simplefilter(action='ignore', category=DtypeWarning)
 
 
 def index_level_dtypes(df):
@@ -54,76 +22,6 @@ def index_level_dtypes(df):
         f"{df.index.names[i]}: {df.index.get_level_values(n).dtype}"
         for i, n in enumerate(df.index.names)
     ]
-
-
-def hms_string(sec_elapsed):
-    h = int(sec_elapsed / (60 * 60))
-    m = int((sec_elapsed % (60 * 60)) / 60)
-    s = sec_elapsed % 60
-    return f"{h}:{m:>02}:{s:>05.2f}"
-
-
-def init_logging(
-        name='', basic=True, to_stdout=False, to_file=True, log_file=None, log_dir='../logs'
-):
-
-    if log_file is None:
-        log_file = name+'.log' if name else 'train.log'
-
-    if basic:
-        if to_file:
-            if not exists(log_dir):
-                makedirs(log_dir)
-            file_path = join(log_dir, log_file)
-            logging.basicConfig(
-                filename=file_path,
-                format='%(asctime)s - %(name)s - %(levelname)s | %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
-                level=logging.INFO
-            )
-        else:
-            logging.basicConfig(
-                format='%(asctime)s - %(name)s - %(levelname)s | %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
-                level=logging.INFO
-            )
-        logger = logging.getLogger()
-
-    else:
-        logger = logging.getLogger(name)
-        logger.setLevel(logging.DEBUG)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s | %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S',
-        )
-        if to_file:
-            # create path if necessary
-            if not exists(log_dir):
-                makedirs(log_dir)
-            file_path = join(log_dir, log_file)
-            fh = logging.FileHandler(file_path)
-            fh.setLevel(logging.DEBUG)
-            fh.setFormatter(formatter)
-            logger.addHandler(fh)
-        if to_stdout:
-            ch = logging.StreamHandler(sys.stdout)
-            ch.setLevel(logging.DEBUG)
-            ch.setFormatter(formatter)
-            logger.addHandler(ch)
-
-    logger.info('')
-    logger.info('#' * 50)
-    logger.info('----- %s -----' % name.upper())
-    logger.info('----- start -----')
-    logger.info('python: ' + sys.version.replace('\n', ' '))
-    logger.info('pandas: ' + pd.__version__)
-    logger.info('gensim: ' + gensim.__version__)
-
-    return logger
-
-
-def log_args(logger, args):
-    logger.info('\n' + pformat(vars(args)))
 
 
 def multiload(dataset, purpose='etl', deprecated=False):

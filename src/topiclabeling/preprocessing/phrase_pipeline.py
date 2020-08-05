@@ -1,26 +1,26 @@
 # coding: utf-8
 
 """
-This version of phrase_extraction applies the process to smaller batches in order to save memory.
+The phrase_extraction applies the process to smaller batches in order to save memory.
 """
 
 import gc
-from os import listdir, getpid
-from os.path import join, isfile
+import re
 from time import time
-import psutil
 
-from topiclabeling.utils.utils import init_logging
-
-process = psutil.Process(getpid())
 import numpy as np
 import pandas as pd
-import re
+import psutil
+from tqdm import tqdm
+
+from topiclabeling.utils.args import global_args
 from topiclabeling.utils.constants import (
     NLP_DIR, HASH, SENT_IDX, ENT_IDX, ENT_TYPE, NOUN_PHRASE, TEXT, TOKEN, TOK_IDX, POS, ENT_IOB,
-    ETL_DIR, SPACE, PHRASES_DIR, BAD_FIRST_PHRASE_TOKEN, PUNCT
+    ETL_DIR, SPACE, PHRASES_DIR, BAD_FIRST_PHRASE_TOKEN
 )
-from tqdm import tqdm
+from topiclabeling.utils.logging import init_logging, logg
+
+process = psutil.Process()
 tqdm.pandas()
 
 
@@ -34,16 +34,11 @@ SPECIAL_CHAR = re.compile(r'[^\w&/]+')
 GOOD_IDS_DEWAC = None
 GOOD_IDS_DEWIKI = None
 PS = None
-LOG_FUNC = print
-
-
-def logg(msg):
-    LOG_FUNC(msg)
 
 
 def memstr():
-    rss = "RSS: {:.2f} GB".format(process.memory_info().rss / (2**30))
-    vms = "VMS: {:.2f} GB".format(process.memory_info().vms / (2**30))
+    rss = f"RSS: {process.memory_info().rss / (2**30):.2f} GB"
+    vms = f"VMS: {process.memory_info().vms / (2**30):.2f} GB"
     return rss + ' | ' + vms
 
 
@@ -121,7 +116,7 @@ def remove_title(x):
 def preprocess_dewac(df):
     global GOOD_IDS_DEWAC
     if GOOD_IDS_DEWAC is None:
-        GOOD_IDS_DEWAC = pd.read_pickle(join(ETL_DIR, 'dewac_good_ids.pickle'))
+        GOOD_IDS_DEWAC = pd.read_pickle(ETL_DIR / 'dewac_good_ids.pickle')
     df = df[df.hash.isin(GOOD_IDS_DEWAC.index)]
     df = (
         df
@@ -135,7 +130,7 @@ def preprocess_dewac(df):
 def preprocess_dewiki(df):
     global GOOD_IDS_DEWIKI
     if GOOD_IDS_DEWIKI is None:
-        GOOD_IDS_DEWIKI = pd.read_pickle(join(ETL_DIR, 'dewiki_good_ids.pickle'))
+        GOOD_IDS_DEWIKI = pd.read_pickle(ETL_DIR / 'dewiki_good_ids.pickle')
     df = df[df.hash.isin(GOOD_IDS_DEWIKI.index)]
     return df
 
@@ -157,7 +152,7 @@ def insert_wikipedia_phrases(df):
     # TODO: ignore n-grams beyond sentence segments
     global PS
     if PS is None:
-        p = pd.read_pickle(join(ETL_DIR, 'dewiki_phrases_lemmatized.pickle'))
+        p = pd.read_pickle(ETL_DIR / 'dewiki_phrases_lemmatized.pickle')
         p = p[p.title_len > 1]
         PS = set(p.text.append(p.token))
 
@@ -296,7 +291,7 @@ def process_subset(df):
 def main(corpus, batch_size=None):
     t0 = time()
 
-    file_path = join(NLP_DIR, corpus + '_nlp.pickle')
+    file_path = NLP_DIR / corpus + '_nlp.pickle'
     logg("reading from " + file_path)
     df_main = pd.read_pickle(file_path)
     logg(memstr())
@@ -318,9 +313,9 @@ def main(corpus, batch_size=None):
         # process and save in batches of size batch_size if batch_size is not None
         # or if the last document is reached
         if (batch_size is not None and (i % batch_size == 0)) or (i == length):
-            logg('process {:d}:{:d}'.format(last_cnt, i))
+            logg(f"process {last_cnt}:{i}")
             df_glued = process_subset(pd.concat(groups_tmp))
-            write_path = join(PHRASES_DIR, corpus + '__{:d}_simple.pickle'.format(i))
+            write_path = PHRASES_DIR / corpus + f'__{i}_simple.pickle'
             logg(memstr())
             logg('collect: %d' % gc.collect())
             logg(memstr())
@@ -328,7 +323,7 @@ def main(corpus, batch_size=None):
             logg("writing to " + write_path)
             df_glued.to_pickle(write_path)
             t_b = int(time() - t_a)
-            logg("subset done in {:02d}:{:02d}:{:02d}".format(t_b//3600, (t_b//60) % 60, t_b % 60))
+            logg(f"subset done in {t_b//3600:02d}:{(t_b//60) % 60:02d}:{t_b % 60:02d}")
 
             # reset
             t_a = time()
@@ -336,27 +331,23 @@ def main(corpus, batch_size=None):
             last_cnt = i+1
 
     t1 = int(time() - t0)
-    logg("done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
+    logg(f"done in {t1//3600:02d}:{(t1//60) % 60:02d}:{t1 % 60:02d}")
 
 
 if __name__ == "__main__":
-    from topiclabeling.utils.options import CORPUS_PREFIXES
-    logger = init_logging('Phrase_extraction')
-    LOG_FUNC = logger.info
+    args = global_args()
+    init_logging('Phrase_extraction')
 
     t_0 = time()
 
     # filter files for certain prefixes
-    prefixes = r'^(' + '|'.join(CORPUS_PREFIXES) + r').'
+    prefixes = r'^(' + '|'.join(args.corpus) + r').'
     pattern = re.compile(prefixes)
-    files = sorted([
-        f for f in listdir(NLP_DIR)
-        if (isfile(join(NLP_DIR, f)) and pattern.match(f))
-    ])
+    files = sorted(f for f in NLP_DIR.iterdir() if f.is_file() and pattern.match(f.name))
 
     for name in files:
         corpus_name = name.split('_nlp.')[0]
         main(corpus_name, batch_size=10000)
 
     t_1 = int(time() - t_0)
-    logg("all done in {:02d}:{:02d}:{:02d}".format(t_1//3600, (t_1//60) % 60, t_1 % 60))
+    logg(f"all done in {t_1//3600:02d}:{(t_1//60) % 60:02d}:{t_1 % 60:02d}")

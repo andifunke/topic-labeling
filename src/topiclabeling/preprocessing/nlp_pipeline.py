@@ -6,18 +6,13 @@ from time import time
 from topiclabeling.preprocessing.nlp_processor import NLProcessor
 from topiclabeling.utils.args import global_args
 from topiclabeling.utils.constants import ETL_DIR
-from topiclabeling.utils.utils import init_logging
+from topiclabeling.utils.logging import init_logging, logg
 
 if __name__ == "__main__":
     t0 = time()
 
     args = global_args()
-    logger = init_logging(
-        'NLP', basic=False, to_stdout='stdout' in args.log, to_file='file' in args.log
-    )
-
-    def logg(msg):
-        logger.info(msg)
+    init_logging('NLP', to_stdout='stdout' in args.log, to_file='file' in args.log)
 
     logg("##### START #####")
 
@@ -25,7 +20,7 @@ if __name__ == "__main__":
     prefixes = r'^(' + '|'.join(args.corpus) + r').'
     pattern = re.compile(prefixes)
     files = sorted(f for f in ETL_DIR.iterdir() if f.is_file() and pattern.match(f.name))
-    processor = NLProcessor(spacy_path=args.spacy_path, log_fn=logg)
+    processor = NLProcessor(spacy_path=args.spacy_path)
 
     start = args.start
 

@@ -12,25 +12,25 @@ from topiclabeling.utils.constants import (
     VOC_DIR, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX, TOKEN,
     SENT_IDX, HASH, NOUN_PHRASE, NLP_DIR, PUNCT, TITLE, ETL_DIR, DESCRIPTION, IWNLP_FILE
 )
+from topiclabeling.utils.logging import logg
 
 
 class NLProcessor(object):
 
     FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
 
-    def __init__(self, spacy_path, lemmatizer_path=IWNLP_FILE, log_fn=None):
-        self.log = log_fn if log_fn else print
+    def __init__(self, spacy_path, lemmatizer_path=IWNLP_FILE):
 
         # ------ load spacy and iwnlp ------
-        log_fn("loading spacy")
+        logg("loading spacy")
         self.nlp = spacy.load(spacy_path)
         # nlp = spacy.load(de, disable=['parser'])   # <-- load without dependency parser (fast)
 
         if VOC_DIR.exists():
-            self.log(f"reading vocab from {VOC_DIR}")
+            logg(f"reading vocab from {VOC_DIR}")
             self.nlp.vocab.from_disk(VOC_DIR)
 
-        self.log("loading IWNLPWrapper")
+        logg("loading IWNLPWrapper")
         self.lemmatizer = LemmatizerPlus(lemmatizer_path, self.nlp)
         self.nlp.add_pipe(self.lemmatizer)
         self.stringstore = self.nlp.vocab.strings
@@ -46,16 +46,16 @@ class NLProcessor(object):
         :param stop: if not None: last processed document at index `stop`-1.
         """
 
-        self.log(f"*** start new corpus: {corpus_name}")
+        logg(f"*** start new corpus: {corpus_name}")
         t0 = time()
 
         # read the etl dataframe
         slicing = f"[{start:d}:{stop:d}]" if (start or stop) else ''
-        self.log(f"{corpus_name}: reading corpus{slicing} from {file_path}")
+        logg(f"{corpus_name}: reading corpus{slicing} from {file_path}")
         df = self.read(file_path, start=start, stop=stop)
 
         # start the nlp pipeline
-        self.log(f"{corpus_name}: start processing")
+        logg(f"{corpus_name}: start processing")
         # self.check_docs(df); return
         reader = self.process_docs(df, ignore_title=corpus_name.startswith('dewac'))
 
@@ -66,7 +66,7 @@ class NLProcessor(object):
 
         NLP_DIR.mkdir(exist_ok=True, parents=True)
         filename = NLP_DIR / f'{corpus_name}{suffix}.csv'
-        self.log(f"{corpus_name}: saving to {filename}")
+        logg(f"{corpus_name}: saving to {filename}")
 
         with open(filename, 'w') as fp:
             header = True
@@ -74,12 +74,12 @@ class NLProcessor(object):
                 try:
                     doc.to_csv(fp, sep='\t', quoting=csv.QUOTE_NONE, index=None, header=header)
                 except csv.Error as e:
-                    print(doc)
+                    logg(doc)
                     raise e
                 header = False
 
         t1 = int(time() - t0)
-        self.log(f"{corpus_name}: done in {t1 // 3600:02d}:{(t1 // 60) % 60:02d}:{t1 % 60:02d}")
+        logg(f"{corpus_name}: done in {t1 // 3600:02d}:{(t1 // 60) % 60:02d}:{t1 % 60:02d}")
 
     def process_docs(self, text_df, fix_encoding_errors=True, ignore_title=False):
         """Processes DataFrames from the ETL pipeline with the NLP pipeline."""
@@ -118,7 +118,8 @@ class NLProcessor(object):
 
             yield self.df_from_doc(attr)
 
-    def read(self, f, start=0, stop=None):
+    @staticmethod
+    def read(f, start=0, stop=None):
         """Reads a dataframe from pickle format."""
 
         df = pd.read_pickle(f)[[TITLE, DESCRIPTION, TEXT]].iloc[start:stop]
@@ -126,7 +127,7 @@ class NLProcessor(object):
         if 'dewiki' in f.name:
             good_ids = pd.read_pickle(ETL_DIR / 'dewiki_good_ids.pickle')
             df = df[df.index.isin(good_ids.index)]
-        self.log(f"using {len(df):d} documents")
+        logg(f"using {len(df):d} documents")
 
         return df
 

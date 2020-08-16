@@ -20,7 +20,7 @@ if __name__ == "__main__":
     prefixes = r'^(' + '|'.join(args.corpus) + r').'
     pattern = re.compile(prefixes)
     files = sorted(f for f in ETL_DIR.iterdir() if f.is_file() and pattern.match(f.name))
-    processor = NLProcessor(spacy_path=args.spacy_path)
+    processor = NLProcessor(spacy_path=args.spacy_path, lemmatization_map_file=args.lemmata)
 
     start = args.start
 

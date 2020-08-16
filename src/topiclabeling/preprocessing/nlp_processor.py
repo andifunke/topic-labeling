@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import csv
+from pathlib import Path
 from time import time
 
 import pandas as pd
@@ -19,7 +20,7 @@ class NLProcessor(object):
 
     FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
 
-    def __init__(self, spacy_path, lemmatizer_path=IWNLP_FILE):
+    def __init__(self, spacy_path, iwnlp_path=IWNLP_FILE, lemmatization_map_file=None):
 
         # ------ load spacy and iwnlp ------
         logg("loading spacy")
@@ -31,7 +32,8 @@ class NLProcessor(object):
             self.nlp.vocab.from_disk(VOC_DIR)
 
         logg("loading IWNLPWrapper")
-        self.lemmatizer = LemmatizerPlus(lemmatizer_path, self.nlp)
+        self.lemmatizer = LemmatizerPlus(
+            iwnlp_path, self.nlp, lemmatization_map_file=lemmatization_map_file)
         self.nlp.add_pipe(self.lemmatizer)
         self.stringstore = self.nlp.vocab.strings
 

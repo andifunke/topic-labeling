@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
+import math
 
 from iwnlp.iwnlp_wrapper import IWNLPWrapper
 from spacy.tokens import Token
+
+import pandas as pd
 
 from topiclabeling.utils.constants import (
     ADJ, ADV, INTJ, NOUN, PROPN, VERB, ADP, AUX, CCONJ, CONJ, DET, NUM,
@@ -11,12 +14,26 @@ from topiclabeling.utils.constants import (
 
 class LemmatizerPlus(object):
 
-    def __init__(self, lemmatizer_path, nlp):
+    def __init__(self, lemmatizer_path, nlp, lemmatization_map_file=None):
+        """
+
+        :param lemmatizer_path:
+        :param nlp:
+        :param lemmatization_map_file: Reads a tab separated dataframe from the filepath
+            with index=(term, pos) => lemma. Expected row format: term<tab>pos<tab>lemma.
+            The lemmatization_map defines exceptions for the IWNLP LemmatizerPlus
+            and overrides its suggestions.
+
+        """
         self.lemmatizer = IWNLPWrapper(lemmatizer_path=lemmatizer_path)
         self.stringstore = nlp.vocab.strings
 
         Token.set_extension('iwnlp_lemmas', getter=self.lemmatize, force=True)
         self.lookup = {('fast', ADV): 'fast'}
+
+        self.lemmatization_map = pd.read_csv(
+            lemmatization_map_file, sep='\t', header=None, index_col=[0, 1], names=['lemma']
+        ) if lemmatization_map_file else None
 
     def __call__(self, doc):
         for token in doc:
@@ -32,13 +49,21 @@ class LemmatizerPlus(object):
 
         :param token: white space stripped single token (str)
         :param tolerance: min number of chars to infer compound lemmata.
-        :return: str # TODO: tuple of type (str, bool)
-               value[0]: The lemma of the token if a lemma can be derived, else None.
+        :return: str
+               # TODO: tuple of type (str, bool)
+               #       value[0]: The lemma of the token if a lemma can be derived, else None.
                # TODO: value[1]: True if the token can be retrieved from the Wiktionary
                #       database as is, else False.
         """
         text = token.text.strip()
         pos = token.pos_
+
+        try:
+            if (text, math.nan) in self.lemmatization_map.index:
+                return self.lemmatization_map.loc[(text, math.nan), 'lemma']
+            return self.lemmatization_map.loc[(text, pos), 'lemma']
+        except (TypeError, KeyError):
+            pass
 
         # nothing to lemmatize here
         if pos in {PHRASE, NPHRASE, PUNCT, SYM}:

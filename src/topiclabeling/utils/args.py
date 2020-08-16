@@ -23,6 +23,12 @@ def global_args():
     parser.add_argument('--log', type=str, nargs='*', required=False, default=['stdout', 'file'],
                         choices=['stdout', 'file', 'none'])  # TODO: add exclusivity for 'none'
     parser.add_argument('--log_path', type=str, required=False, default=LOG_DIR)
+    parser.add_argument('--lemmata', type=str, required=False,
+                        help="Path to a tab separated text file that maps surface forms to "
+                             "a normalized form. Can also be used to define exceptions for "
+                             "tokens that should not be lemmatized. An optional POS tag can "
+                             "can specified as an additional filter. Use the following pattern "
+                             "per row: TOKEN<tab>POS<tab>LEMMA")
 
     args = parser.parse_args()
 

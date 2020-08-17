@@ -62,7 +62,7 @@ class LemmatizerPlus(object):
             if (text, math.nan) in self.lemmatization_map.index:
                 return self.lemmatization_map.loc[(text, math.nan), 'lemma']
             return self.lemmatization_map.loc[(text, pos), 'lemma']
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, AttributeError):
             pass
 
         # nothing to lemmatize here

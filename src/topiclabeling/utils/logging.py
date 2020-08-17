@@ -25,22 +25,22 @@ EXCEPTION = ERROR + 1
 
 def timestamp() -> str:
     """Returns a formatted time stamp as string."""
-    
+
     now = datetime.now()
 
     return now.strftime("%Y-%m-%d--%H-%M-%S--%f")
 
 
 def init_logging(
-        name: str = None, 
+        name: str = None,
         to_stdout: bool = False,
-        to_file: bool = True, 
-        log_file: str = None, 
+        to_file: bool = True,
+        log_file: str = None,
         log_dir: str = None,
-        append: bool = False, 
+        append: bool = False,
         time_stamp: str = None,
         stdout_level=INFO,
-        logfile_level=DEBUG, 
+        logfile_level=DEBUG,
         debug: bool = False,
 ) -> Logger:
     """
@@ -52,7 +52,7 @@ def init_logging(
     :param to_file: Set to True to write logging to a log-file.
     :param log_file: Name of a log-file (without path). By default referred from the
         logger name. Forces append=True.
-    :param log_dir: Name of the log-dir. By default in ./PROJECT_ROOT/log/.
+    :param log_dir: Name of the log-dir. By default in ./PROJECT_ROOT/logs/.
     :param append: If True: use a single log-file for every run.
         If False: Create a unique, time-stamped log-file for each run.
     :param time_stamp: Pass a global time-stamp for the log file name. Only evaluated if

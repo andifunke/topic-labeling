@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import csv
-from pathlib import Path
 from time import time
 
 import pandas as pd

@@ -1,63 +1,75 @@
 # coding: utf-8
 import gc
-from os import listdir, makedirs
-from os.path import isfile, join, exists
+from pathlib import Path
 from time import time
 
-import numpy
 import pandas as pd
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
+from tqdm import tqdm
 
-from topiclabeling.constants import ETL_PATH, SIMPLE_PATH, TOKEN, HASH, TEXT, EMB_PATH
-from topiclabeling.train_utils import parse_args, EpochSaver, EpochLogger
-from topiclabeling.utils import init_logging, log_args
+from topiclabeling.utils.constants import ETL_DIR, HASH, TOKEN, TEXT, EMB_DIR
+from topiclabeling.utils.logging import logg, init_logging, log_args
+from topiclabeling.utils.train_utils import parse_args, EpochSaver, EpochLogger
 
 
 class Documents(object):
 
-    def __init__(self, input_dir, logger, lowercase=False):
-        self.input_dir = input_dir
-        self.logger = logger
+    def __init__(self, input_path, lowercase=False, input_format='text'):
+        self.input_path = Path(input_path)
+        if self.input_path.is_dir():
+            self.files = sorted(f for f in input_path.iterdir() if f.is_file())
+        else:
+            self.files = [self.input_path]
+
         self.lowercase = lowercase
-        self.files = sorted([f for f in listdir(input_dir) if isfile(join(input_dir, f))])
-        self.goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
-        self.titles = pd.read_pickle(join(ETL_PATH, 'dewiki_phrases_lemmatized.pickle'))
-        if lowercase:
-            self.titles.token = self.titles.token.str.lower()
-            self.titles.text = self.titles.text.str.lower()
+        self.pickle_format = input_format == 'pickle'
 
     def __iter__(self):
-        for name in self.files[:]:
+        yield from self._iter_pickle() if self.pickle_format else self._iter_text()
+
+    def _iter_text(self):
+
+        i = 0
+
+        def tag(doc):
+            nonlocal i
+            i += 1
+            tagged_doc = TaggedDocument(doc.strip().split(), [i])
+            return tagged_doc
+
+        for filename in self.files:
+            with open(filename) as fp:
+                logg(f"Reading {filename}")
+                yield from map(tag, fp)
+
+    def _iter_pickle(self):
+        titles = pd.read_pickle(ETL_DIR / 'dewiki_phrases_lemmatized.pickle')
+        if self.lowercase:
+            titles.token = titles.token.str.lower()
+            titles.text = titles.text.str.lower()
+
+        for file in self.files:
             gc.collect()
-            corpus = name.split('.')[0]
-            self.logger.info('loading ' + corpus)
-            
-            f = join(self.input_dir, name)
-            df = pd.read_pickle(f)
+            corpus = file.name.split('.')[0]
+            logg(f'loading {corpus}')
+
+            df = pd.read_pickle(file)
 
             # applying the same processing to each document on each iteration 
-            # is quite inefficient. If applicable keep TaggedDocuments in memory
-            df = df[df.hash.isin(self.goodids.index)]
-
+            # is rather inefficient. If applicable keep TaggedDocuments in memory
             if self.lowercase:
                 df.token = df.token.str.lower()
             df = df.groupby([HASH], sort=False)[TOKEN].agg(self.docs_to_lists)
 
             for doc_id, doc in df.iteritems():
-                # replacing the first token with the title is needed due to a bug caused by
-                # wrong NER and noun chunk detection in spacy. Spacy sometimes detects NERs beyond line
-                # breaks. The following phrase detection may concatenate these NERs, resulting in
-                # corrupted token phrases. Setting the first token to the title (which it should be
-                # anyway) ensures that the title is not affected by this bug.
-                doc = list(doc)
-                doc[0] = self.titles.loc[doc_id, TOKEN]
-                # The conversion of the hash_id to str is necessary since gensim trys to allocate an
-                # array for ids of size 2^64 if int values are too big. 2nd tag is the lemmatized token,
-                # 3rd tag is the original (underscore-concatenated) title (parenthesis removed)
+                # The conversion of the hash_id to str is necessary since gensim tries to
+                # allocate an array for ids of size 2^64 if int values are too big. 2nd tag
+                # is the lemmatized token, 3rd tag is the original (underscore-concatenated)
+                # title (parenthesis removed)
                 yield TaggedDocument(doc, [
                     str(doc_id),
-                    self.titles.loc[doc_id, TOKEN],
-                    self.titles.loc[doc_id, TEXT]
+                    titles.loc[doc_id, TOKEN],
+                    titles.loc[doc_id, TEXT]
                 ])
 
     @staticmethod
@@ -65,31 +77,31 @@ class Documents(object):
         return tuple(token_series.tolist())
 
 
+# TODO: merge with `train_w2v`
 def main():
+    t0 = time()
+
     # --- argument parsing ---
-    (
-        model_name, epochs, min_count, cores, checkpoint_every,
-        cache_in_memory, lowercase, _, args
-    ) = parse_args(default_model_name='d2v', default_epochs=20)
+    args = parse_args(default_model_name='d2v', default_epochs=50)
 
     # --- init logging ---
-    logger = init_logging(name=model_name, basic=True, to_file=True, to_stdout=False)
-    log_args(logger, args)
+    init_logging(name=args.model_name, to_stdout='stdout' in args.log, to_file='file' in args.log)
+    log_args(args)
 
-    input_dir = join(SIMPLE_PATH, 'dewiki')
-    model_dir = join(EMB_PATH, model_name)
-    if not exists(model_dir):
-        makedirs(model_dir)
-    logger.info('model dir: ' + model_dir)
+    input_path = Path(args.input)
+    model_path = EMB_DIR / args.model_name
+    model_path.mkdir(exist_ok=True, parents=True)
+    logg(f"model dir: {model_path}")
 
-    t0 = time()
-    documents = Documents(input_dir=input_dir, logger=logger, lowercase=lowercase)
-    if cache_in_memory:
-        documents = list(documents)
-    gc.collect()
+    documents = Documents(input_path, lowercase=args.lowercase, input_format=args.format)
+    if not args.stream:
+        # needs approx. 25GB of RAM for Wikipedia
+        logg("caching data in memory")
+        documents = [s for s in tqdm(documents, unit=' lines')]
+        gc.collect()
 
     # Model initialization
-    logger.info('Initializing new model')
+    logg("Initializing new model")
     model = Doc2Vec(
         vector_size=300,
         window=15,
@@ -101,17 +113,17 @@ def main():
         dbow_words=1,
         dm_concat=0,
         seed=42,
-        epochs=epochs,
-        workers=cores,
+        epochs=args.epochs,
+        workers=args.cores,
     )
-    logger.info('Building vocab')
+    logg("Building vocab")
     model.build_vocab(documents)
 
-    # Model Training
-    epoch_saver = EpochSaver(model_name, model_dir, checkpoint_every)
-    epoch_logger = EpochLogger(logger)
+    # Model training
+    epoch_saver = EpochSaver(model_path, args.checkpoint_every)
+    epoch_logger = EpochLogger()
 
-    logger.info('Training {:d} epochs'.format(epochs))
+    logg(f"Training {args.epochs:d} epochs")
     model.train(
         documents,
         total_examples=model.corpus_count,
@@ -121,16 +133,14 @@ def main():
     )
 
     # saving model
-    file_path = join(model_dir, model_name)
-    logger.info('Writing model to ' + file_path)
+    file_path = model_path / args.model_name
+    logg(f"Writing model to {file_path}")
     model.callbacks = ()
-    model.save(file_path)
+    model.save(str(file_path))
 
     t1 = int(time() - t0)
-    logger.info("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
+    logg(f"all done in {t1 // 3600:02d}:{(t1 // 60) % 60:02d}:{t1 % 60:02d}")
 
 
 if __name__ == '__main__':
     main()
-
-    numpy.random.randn()

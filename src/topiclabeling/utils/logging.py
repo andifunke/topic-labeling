@@ -25,22 +25,22 @@ EXCEPTION = ERROR + 1
 
 def timestamp() -> str:
     """Returns a formatted time stamp as string."""
-
+    
     now = datetime.now()
 
     return now.strftime("%Y-%m-%d--%H-%M-%S--%f")
 
 
 def init_logging(
-        name: str = None,
+        name: str = None, 
         to_stdout: bool = False,
-        to_file: bool = True,
-        log_file: str = None,
+        to_file: bool = True, 
+        log_file: str = None, 
         log_dir: str = None,
-        append: bool = False,
+        append: bool = False, 
         time_stamp: str = None,
         stdout_level=INFO,
-        logfile_level=DEBUG,
+        logfile_level=DEBUG, 
         debug: bool = False,
 ) -> Logger:
     """
@@ -120,7 +120,8 @@ def init_logging(
 
     logger.info('')
     logger.info('#' * 75)
-    logger.info("----- %s -----" % name.upper())
+    logger.info(f"----- {name.upper()} -----")
+    logger.info(f"- log-file: {log_file} -")
     logger.info("----- start -----")
     logger.debug(f"python: %s" % sys.version.replace('\n', ' '))
     logger.debug(f"topiclabeling: {topiclabeling.__version__}")
@@ -133,7 +134,7 @@ def logg(
         level: int = INFO,
         logger: Logger = None,
         flush: bool = False,
-):
+) -> object:
     """
     Enhanced replacement for the print function. Falls back to print if necessary.
 

@@ -40,7 +40,7 @@ class Documents(object):
         for filename in self.files:
             with open(filename) as fp:
                 logg(f"Reading {filename}")
-                yield from map(tag, fp)
+                yield from map(tag, tqdm(fp, unit=' documents'))
 
     def _iter_pickle(self):
         titles = pd.read_pickle(ETL_DIR / 'dewiki_phrases_lemmatized.pickle')
@@ -105,7 +105,8 @@ def main():
     model = Doc2Vec(
         vector_size=300,
         window=15,
-        min_count=20,
+        min_count=args.min_count,
+        max_vocab_size=args.max_vocab_size,
         sample=1e-5,
         negative=5,
         hs=0,

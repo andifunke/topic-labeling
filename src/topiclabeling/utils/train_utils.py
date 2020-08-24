@@ -76,6 +76,7 @@ def parse_args(default_model_name='x2v', default_epochs=20):
     parser.add_argument("--model_name", type=str, required=False, default=default_model_name)
     parser.add_argument("--epochs", type=int, required=False, default=default_epochs)
     parser.add_argument("--min_count", type=int, required=False, default=20)
+    parser.add_argument("--max_vocab_size", type=int, required=False, default=None)
     parser.add_argument("--cores", type=int, required=False, default=mp.cpu_count())
     parser.add_argument("--checkpoint_every", type=int, required=False, default=10)
     parser.add_argument('--log', type=str, nargs='*', required=False, default=['stdout', 'file'],

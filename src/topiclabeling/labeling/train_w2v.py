@@ -117,6 +117,7 @@ def main():
         size=300,
         window=5,
         min_count=args.min_count,
+        max_vocab_size=args.max_vocab_size,
         sample=1e-5,
         negative=5,
         sg=1,

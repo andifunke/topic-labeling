@@ -144,6 +144,7 @@ def main():
         epochs=model.epochs,
         report_delay=60,
         callbacks=[epoch_logger, epoch_saver],
+        comute_loss=True,
     )
 
     # saving model

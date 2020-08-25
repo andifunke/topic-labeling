@@ -3,8 +3,10 @@ import argparse
 import multiprocessing as mp
 from pathlib import Path
 
+import pandas as pd
 from gensim.models.callbacks import CallbackAny2Vec
 
+from topiclabeling.utils.constants import TMP_DIR
 from topiclabeling.utils.logging import logg
 
 
@@ -23,7 +25,56 @@ class EpochLogger(CallbackAny2Vec):
 
     def on_epoch_end(self, model):
         logg(f"Epoch #{self.epoch:02d} end")
+        try:
+            logg(f"Train loss: {model.get_latest_training_loss()}")
+        except AttributeError:
+            pass
         self.epoch += 1
+
+
+class SynonymJudgementTaskDEMetric(CallbackAny2Vec):
+    """Perform a German Synonym Judgement Task at the end of each epoch."""
+
+    def __init__(self):
+        sj_file_de = TMP_DIR / 'synonym_judgement/SJT_stimuli.csv'
+        sj_de_full = pd.read_csv(sj_file_de)
+        sj_de = sj_de_full[['probe', 'target', 'foil1', 'foil2']]
+        self.sj_de = sj_de[~sj_de.isna().any(axis=1)]
+
+    @staticmethod
+    def closest_match(terms, vectors):
+        """
+        Returns the index of the term closest to the first term in a list of words.
+
+        Note that index 0 is taken as the probe and all words with index > 0 are tested.
+        """
+
+        terms = terms.to_list()
+        # print(terms)
+        try:
+            distances = vectors.distances(terms[0], terms[1:])
+            # print(distances)
+            min_dist = distances.argmin() + 1
+            return min_dist
+        except KeyError:
+            for term in terms:
+                if term not in vectors:
+                    print(f"missing in vectors: '{term}'")
+            return -1
+
+    def synonym_judgement_accuracy(self, word_vectors, target_idx=1):
+        pred = self.sj_de.apply(lambda x: self.closest_match(x, word_vectors), axis=1)
+        pred = pred[pred > 0]
+        correct = (pred == target_idx).sum()
+        acc = correct / len(pred)
+        logg('SJT accuracy:', round(acc, 3))
+        logg('Tests omitted due to OOV terms:', len(self.sj_de) - len(pred))
+
+    def on_epoch_begin(self, model):
+        pass
+
+    def on_epoch_end(self, model):
+        self.synonym_judgement_accuracy(model.wv)
 
 
 class EpochSaver(CallbackAny2Vec):
@@ -81,6 +132,10 @@ def parse_args(default_model_name='x2v', default_epochs=20):
     parser.add_argument("--checkpoint_every", type=int, required=False, default=10)
     parser.add_argument('--log', type=str, nargs='*', required=False, default=['stdout', 'file'],
                         choices=['stdout', 'file', 'none'])  # TODO: add exclusivity for 'none'
+    parser.add_argument('--vocab', type=str, required=False,
+                        help="File path containing terms per line to be included in the "
+                             "model's vocabulary. "
+                             "Terms will only be in the vocab, if found in the corpus.")
 
     args = parser.parse_args()
 

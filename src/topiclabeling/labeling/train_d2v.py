@@ -5,11 +5,13 @@ from time import time
 
 import pandas as pd
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
+from gensim.utils import RULE_KEEP, RULE_DISCARD
 from tqdm import tqdm
 
 from topiclabeling.utils.constants import ETL_DIR, HASH, TOKEN, TEXT, EMB_DIR
 from topiclabeling.utils.logging import logg, init_logging, log_args
-from topiclabeling.utils.train_utils import parse_args, EpochSaver, EpochLogger
+from topiclabeling.utils.train_utils import parse_args, EpochSaver, EpochLogger, \
+    SynonymJudgementTaskDEMetric
 
 
 class Documents(object):
@@ -118,11 +120,27 @@ def main():
         workers=args.cores,
     )
     logg("Building vocab")
-    model.build_vocab(documents)
+    if args.vocab:
+        with open(args.vocab) as fp:
+            print(f'Loading vocab file {args.vocab}')
+            vocab_terms = sorted({line.strip() for line in fp.readlines()})
+            print(f'{len(vocab_terms)} terms loaded.')
+    else:
+        vocab_terms = []
+
+    def trim_rule(word, count, min_count):
+        if word in vocab_terms:
+            return RULE_KEEP
+        if count >= min_count:
+            return RULE_KEEP
+        return RULE_DISCARD
+
+    model.build_vocab(documents, trim_rule=trim_rule)
 
     # Model training
     epoch_saver = EpochSaver(model_path, args.checkpoint_every)
     epoch_logger = EpochLogger()
+    sjt_de = SynonymJudgementTaskDEMetric()
 
     logg(f"Training {args.epochs:d} epochs")
     model.train(
@@ -130,7 +148,7 @@ def main():
         total_examples=model.corpus_count,
         epochs=model.epochs,
         report_delay=60,
-        callbacks=[epoch_logger, epoch_saver],
+        callbacks=[epoch_logger, sjt_de, epoch_saver],
     )
 
     # saving model

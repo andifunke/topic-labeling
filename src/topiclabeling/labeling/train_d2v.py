@@ -140,7 +140,7 @@ def main():
     # Model training
     epoch_saver = EpochSaver(model_path, args.checkpoint_every)
     epoch_logger = EpochLogger()
-    sjt_de = SynonymJudgementTaskDEMetric()
+    sjt_de = SynonymJudgementTaskDEMetric(call_every=1)
 
     logg(f"Training {args.epochs:d} epochs")
     model.train(

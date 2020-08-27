@@ -35,11 +35,13 @@ class EpochLogger(CallbackAny2Vec):
 class SynonymJudgementTaskDEMetric(CallbackAny2Vec):
     """Perform a German Synonym Judgement Task at the end of each epoch."""
 
-    def __init__(self):
+    def __init__(self, call_every=1):
         sj_file_de = TMP_DIR / 'synonym_judgement/SJT_stimuli.csv'
         sj_de_full = pd.read_csv(sj_file_de)
         sj_de = sj_de_full[['probe', 'target', 'foil1', 'foil2']]
         self.sj_de = sj_de[~sj_de.isna().any(axis=1)]
+        self.call_every = call_every
+        self.epoch = 1
 
     @staticmethod
     def closest_match(terms, vectors):
@@ -50,16 +52,14 @@ class SynonymJudgementTaskDEMetric(CallbackAny2Vec):
         """
 
         terms = terms.to_list()
-        # print(terms)
         try:
             distances = vectors.distances(terms[0], terms[1:])
-            # print(distances)
             min_dist = distances.argmin() + 1
             return min_dist
         except KeyError:
-            for term in terms:
-                if term not in vectors:
-                    print(f"missing in vectors: '{term}'")
+            # for term in terms:
+            #     if term not in vectors:
+            #         logg(f"missing in vectors: '{term}'")
             return -1
 
     def synonym_judgement_accuracy(self, word_vectors, target_idx=1):
@@ -67,14 +67,16 @@ class SynonymJudgementTaskDEMetric(CallbackAny2Vec):
         pred = pred[pred > 0]
         correct = (pred == target_idx).sum()
         acc = correct / len(pred)
-        logg('SJT accuracy:', round(acc, 3))
-        logg('Tests omitted due to OOV terms:', len(self.sj_de) - len(pred))
+        logg(f"SJT accuracy: {round(acc, 3)}")
+        logg(f"Number of tests omitted due to OOV terms: {len(self.sj_de) - len(pred)}")
 
     def on_epoch_begin(self, model):
         pass
 
     def on_epoch_end(self, model):
-        self.synonym_judgement_accuracy(model.wv)
+        if self.epoch % self.call_every == 0:
+            self.synonym_judgement_accuracy(model.wv)
+        self.epoch += 1
 
 
 class EpochSaver(CallbackAny2Vec):
@@ -96,7 +98,7 @@ class EpochSaver(CallbackAny2Vec):
         if self.epoch % self.checkpoint_every == 0:
             file = f'{self.model_name}_epoch{self.epoch:02d}'
             file_path = self.directory / file
-            print(f'Saving checkpoint to {file_path}')
+            logg(f'Saving checkpoint to {file_path}')
             callbacks = model.callbacks
             model.callbacks = ()
             model.save(str(file_path))

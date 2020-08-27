@@ -18,12 +18,12 @@ PROJECT_DIR = SRC_DIR.parent
 DATA_DIR = PROJECT_DIR / 'data'
 OUT_DIR = DATA_DIR / 'out'
 LOG_DIR = PROJECT_DIR / 'logs'
+TMP_DIR = PROJECT_DIR / 'tmp'
 
 # FULL_PATH = DATA_BASE, LOCAL_PATH
 ETL_DIR = OUT_DIR / 'etl'
 NLP_DIR = OUT_DIR / 'nlp'
 PHRASES_DIR = OUT_DIR / 'simple'
-TMP_DIR = DATA_DIR / 'tmp'
 SPACY_DIR = NLP_DIR / 'spacy_model'
 VOC_DIR = SPACY_DIR / 'vocab'
 LDA_DIR = OUT_DIR / 'LDA_model'

@@ -17,8 +17,8 @@ class EpochLogger(CallbackAny2Vec):
     Not serializable -> remove before saving the model.
     """
 
-    def __init__(self):
-        self.epoch = 1
+    def __init__(self, start_epoch: int = 1):
+        self.epoch = start_epoch
 
     def on_epoch_begin(self, model):
         logg(f"Epoch #{self.epoch:02d} start")
@@ -35,13 +35,13 @@ class EpochLogger(CallbackAny2Vec):
 class SynonymJudgementTaskDEMetric(CallbackAny2Vec):
     """Perform a German Synonym Judgement Task at the end of each epoch."""
 
-    def __init__(self, call_every=1):
+    def __init__(self, call_every: int = 1, start_epoch: int = 1):
         sj_file_de = TMP_DIR / 'synonym_judgement/SJT_stimuli.csv'
         sj_de_full = pd.read_csv(sj_file_de)
         sj_de = sj_de_full[['probe', 'target', 'foil1', 'foil2']]
         self.sj_de = sj_de[~sj_de.isna().any(axis=1)]
         self.call_every = call_every
-        self.epoch = 1
+        self.epoch = start_epoch
 
     @staticmethod
     def closest_match(terms, vectors):
@@ -57,9 +57,6 @@ class SynonymJudgementTaskDEMetric(CallbackAny2Vec):
             min_dist = distances.argmin() + 1
             return min_dist
         except KeyError:
-            # for term in terms:
-            #     if term not in vectors:
-            #         logg(f"missing in vectors: '{term}'")
             return -1
 
     def synonym_judgement_accuracy(self, word_vectors, target_idx=1):
@@ -86,13 +83,13 @@ class EpochSaver(CallbackAny2Vec):
     For compatibility -> remove before saving the model.
     """
 
-    def __init__(self, model_path, checkpoint_every=5):
+    def __init__(self, model_path, checkpoint_every: int = 5, start_epoch: int = 1):
         model_path = Path(model_path)
         self.model_name = model_path.name
         self.directory = model_path / 'checkpoints'
         self.directory.mkdir(exist_ok=True, parents=True)
         self.checkpoint_every = checkpoint_every
-        self.epoch = 1
+        self.epoch = start_epoch
 
     def on_epoch_end(self, model):
         if self.epoch % self.checkpoint_every == 0:
@@ -120,24 +117,29 @@ def parse_args(default_model_name='x2v', default_epochs=20):
     parser.add_argument('--no-fasttext', dest='fasttext', action='store_false', required=False)
     parser.set_defaults(fasttext=False)
 
-    parser.add_argument("--input", type=str, required=False, default='dewiki',
+    parser.add_argument("--input", type=str, default='dewiki',
                         help="Full path to an input corpus or common corpus name.")
-    parser.add_argument("--format", type=str, required=False, choices=['text', 'pickle'],
-                        default='text',
+    parser.add_argument("--format", type=str, default='text', choices=['text', 'pickle'],
                         help="text: expects a text file with one sentence/document per line. "
                              "pickle: expects a pickled dataframe in the common package format.")
-    parser.add_argument("--model_name", type=str, required=False, default=default_model_name)
-    parser.add_argument("--epochs", type=int, required=False, default=default_epochs)
-    parser.add_argument("--min_count", type=int, required=False, default=20)
-    parser.add_argument("--max_vocab_size", type=int, required=False, default=None)
-    parser.add_argument("--cores", type=int, required=False, default=mp.cpu_count())
-    parser.add_argument("--checkpoint_every", type=int, required=False, default=10)
-    parser.add_argument('--log', type=str, nargs='*', required=False, default=['stdout', 'file'],
+    parser.add_argument("--model_name", type=str, default=default_model_name)
+    parser.add_argument("--epochs", type=int, default=default_epochs)
+    parser.add_argument("--min_count", type=int, default=20)
+    parser.add_argument("--max_vocab_size", type=int, default=None)
+    parser.add_argument("--cores", type=int, default=mp.cpu_count())
+    parser.add_argument("--checkpoint_every", type=int, default=10)
+    parser.add_argument('--log', type=str, nargs='*', default=['stdout', 'file'],
                         choices=['stdout', 'file', 'none'])  # TODO: add exclusivity for 'none'
     parser.add_argument('--vocab', type=str, required=False,
                         help="File path containing terms per line to be included in the "
                              "model's vocabulary. "
                              "Terms will only be in the vocab, if found in the corpus.")
+    parser.add_argument("--from_checkpoint", type=str, default=None,
+                        help="Load checkpoint from path and continue training.")
+    parser.add_argument("--from_epoch", type=int, default=1,
+                        help="Specify an offset index for the epochs in order to not overwrite "
+                             "existing checkpoints. Otherwise the training will start with epoch 1, "
+                             "even when training continues from a loaded checkpoint.")
 
     args = parser.parse_args()
 

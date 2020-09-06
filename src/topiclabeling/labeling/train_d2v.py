@@ -103,44 +103,50 @@ def main():
         gc.collect()
 
     # Model initialization
-    logg("Initializing new model")
-    model = Doc2Vec(
-        vector_size=300,
-        window=15,
-        min_count=args.min_count,
-        max_vocab_size=args.max_vocab_size,
-        sample=1e-5,
-        negative=5,
-        hs=0,
-        dm=0,
-        dbow_words=1,
-        dm_concat=0,
-        seed=42,
-        epochs=args.epochs,
-        workers=args.cores,
-    )
-    logg("Building vocab")
-    if args.vocab:
-        with open(args.vocab) as fp:
-            print(f'Loading vocab file {args.vocab}')
-            vocab_terms = sorted({line.strip() for line in fp.readlines()})
-            print(f'{len(vocab_terms)} terms loaded.')
+    if args.from_checkpoint is None:
+        logg("Initializing new model")
+        model = Doc2Vec(
+            vector_size=300,
+            window=15,
+            min_count=args.min_count,
+            max_vocab_size=args.max_vocab_size,
+            sample=1e-5,
+            negative=5,
+            hs=0,
+            dm=0,
+            dbow_words=1,
+            dm_concat=0,
+            seed=42,
+            epochs=args.epochs,
+            workers=args.cores,
+        )
+        logg("Building vocab")
+        if args.vocab:
+            with open(args.vocab) as fp:
+                print(f'Loading vocab file {args.vocab}')
+                vocab_terms = sorted({line.strip() for line in fp.readlines()})
+                print(f'{len(vocab_terms)} terms loaded.')
+        else:
+            vocab_terms = []
+
+        def trim_rule(word, count, min_count):
+            if word in vocab_terms:
+                return RULE_KEEP
+            if count >= min_count:
+                return RULE_KEEP
+            return RULE_DISCARD
+
+        model.build_vocab(documents, trim_rule=trim_rule)
     else:
-        vocab_terms = []
-
-    def trim_rule(word, count, min_count):
-        if word in vocab_terms:
-            return RULE_KEEP
-        if count >= min_count:
-            return RULE_KEEP
-        return RULE_DISCARD
-
-    model.build_vocab(documents, trim_rule=trim_rule)
+        if not Path(args.from_checkpoint).exists():
+            raise ValueError(f"Path {args.from_checkpoint} does not exists")
+        logg(f'Loading model from {args.from_checkpoint}')
+        model = Doc2Vec.load(args.from_checkpoint)
 
     # Model training
-    epoch_saver = EpochSaver(model_path, args.checkpoint_every)
-    epoch_logger = EpochLogger()
-    sjt_de = SynonymJudgementTaskDEMetric(call_every=1)
+    epoch_saver = EpochSaver(model_path, args.checkpoint_every, start_epoch=args.from_epoch)
+    epoch_logger = EpochLogger(start_epoch=args.from_epoch)
+    sjt_de = SynonymJudgementTaskDEMetric(call_every=1, start_epoch=args.from_epoch)
 
     logg(f"Training {args.epochs:d} epochs")
     model.train(

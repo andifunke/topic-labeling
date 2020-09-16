@@ -36,7 +36,7 @@ class Documents(object):
         def tag(doc):
             nonlocal i
             i += 1
-            tagged_doc = TaggedDocument(doc.strip().split(), [i])
+            tagged_doc = TaggedDocument(doc.strip().split(), [str(i)])
             return tagged_doc
 
         for filename in self.files:

@@ -1,6 +1,7 @@
 # coding: utf-8
 import argparse
 import multiprocessing as mp
+from math import nan
 from pathlib import Path
 
 import pandas as pd
@@ -32,6 +33,7 @@ class EpochLogger(CallbackAny2Vec):
         self.epoch += 1
 
 
+# TODO: add EN metric
 class SynonymJudgementTaskDEMetric(CallbackAny2Vec):
     """Perform a German Synonym Judgement Task at the end of each epoch."""
 
@@ -63,7 +65,7 @@ class SynonymJudgementTaskDEMetric(CallbackAny2Vec):
         pred = self.sj_de.apply(lambda x: self.closest_match(x, word_vectors), axis=1)
         pred = pred[pred > 0]
         correct = (pred == target_idx).sum()
-        acc = correct / len(pred)
+        acc = correct / len(pred) if len(pred) else nan
         logg(f"SJT accuracy: {round(acc, 3)}")
         logg(f"Number of tests omitted due to OOV terms: {len(self.sj_de) - len(pred)}")
 

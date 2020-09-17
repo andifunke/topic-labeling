@@ -103,7 +103,13 @@ def main():
         gc.collect()
 
     # Model initialization
-    if args.from_checkpoint is None:
+    if args.from_checkpoint:
+        if not Path(args.from_checkpoint).exists():
+            raise ValueError(f"Path {args.from_checkpoint} does not exists")
+        logg(f'Loading model from {args.from_checkpoint}')
+        model = Doc2Vec.load(args.from_checkpoint)
+        model.workers = args.cores
+    else:
         logg("Initializing new model")
         model = Doc2Vec(
             vector_size=300,
@@ -137,11 +143,6 @@ def main():
             return RULE_DISCARD
 
         model.build_vocab(documents, trim_rule=trim_rule)
-    else:
-        if not Path(args.from_checkpoint).exists():
-            raise ValueError(f"Path {args.from_checkpoint} does not exists")
-        logg(f'Loading model from {args.from_checkpoint}')
-        model = Doc2Vec.load(args.from_checkpoint)
 
     # Model training
     epoch_saver = EpochSaver(model_path, args.checkpoint_every, start_epoch=args.from_epoch)
@@ -152,14 +153,14 @@ def main():
     model.train(
         documents,
         total_examples=model.corpus_count,
-        epochs=model.epochs,
+        epochs=args.epochs,
         report_delay=60,
         callbacks=[epoch_logger, sjt_de, epoch_saver],
     )
 
     # saving model
     file_path = model_path / args.model_name
-    logg(f"Writing model to {file_path}")
+    logg(f"Saving final model to {file_path}")
     model.callbacks = ()
     model.save(str(file_path))
 

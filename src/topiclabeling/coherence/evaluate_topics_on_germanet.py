@@ -1,17 +1,23 @@
-from os.path import join, exists
+from pathlib import Path
 from time import time
 
 import numpy as np
+import pandas as pd
 from pygermanet import load_germanet, Synset
 from tqdm import tqdm
 
-from topiclabeling.constants import LDA_PATH
-from topiclabeling.evaluate_topics import parse_args
-from topiclabeling.utils import load, init_logging, log_args
+from topiclabeling.utils.constants import LDA_DIR
+from topiclabeling.coherence.evaluate_topics import parse_args
+from topiclabeling.utils.utils import load
+from topiclabeling.utils.logging import init_logging, log_args, logg
 
 np.set_printoptions(precision=3)
 gn = load_germanet()
 tqdm.pandas()
+
+
+sim_fns = {'lch': Synset.sim_lch, 'res': Synset.sim_res, 'lin': Synset.sim_lin}
+dst_fns = {'jcn': Synset.dist_jcn}
 
 
 def orth(synset):
@@ -25,83 +31,84 @@ def compare_synset_lists(synset_list1, synset_list2, sim_func, agg_func):
         return np.nan
 
 
-def similarities(topic, topn, ignore_unknown=True, sim_func=Synset.sim_lch, agg_func=max):
-    arr = np.zeros((topn, topn))
-    for j, ssl1 in enumerate(topic.values):
-        for k, ssl2 in enumerate(topic.values[j+1:], j+1):
-            arr[j, k] = compare_synset_lists(ssl1, ssl2, sim_func, agg_func)
-    arr = np.add(arr, arr.T)
-    if ignore_unknown:
-        arr[arr == 0] = np.nan
-    # TODO: fill diagonal with 1
-    #  but shouldn't make a difference to correlation since it adds a constant offset
-    return np.nanmean(arr)
+def similarity(topic, topn, sim_fn=None, dist_fn=None):
+    arr = np.empty((topn, topn))
+    arr[:] = np.nan
+    topic = topic.to_numpy()
+
+    for i, ssl1 in enumerate(topic):
+        for j, ssl2 in enumerate(topic[i+1:], i+1):
+            arr[i, j] = compare_synset_lists(
+                ssl1, ssl2,
+                sim_func=dist_fn if dist_fn is not None else sim_fn,
+                agg_func=min if dist_fn is not None else max
+            )
+
+    if np.isnan(arr).all():
+        return np.nan
+
+    sim = np.nanmean(arr)
+    sim = -sim if dist_fn is not None else sim
+
+    return sim
 
 
 def main():
-    (
-        dataset, version, params, nbtopics, topn, cores, corpus_type,
-        use_coherence, use_w2v, rerank, lsi, args
-    ) = parse_args()
+    args = parse_args()
 
-    logger = init_logging(
-        name=f'Eval_topics_on_germanet_{dataset}', basic=False, to_stdout=True, to_file=True
+    init_logging(
+        name=f'Eval_topics_on_germanet{f"_{args.dataset}" if args.dataset else ""}',
+        to_stdout=True, to_file=True
     )
-    log_args(logger, args)
-    logg = logger.info
+    log_args(args)
 
-    purpose = 'rerank' if rerank else 'topics'
-    topics = load(purpose, dataset, version, corpus_type, lsi, *params, *nbtopics)
-    if topn > 0:
-        topics = topics[:topn]
+    purpose = 'rerank' if args.rerank else 'topics'
+    if args.topics:
+        topics = pd.read_csv(args.topics, header=None)
+        topics.columns = [f'term{i}' for i in topics.columns]
+    elif args.topics:
+        topics = load(
+            purpose, args.dataset, args.version, args.corpus_type, args.lsi,
+            *args.params, *args.nbtopics
+        )
     else:
-        topn = topics.shape[1]
+        raise ValueError('Either --dataset or --topics is required.')
+
+    if args.topn > 0:
+        topics = topics[:args.topn]
+    else:
+        args.topn = topics.shape[1]
     logg(f'Number of topics {topics.shape}')
 
     logg('Getting SynSets for topic terms')
-    sstopics = topics.applymap(gn.synsets)
+    topic_synsets = topics.applymap(gn.synsets)
 
-    topics['lch'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.sim_lch, agg_func=max, topn=topn
-    )
-    # TODO: should be the other way around !
-    topics['lch_ignr_unkwn'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.sim_lch, agg_func=max, topn=topn,
-        ignore_unknown=False
-    )
-    topics['res'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.sim_res, agg_func=max, topn=topn
-    )
-    topics['res_ignr_unkwn'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.sim_res, agg_func=max, topn=topn,
-        ignore_unknown=False
-    )
-    topics['jcn'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.dist_jcn, agg_func=min, topn=topn
-    )
-    topics['jcn_ignr_unkwn'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.dist_jcn, agg_func=min, topn=topn,
-        ignore_unknown=False
-    )
-    topics['lin'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.sim_lin, agg_func=max, topn=topn
-    )
-    topics['lin_ignr_unkwn'] = sstopics.progress_apply(
-        similarities, axis=1, sim_func=Synset.sim_lin, agg_func=max, topn=topn,
-        ignore_unknown=False
-    )
-
-    topics = topics.iloc[:, topn:]
-    tpx_path = join(LDA_PATH, version, 'bow', 'topics')
-    if rerank:
-        file = join(tpx_path, f'{dataset}_reranker-eval_germanet.csv')
-    else:
-        file = join(
-            tpx_path,
-            f'{dataset}{"_"+lsi if lsi else ""}_{version}_{corpus_type}_topic-scores_germanet.csv'
+    for metric in ['lch', 'res', 'jcn', 'lin']:
+        logg(f'metric: {metric}', flush=True)
+        topics[metric] = topic_synsets.progress_apply(
+            similarity, axis=1,
+            sim_fn=sim_fns.get(metric), dist_fn=dst_fns.get(metric), topn=args.topn,
         )
-    if exists(file):
-        file = file.replace('.csv', f'_{str(time()).split(".")[0]}.csv')
+
+    if args.topics:
+        tpx_path = Path(args.topics)
+        if args.rerank:
+            file = tpx_path.parent / f'{tpx_path.stem}_reranker-eval_germanet.csv'
+        else:
+            file = tpx_path.parent / f'{tpx_path.stem}_topic-scores_germanet.csv'
+    else:
+        tpx_path = LDA_DIR / args.version / 'bow' / 'topics'
+        if args.rerank:
+            file = tpx_path / f'{args.dataset}_reranker-eval_germanet.csv'
+        else:
+            file = (
+                tpx_path /
+                f'{args.dataset}{f"_{args.lsi}" if args.lsi else ""}_'
+                f'{args.version}_{args.corpus_type}_topic-scores_germanet.csv'
+            )
+
+    if file.exists():
+        file = file.parent / file.name.replace('.csv', f'_{str(time()).split(".")[0]}.csv')
 
     logg(f'Writing {file}')
     topics.to_csv(file)

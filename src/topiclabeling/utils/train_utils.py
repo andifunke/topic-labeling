@@ -140,8 +140,8 @@ def parse_args(default_model_name='x2v', default_epochs=20):
                         help="Load checkpoint from path and continue training.")
     parser.add_argument("--from_epoch", type=int, default=1,
                         help="Specify an offset index for the epochs in order to not overwrite "
-                             "existing checkpoints. Otherwise the training will start with epoch 1, "
-                             "even when training continues from a loaded checkpoint.")
+                             "existing checkpoints. Otherwise the training will start with "
+                             "epoch 1, even when training continues from a loaded checkpoint.")
 
     args = parser.parse_args()
 

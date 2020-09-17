@@ -1,8 +1,6 @@
 import json
 import re
 from itertools import chain
-from os import listdir
-from os.path import join
 
 import pandas as pd
 from gensim.corpora import Dictionary, MmCorpus
@@ -12,9 +10,7 @@ from topiclabeling.utils.constants import (
     OUT_DIR, NLP_DIR, PHRASES_DIR, LDA_DIR, DATASETS_FULL, PARAMS, NB_TOPICS, METRICS, VERSIONS,
     EMB_DIR, CORPUS_TYPE, WORD_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_DIR, TPX_DIR
 )
-
-
-# warnings.simplefilter(action='ignore', category=DtypeWarning)
+from topiclabeling.utils.logging import logg
 
 
 def index_level_dtypes(df):
@@ -30,38 +26,38 @@ def multiload(dataset, purpose='etl', deprecated=False):
     elif dataset.lower().startswith('dewi'):
         dewac = False
     else:
-        print('unkown dataset')
+        logg(f'unknown dataset: {dataset}')
         return
 
     if purpose is not None and purpose.lower() in ['simple', 'smpl', 'phrase']:
         if dewac:
-            dpath = join(PHRASES_DIR, 'wiki_phrases')
+            dir_path = PHRASES_DIR / 'wiki_phrases'
             pattern = re.compile(r'^dewac_[0-9]{2}_simple_wiki_phrases\.pickle')
-            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+            files = sorted([f for f in dir_path.iterdir() if pattern.match(f.name)])
         else:
-            dpath = join(PHRASES_DIR, 'dewiki')
+            dir_path = PHRASES_DIR / 'dewiki'
             pattern = re.compile(r'^dewiki_[0-9]+_[0-9]+__[0-9]+_simple\.pickle')
-            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+            files = sorted([f for f in dir_path.iterdir() if pattern.match(f.name)])
     elif purpose is not None and purpose.lower() == 'nlp':
-        dpath = NLP_DIR
+        dir_path = NLP_DIR
         if dewac:
             pattern = re.compile(r'^dewac_[0-9]{2}_nlp\.pickle')
-            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+            files = sorted([f for f in dir_path.iterdir() if pattern.match(f.name)])
         else:
             pattern = re.compile(r'^dewiki_[0-9]+_[0-9]+_nlp\.pickle')
-            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+            files = sorted([f for f in dir_path.iterdir() if pattern.match(f.name)])
     else:
-        dpath = OUT_DIR
+        dir_path = OUT_DIR
         if dewac:
             pattern = re.compile(r'^dewac_[0-9]{2}\.pickle')
-            files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+            files = sorted([f for f in dir_path.iterdir() if pattern.match(f.name)])
         else:
             if deprecated:
-                dpath = join(dpath, 'deprecated')
+                dir_path = dir_path / 'deprecated'
                 pattern = re.compile(r'^dewiki_[0-9]{2}.*\.pickle\.gz')
-                files = sorted([join(dpath, f) for f in listdir(dpath) if pattern.match(f)])
+                files = sorted([f for f in dir_path.iterdir() if pattern.match(f.name)])
             else:
-                files = [join(dpath, 'dewiki.pickle')]
+                files = [dir_path / 'dewiki.pickle']
 
     length = len(files)
     for i, file in enumerate(files, 1):
@@ -114,19 +110,17 @@ def set_index(df):
     return df
 
 
-def load_scores(
-        dataset, version, corpus_type, metrics, params, nbtopics, logg=print, rerank=False, lsi=False
-):
+def load_scores(dataset, version, corpus_type, metrics, params, nbtopics, rerank=False, lsi=False):
     dfs = []
-    tpx_path = join(LDA_DIR, version, corpus_type, 'topics')
+    tpx_path = LDA_DIR / version / corpus_type / 'topics'
     if rerank:
-        file_prefix = join(tpx_path, f'{dataset}_reranker-eval')
+        file = tpx_path / f'{dataset}_reranker-eval'
     elif lsi:
-        file_prefix = join(tpx_path, f'{dataset}_lsi_{version}_{corpus_type}_topic-scores')
+        file = tpx_path / f'{dataset}_lsi_{version}_{corpus_type}_topic-scores'
     else:
-        file_prefix = join(tpx_path, f'{dataset}_{version}_{corpus_type}_topic-scores')
+        file = tpx_path / f'{dataset}_{version}_{corpus_type}_topic-scores'
     try:
-        file = file_prefix + '.csv'
+        file = file.with_suffix('.csv')
         logg(f'Reading {file}')
         df = pd.read_csv(file, header=[0, 1], skipinitialspace=True)
         cols = list(df.columns)
@@ -148,7 +142,7 @@ def load_scores(
     except Exception as e:
         logg(e)
     try:
-        file = file_prefix + '_germanet.csv'
+        file = file.parent / f'{file.stem}_germanet.csv'
         logg(f'Reading {file}')
         df = pd.read_csv(file, header=0)
         df = set_index(df)
@@ -159,26 +153,24 @@ def load_scores(
     return pd.concat(dfs, axis=1)
 
 
-def load(*args, logger=None, logg=print):
+def load(*args):
     """
     work in progress: may not work for all cases, especially not yet for reading distributed
-    datsets like dewiki and dewac.
+    datasets like dewiki and dewac.
     """
-
-    logg = logger.info if logger else logg
 
     if not args:
         logg('no arguments, no load')
         return
 
     single = {
-        'hashmap': join(OUT_DIR, 'dewiki_hashmap.pickle'),
-        'meta': join(OUT_DIR, 'dewiki_metadata.pickle'),
-        'phrases': join(OUT_DIR, 'dewiki_phrases_lemmatized.pickle'),
-        'links': join(OUT_DIR, 'dewiki_links.pickle'),
-        'categories': join(OUT_DIR, 'dewiki_categories.pickle'),
-        'disamb': join(OUT_DIR, 'dewiki_disambiguation.pickle'),
-        'wikt': join(OUT_DIR, 'wiktionary_lemmatization_map.pickle'),
+        'hashmap': OUT_DIR / 'dewiki_hashmap.pickle',
+        'meta': OUT_DIR / 'dewiki_metadata.pickle',
+        'phrases': OUT_DIR / 'dewiki_phrases_lemmatized.pickle',
+        'links': OUT_DIR / 'dewiki_links.pickle',
+        'categories': OUT_DIR / 'dewiki_categories.pickle',
+        'disamb': OUT_DIR / 'dewiki_disambiguation.pickle',
+        'wikt': OUT_DIR / 'wiktionary_lemmatization_map.pickle',
     }
     dataset = None
     purposes = {
@@ -194,7 +186,7 @@ def load(*args, logger=None, logg=print):
     nbtopics = []
     metrics = []
     deprecated = False
-    dsets = (
+    datasets = (
             list(DATASETS_FULL.keys())
             + list(DATASETS_FULL.values())
             + ['gurevych', 'gur', 'simlex', 'ws', 'rel', 'similarity', 'survey']
@@ -215,7 +207,7 @@ def load(*args, logger=None, logg=print):
                 purpose = 'single'
                 dataset = arg
                 break
-        elif not dataset and arg in dsets:
+        elif not dataset and arg in datasets:
             dataset = DATASETS_FULL.get(arg, arg)
         elif not purpose and arg in purposes:
             purpose = arg
@@ -255,19 +247,19 @@ def load(*args, logger=None, logg=print):
 
     # --- good_ideas ---
     elif purpose == 'goodids' and dataset in ['dewac', 'dewiki']:
-        file = join(OUT_DIR, f'{dataset}_good_ids.pickle')
+        file = OUT_DIR / f'{dataset}_good_ids.pickle'
         logg(f'Loading {file}')
         return pd.read_pickle(file)
 
     # --- lemmap ---
     elif purpose == 'lemmap':
-        file = join(OUT_DIR, f'{dataset}_lemmatization_map.pickle')
+        file = OUT_DIR / f'{dataset}_lemmatization_map.pickle'
         logg(f'Loading {file}')
         return pd.read_pickle(file)
 
     # --- embeddings ---
     elif purpose == 'embedding':
-        file = join(EMB_DIR, dataset, dataset)
+        file = EMB_DIR / dataset / dataset
         try:
             logg(f'Reading {file}')
             if 'd2v' in dataset:
@@ -282,14 +274,15 @@ def load(*args, logger=None, logg=print):
     # --- gensim dict ---
     elif purpose == 'dict':
         if dataset == 'dewiki' and 'unfiltered' in args:
-            dict_path = join(
-                LDA_DIR, version, corpus_type, f'dewiki_noun_{corpus_type}_unfiltered.dict'
+            dict_path = (
+                LDA_DIR / version / corpus_type / f'dewiki_noun_{corpus_type}_unfiltered.dict'
             )
         else:
-            dict_path = join(LDA_DIR, version, corpus_type, f'{dataset}_{version}_{corpus_type}.dict')
+            dict_path = LDA_DIR / version / corpus_type / f'{dataset}_{version}_{corpus_type}.dict'
         try:
             logg(f'Loading dict from {dict_path}')
-            dict_from_corpus = Dictionary.load(dict_path)
+            # noinspection PyTypeChecker
+            dict_from_corpus: Dictionary = Dictionary.load(dict_path)
             _ = dict_from_corpus[0]  # init dictionary
             return dict_from_corpus
         except Exception as e:
@@ -297,7 +290,7 @@ def load(*args, logger=None, logg=print):
 
     # --- MM corpus ---
     elif purpose == 'corpus':
-        corpus_path = join(LDA_DIR, version, corpus_type, f'{dataset}_{version}_{corpus_type}.mm')
+        corpus_path = LDA_DIR / version / corpus_type / f'{dataset}_{version}_{corpus_type}.mm'
         try:
             logg(f'Loading corpus from {corpus_path}')
             corpus = MmCorpus(corpus_path)
@@ -308,7 +301,7 @@ def load(*args, logger=None, logg=print):
 
     # --- json texts ---
     elif purpose == 'texts':
-        doc_path = join(LDA_DIR, version, f'{dataset}_{version}_texts.json')
+        doc_path = LDA_DIR / version / f'{dataset}_{version}_texts.json'
         try:
             with open(doc_path, 'r') as fp:
                 logg(f'Loading texts from {doc_path}')
@@ -319,15 +312,15 @@ def load(*args, logger=None, logg=print):
 
     # --- rerank topics / scores / eval_scores ---
     elif isinstance(purpose, str) and purpose.startswith('rerank'):
-        tpx_path = join(LDA_DIR, version, corpus_type, 'topics')
+        tpx_path = LDA_DIR / version / corpus_type / 'topics'
         if purpose.startswith('rerank_score'):
-            file = join(tpx_path, f'{dataset}_reranker-scores.csv')
+            file = tpx_path / f'{dataset}_reranker-scores.csv'
         elif purpose.startswith('rerank_eval'):
             return load_scores(
-                dataset, version, corpus_type, metrics, params, nbtopics, logg=logg, rerank=True
+                dataset, version, corpus_type, metrics, params, nbtopics, rerank=True
             )
         else:
-            file = join(tpx_path, f'{dataset}_reranker-candidates.csv')
+            file = tpx_path / f'{dataset}_reranker-candidates.csv'
         logg(f'Reading {file}')
         try:
             df = pd.read_csv(file, header=0, index_col=[0, 1, 2, 3, 4])
@@ -340,34 +333,34 @@ def load(*args, logger=None, logg=print):
     elif purpose in {'topic', 'topics'}:
         cols = ['Lemma1', 'Lemma2']
         if dataset in ['gur', 'gurevych']:
-            file = join(OUT_DIR, 'gurevych_datasets.csv')
+            file = OUT_DIR / 'gurevych_datasets.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df[cols]
         elif dataset in ['simlex']:
-            file = join(OUT_DIR, 'simlex999.csv')
+            file = OUT_DIR / 'simlex999.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df[cols]
         elif dataset in ['ws']:
-            file = join(OUT_DIR, 'ws353.csv')
+            file = OUT_DIR / 'ws353.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df[cols]
         elif dataset in ['rel', 'similarity']:
-            file = join(OUT_DIR, 'similarity_datasets.csv')
+            file = OUT_DIR / 'similarity_datasets.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df[cols]
         elif dataset in ['survey']:
-            file = join(TPX_DIR, 'survey_topics.csv')
+            file = TPX_DIR / 'survey_topics.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1, 2, 3])
             survey_cols = [f'term{i}' for i in range(20)]
             return df[survey_cols]
 
-        file = join(
-            LDA_DIR, version, corpus_type, 'topics',
+        file = (
+            LDA_DIR / version / corpus_type / 'topics' /
             f'{dataset}_{version}_{corpus_type}_topic-candidates.csv'
         )
         try:
@@ -375,11 +368,11 @@ def load(*args, logger=None, logg=print):
             logg(f'Reading {file}')
             df = set_index(df)
             return reduce_df(df, metrics, params, nbtopics)
-        except Exception as e:
-            # logg(e)
-            # logg('Loading topics via TopicsLoader')
+        except:
             lsi = 'lsi' in args
-            kwargs = dict(dataset=dataset, version=version, corpus_type=corpus_type, topn=10, lsi=lsi)
+            kwargs = dict(
+                dataset=dataset, version=version, corpus_type=corpus_type, topn=10, lsi=lsi
+            )
             if params:
                 kwargs['param_ids'] = params
             if nbtopics:
@@ -399,24 +392,26 @@ def load(*args, logger=None, logg=print):
 
         df = None
         if 'rerank' in args:
-            fpath = join(LDA_DIR, version, corpus_type, 'topics', dataset)
+            file_path = LDA_DIR / version / corpus_type / 'topics' / dataset
             try:
-                file = fpath + '_reranker-candidates.csv'
+                file = file_path + '_reranker-candidates.csv'
                 df = _load_label_file(file)
             except Exception as e:
                 logg(e)
         else:
-            fpath = join(LDA_DIR, version, corpus_type, 'topics', f'{dataset}_{version}_{corpus_type}')
+            file_path = (
+                LDA_DIR / version / corpus_type / 'topics' / f'{dataset}_{version}_{corpus_type}'
+            )
             df = w2v = None
             if 'w2v' in args or 'ftx' not in args:
                 try:
-                    file = fpath + '_label-candidates.csv'
+                    file = file_path + '_label-candidates.csv'
                     df = w2v = _load_label_file(file)
                 except Exception as e:
                     logg(e)
             if 'ftx' in args or 'w2v' not in args:
                 try:
-                    file = fpath + '_label-candidates_ftx.csv'
+                    file = file_path + '_label-candidates_ftx.csv'
                     df = ftx = _load_label_file(file)
                     if w2v is not None:
                         ftx = ftx.query('label_method != "d2v"')
@@ -428,40 +423,38 @@ def load(*args, logger=None, logg=print):
     # --- scores ---
     elif purpose in {'score', 'scores'}:
         if 'lsi' in args:
-            return load_scores(
-                dataset, version, corpus_type, metrics, params, nbtopics, lsi=True, logg=logg
-            )
+            return load_scores(dataset, version, corpus_type, metrics, params, nbtopics, lsi=True)
         elif 'rerank' in args:
             return load_scores(
-                dataset, version, corpus_type, metrics, params, nbtopics, rerank=True, logg=logg
+                dataset, version, corpus_type, metrics, params, nbtopics, rerank=True
             )
         else:
-            return load_scores(dataset, version, corpus_type, metrics, params, nbtopics, logg=logg)
+            return load_scores(dataset, version, corpus_type, metrics, params, nbtopics)
 
     # --- pipelines ---
     elif purpose in {'nlp', 'simple', 'smpl', 'wiki', 'wiki_phrases', 'phrases', 'etl', None}:
         if dataset in ['gur', 'gurevych']:
-            file = join(OUT_DIR, 'gurevych_datasets.csv')
+            file = OUT_DIR / 'gurevych_datasets.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df
         elif dataset in ['simlex']:
-            file = join(OUT_DIR, 'simlex999.csv')
+            file = OUT_DIR / 'simlex999.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df
         elif dataset in ['ws']:
-            file = join(OUT_DIR, 'ws353.csv')
+            file = OUT_DIR / 'ws353.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df
         elif dataset in ['rel', 'similarity']:
-            file = join(OUT_DIR, 'similarity_datasets.csv')
+            file = OUT_DIR / 'similarity_datasets.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1])
             return df
         elif dataset in ['survey']:
-            file = join(TPX_DIR, 'survey_topics.csv')
+            file = TPX_DIR / 'survey_topics.csv'
             logg(f'Reading {file}')
             df = pd.read_csv(file, header=0, index_col=[0, 1, 2, 3])
             return df
@@ -476,44 +469,46 @@ def load(*args, logger=None, logg=print):
             directory = PHRASES_DIR
             suffix = '_simple'
         elif purpose in {'wiki', 'wiki_phrases', 'phrases'}:
-            directory = join(PHRASES_DIR, 'wiki_phrases')
+            directory = PHRASES_DIR / 'wiki_phrases'
             suffix = '_simple_wiki_phrases'
         else:
             logg('oops')
             return
         if dataset == 'speeches':
             file = [
-                join(directory, f'{DATASETS_FULL["E"]}{suffix}.pickle'),
-                join(directory, f'{DATASETS_FULL["P"]}{suffix}.pickle')
+                directory / f'{DATASETS_FULL["E"]}{suffix}.pickle',
+                directory / f'{DATASETS_FULL["P"]}{suffix}.pickle'
             ]
         elif dataset == 'news':
             file = [
-                join(directory, f'{DATASETS_FULL["FA"]}{suffix}.pickle'),
-                join(directory, f'{DATASETS_FULL["FO"]}{suffix}.pickle')
+                directory / f'{DATASETS_FULL["FA"]}{suffix}.pickle',
+                directory / f'{DATASETS_FULL["FO"]}{suffix}.pickle'
             ]
         elif dataset == 'dewac1':
-            file = join(directory, f'{dataset.replace("dewac1", "dewac_01")}{suffix}.pickle')
+            file = directory / f'{dataset.replace("dewac1", "dewac_01")}{suffix}.pickle'
         elif dataset in {'dewac', 'dewiki'}:
             dfs = [d for d in multiload(dataset, purpose, deprecated)]
             return pd.concat(dfs)
         else:
             if purpose in {'etl', None} and deprecated and dataset in {'FAZ', 'FOCUS'}:
-                directory = join(OUT_DIR, 'deprecated')
+                directory = OUT_DIR / 'deprecated'
                 if dataset == 'FAZ':
                     file = [
-                        join(directory, 'FAZ.pickle.gz'),
-                        join(directory, 'FAZ2.pickle.gz')
+                        directory / 'FAZ.pickle.gz',
+                        directory / 'FAZ2.pickle.gz'
                     ]
                 else:
-                    file = join(directory, 'FOCUS.pickle.gz')
+                    file = directory / 'FOCUS.pickle.gz'
             else:
-                file = join(directory, f'{dataset}{suffix}.pickle')
+                file = directory / f'{dataset}{suffix}.pickle'
         try:
             logg(f'Reading {file}')
             if isinstance(file, str):
                 return pd.read_pickle(file)
             else:
-                return pd.concat([pd.read_pickle(f).drop('new', axis=1, errors='ignore') for f in file])
+                return pd.concat(
+                    [pd.read_pickle(f).drop('new', axis=1, errors='ignore') for f in file]
+                )
         except Exception as e:
             logg(e)
 
@@ -535,7 +530,7 @@ class Unlemmatizer(object):
 
         # 3) unlemmatize individual parts of a concatenated token
         elif '_' in token:
-            print('unkown phrase', token)
+            logg(f'unknown phrase {token}')
             tokens = token.split('_')
             ts = []
             for t in tokens:
@@ -558,7 +553,7 @@ class Unlemmatizer(object):
 
         word = word.replace('_.', '.').replace('_', ' ')
         if word != token:
-            print('   ', token, '->', word)
+            logg(f'   {token} -> {word}')
         return word
 
     def unlemmatize_group(self, group):
@@ -591,7 +586,6 @@ class TopicsLoader(object):
             param_ids='e42', nbs_topics=100, epochs=30, topn=20, lsi=False,
             filter_bad_terms=False, include_weights=False,
             include_corpus=False, include_texts=False,
-            logger=None, logg=print
     ):
         self.dataset = DATASETS_FULL.get(dataset, dataset)
         self.version = version
@@ -602,13 +596,12 @@ class TopicsLoader(object):
         self.epochs = f"ep{epochs}"
         self.topn = topn
         self.lsi = lsi
-        self.directory = join(LDA_DIR, self.version)
+        self.directory = LDA_DIR / self.version
         self.data_filename = f'{self.dataset}_{version}'
         self.filter_terms = filter_bad_terms
         self.include_weights = include_weights
         self.column_names_terms = [f'term{i}' for i in range(self.topn)]
         self.column_names_weights = [f'weight{i}' for i in range(self.topn)]
-        self.logg = logger.info if logger else logg
         self.dictionary = self._load_dict()
         self.topics = self._topn_topics()
         self.corpus = self._load_corpus() if include_corpus else None
@@ -692,16 +685,16 @@ class TopicsLoader(object):
         Load an LDA model.
         """
         if self.lsi:
-            model_dir = join(LSI_DIR, self.version, self.corpus_type)
+            model_dir = LSI_DIR / self.version / self.corpus_type
             model_file = f'{self.dataset}_LSImodel_{nb_topics}'
-            model_path = join(model_dir, model_file)
-            model = LsiModel.load(model_path)
+            model_path = model_dir / model_file
+            model = LsiModel.load(str(model_path))
         else:
-            model_dir = join(self.directory, self.corpus_type, param_id)
+            model_dir = self.directory / self.corpus_type / param_id
             model_file = f'{self.dataset}_LDAmodel_{param_id}_{nb_topics}_{self.epochs}'
-            model_path = join(model_dir, model_file)
-            model = LdaModel.load(model_path)
-        self.logg(f'Loading model from {model_path}')
+            model_path = model_dir / model_file
+            model = LdaModel.load(str(model_path))
+        logg(f'Loading model from {model_path}')
         return model
 
     def _load_dict(self):
@@ -709,21 +702,22 @@ class TopicsLoader(object):
         This dictionary is a different from the model's dict with a different word<->id mapping,
         but from the same corpus and will be used for the Coherence Metrics.
         """
-        dict_dir = join(self.directory, self.corpus_type)
-        dict_path = join(dict_dir, f'{self.data_filename}_{self.corpus_type}.dict')
-        self.logg(f'Loading dictionary from {dict_path}')
-        dict_from_corpus: Dictionary = Dictionary.load(dict_path)
+        dict_dir = self.directory / self.corpus_type
+        dict_path = dict_dir / f'{self.data_filename}_{self.corpus_type}.dict'
+        logg(f'Loading dictionary from {dict_path}')
+        # noinspection PyTypeChecker
+        dict_from_corpus: Dictionary = Dictionary.load(str(dict_path))
         dict_from_corpus.add_documents([[PLACEHOLDER]])
         _ = dict_from_corpus[0]  # init dictionary
         return dict_from_corpus
 
     def _load_corpus(self):
         """
-        load corpus (for u_mass scores)
+        Load corpus (for u_mass scores)
         """
-        corpus_dir = join(self.directory, self.corpus_type)
-        corpus_path = join(corpus_dir, f'{self.data_filename}_{self.corpus_type}.mm')
-        self.logg(f'Loading corpus from {corpus_path}')
+        corpus_dir = self.directory / self.corpus_type
+        corpus_path = corpus_dir / f'{self.data_filename}_{self.corpus_type}.mm'
+        logg(f'Loading corpus from {corpus_path}')
         corpus = MmCorpus(corpus_path)
         corpus = list(corpus)
         corpus.append([(self.dictionary.token2id[PLACEHOLDER], 1.0)])
@@ -731,29 +725,11 @@ class TopicsLoader(object):
 
     def _load_texts(self):
         """
-        load texts (for c_... scores using sliding window)
+        Load texts (for c_... scores using sliding window)
         """
-        doc_path = join(self.directory, self.data_filename + '_texts.json')
+        doc_path = self.directory / self.data_filename + '_texts.json'
         with open(doc_path, 'r') as fp:
-            self.logg(f'Loading texts from {doc_path}')
+            logg(f'Loading texts from {doc_path}')
             texts = json.load(fp)
         texts.append([PLACEHOLDER])
         return texts
-
-
-def main():
-    # tprint(load('topics', 'gur'))
-    # topics = TopicsLoader('O', nbs_topics=[10, 25, 50, 100], lsi=True, topn=10).topics
-    # tprint(load('score', 'O'), 50)
-
-    # for x in load('phrases'):
-    #     print(x)
-    # tprint(load('dewac1', 'topics', 'lsi', 10, 25))
-    tprint(load('dewac1', 'labels', 'rerank', 'e42', 100))#.query('metric == "w2v_matches"'))
-    # from itertools import islice
-    # for d in islice(load('dewik'), 2):
-    #     tprint(d, 2)
-
-
-if __name__ == '__main__':
-    main()

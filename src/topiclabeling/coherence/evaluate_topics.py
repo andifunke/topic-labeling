@@ -1,15 +1,15 @@
 import argparse
 import gc
 import warnings
-from os.path import join, exists
 from time import time
 
 import numpy as np
 import pandas as pd
 from gensim.models import CoherenceModel
 
-from topiclabeling.constants import PARAMS, LDA_PATH, DATASETS_FULL, NB_TOPICS
-from topiclabeling.utils import init_logging, load, log_args
+from topiclabeling.utils.constants import PARAMS, LDA_DIR, DATASETS_FULL, NB_TOPICS
+from topiclabeling.utils.logging import init_logging, log_args, logg
+from topiclabeling.utils.utils import load
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -25,8 +25,7 @@ def cosine_similarities(vector_1, vectors_all):
 def pairwise_similarity(topic, kvs, ignore_oov=True):
     similarities = dict()
     for name, kv in kvs.items():
-        vector = lambda x: kv[x] if x in kv else np.nan
-        vectors = topic.map(vector).dropna()
+        vectors = topic.map(lambda x: kv[x] if x in kv else np.nan).dropna()
         if len(vectors) < 2:
             similarities[name] = np.nan
             continue
@@ -44,8 +43,7 @@ def pairwise_similarity(topic, kvs, ignore_oov=True):
 def mean_similarity(topic, kvs):
     similarities = dict()
     for name, kv in kvs.items():
-        vector = lambda x: kv[x] if x in kv else np.nan
-        vectors = topic.map(vector).dropna()
+        vectors = topic.map(lambda x: kv[x] if x in kv else np.nan).dropna()
         if len(vectors) < 2:
             similarities[name] = np.nan
             continue
@@ -58,7 +56,7 @@ def mean_similarity(topic, kvs):
 
 def eval_coherence(
         topics, dictionary, corpus=None, texts=None, keyed_vectors=None, metrics=None,
-        window_size=None, suffix='', cores=1, logg=print, topn=10
+        window_size=None, suffix='', cores=1, topn=10
 ):
     if not (corpus or texts or keyed_vectors):
         logg('provide corpus, texts and/or keyed_vectors')
@@ -82,9 +80,9 @@ def eval_coherence(
     oov = topics[~in_dict]
     oov = oov.apply(set)
     oov = set().union(*oov)
-    isstr = lambda x: isinstance(x, str)
-    tolist = lambda x: [x]
-    oov = sorted(map(tolist, filter(isstr, oov)))
+    is_str = lambda x: isinstance(x, str)
+    to_list = lambda x: [x]
+    oov = sorted(map(to_list, filter(is_str, oov)))
     logg(f'OOV: {oov}')
     if oov:
         dictionary.add_documents(oov, prune_at=None)
@@ -96,7 +94,7 @@ def eval_coherence(
         t0 = time()
         gc.collect()
         logg(metric)
-        txt = texts + oov if texts else None
+        txt = texts + oov if texts is not None else None
         cm = CoherenceModel(
             topics=topics_values,
             dictionary=dictionary,
@@ -123,7 +121,10 @@ def eval_coherence(
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--dataset", type=str, required=True)
+    parser.add_argument("--dataset", type=str, required=False)
+    parser.add_argument("--topics", type=str, required=False,
+                        help="Path to a file containing groups of terms per line. "
+                             "Either --dataset or --topics is required.")
     parser.add_argument("--version", type=str, required=False, default='noun')
     parser.add_argument('--tfidf', dest='tfidf', action='store_true', required=False)
     parser.add_argument('--no-tfidf', dest='tfidf', action='store_false', required=False)
@@ -144,58 +145,57 @@ def parse_args():
     args = parser.parse_args()
 
     args.dataset = DATASETS_FULL.get(args.dataset, args.dataset)
-    corpus_type = "tfidf" if args.tfidf else "bow"
-    lsi = "lsi" if args.lsi else ""
-    use_coherence = (args.method in ['coherence', 'both'])
-    use_w2v = (args.method in ['w2v', 'both'])
+    args.corpus_type = "tfidf" if args.tfidf else "bow"
+    args.lsi = "lsi" if args.lsi else ""
+    args.use_coherence = (args.method in ['coherence', 'both'])
+    args.use_w2v = (args.method in ['w2v', 'both'])
 
-    return (
-        args.dataset, args.version, args.params, args.nbtopics, args.topn, args.cores, corpus_type,
-        use_coherence, use_w2v, args.rerank, lsi, args
-    )
+    return args
 
 
 def main():
-    (
-        dataset, version, params, nbtopics, topn, cores, corpus_type,
-        use_coherence, use_w2v, rerank, lsi, args
-    ) = parse_args()
+    args = parse_args()
 
-    logger = init_logging(name=f'Eval_topics_{dataset}', basic=False, to_stdout=True, to_file=True)
-    log_args(logger, args)
-    logg = logger.info
+    init_logging(name=f'Eval_topics_{args.dataset}', to_stdout=True, to_file=True)
+    log_args(args)
 
-    purpose = 'rerank' if rerank else 'topics'
-    topics = load(purpose, dataset, version, corpus_type, lsi, *params, *nbtopics, logg=logg)
-    if topn > 0:
-        topics = topics[:topn]
+    purpose = 'rerank' if args.rerank else 'topics'
+    if args.topics:
+        topics = pd.read_csv(args.topics, header=None)
     else:
-        topn = topics.shape[1]
+        topics = load(
+            purpose, args.dataset, args.version, args.corpus_type, args.lsi,
+            *args.params, *args.nbtopics
+        )
+    if args.topn > 0:
+        topics = topics[:args.topn]
+    else:
+        args.topn = topics.shape[1]
     logg(f'number of topics: {topics.shape}')
     unique_topics = topics.drop_duplicates()
     logg(f'number of unique topics: {unique_topics.shape}')
-    wiki_dict = load('dict', 'dewiki', 'unfiltered', logg=logg)
+    wiki_dict = load('dict', 'dewiki', 'unfiltered')
 
     dfs = []
-    if use_coherence:
-        dictionary = load('dict', dataset, version, corpus_type, logg=logg)
-        corpus = load('corpus', dataset, version, corpus_type, logg=logg)
-        texts = load('texts', dataset, version, logg=logg)
+    if args.use_coherence:
+        dictionary = load('dict', args.dataset, args.version, args.corpus_type)
+        corpus = load('corpus', args.dataset, args.version, args.corpus_type)
+        texts = load('texts', args.dataset, args.version)
 
         df = eval_coherence(
             topics=unique_topics, dictionary=dictionary, corpus=corpus, texts=texts,
             keyed_vectors=None, metrics=None, window_size=None,
-            suffix='', cores=cores, logg=logg, topn=topn,
+            suffix='', cores=args.cores, topn=args.topn,
         )
         del dictionary, corpus, texts
         gc.collect()
         dfs.append(df)
 
-        wiki_texts = load('texts', 'dewiki', logg=logg)
+        wiki_texts = load('texts', 'dewiki')
         df = eval_coherence(
             topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=wiki_texts,
             keyed_vectors=None, metrics=None, window_size=None,
-            suffix='_wikt', cores=cores, logg=logg, topn=topn,
+            suffix='_wikt', cores=args.cores, topn=args.topn,
         )
         gc.collect()
         dfs.append(df)
@@ -203,17 +203,17 @@ def main():
         df = eval_coherence(
             unique_topics, wiki_dict, corpus=None, texts=wiki_texts,
             keyed_vectors=None, metrics=['c_uci'], window_size=20,
-            suffix='_wikt_w20', cores=cores, logg=logg, topn=topn,
+            suffix='_wikt_w20', cores=args.cores, topn=args.topn,
         )
         del wiki_texts
         gc.collect()
         dfs.append(df)
 
     df_sims = None
-    if use_w2v:
-        d2v = load('d2v', logg=logg).docvecs
-        w2v = load('w2v', logg=logg).wv
-        ftx = load('ftx', logg=logg).wv
+    if args.use_w2v:
+        d2v = load('d2v').docvecs
+        w2v = load('w2v').wv
+        ftx = load('ftx').wv
         # Dry run to make sure both indices are fully in RAM
         d2v.init_sims()
         _ = d2v.vectors_docs_norm[0]
@@ -225,7 +225,7 @@ def main():
         df = eval_coherence(
             topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=None,
             keyed_vectors=w2v, metrics=None, window_size=None,
-            suffix='_w2v', cores=cores, logg=logger.info, topn=topn,
+            suffix='_w2v', cores=args.cores, topn=args.topn,
         )
         gc.collect()
         dfs.append(df)
@@ -233,16 +233,16 @@ def main():
         df = eval_coherence(
             topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=None,
             keyed_vectors=ftx, metrics=None, window_size=None,
-            suffix='_ftx', cores=cores, logg=logger.info, topn=topn,
+            suffix='_ftx', cores=args.cores, topn=args.topn,
         )
         gc.collect()
         dfs.append(df)
 
         # apply custom similarity metrics
         kvs = {'d2v': d2v, 'w2v': w2v, 'ftx': ftx}
-        ms = unique_topics.apply(lambda x: mean_similarity(x, kvs), axis=1)
-        ps = unique_topics.apply(lambda x: pairwise_similarity(x, kvs, ignore_oov=True), axis=1)
-        ps2 = unique_topics.apply(lambda x: pairwise_similarity(x, kvs, ignore_oov=False), axis=1)
+        ms = unique_topics.apply(mean_similarity, kvs=kvs, axis=1)
+        ps = unique_topics.apply(pairwise_similarity, kvs=kvs, ignore_oov=True, axis=1)
+        ps2 = unique_topics.apply(pairwise_similarity, kvs=kvs, ignore_oov=False, axis=1)
         df_sims = pd.concat(
             {
                 'mean_similarity': ms,
@@ -276,16 +276,17 @@ def main():
         .drop(topic_columns, axis=1)
     )
 
-    tpx_path = join(LDA_PATH, version, 'bow', 'topics')
-    if rerank:
-        file = join(tpx_path, f'{dataset}_reranker-eval.csv')
+    tpx_path = LDA_DIR / args.version / 'bow' / 'topics'
+    if args.rerank:
+        file = tpx_path / f'{args.dataset}_reranker-eval.csv'
     else:
-        file = join(
-            tpx_path,
-            f'{dataset}{"_"+lsi if lsi else ""}_{version}_{corpus_type}_topic-scores.csv'
+        file = (
+            tpx_path /
+            f'{args.dataset}{f"_{args.lsi}" if args.lsi else ""}_'
+            f'{args.version}_{args.corpus_type}_topic-scores.csv'
         )
-    if exists(file):
-        file = file.replace('.csv', f'_{str(time()).split(".")[0]}.csv')
+    if file.exists():
+        file = file.parent / file.name.replace('.csv', f'_{str(time()).split(".")[0]}.csv')
 
     logg(f'Writing {file}')
     dfs.to_csv(file)

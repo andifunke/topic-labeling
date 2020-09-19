@@ -10,7 +10,7 @@ from topiclabeling.utils.constants import (
     OUT_DIR, NLP_DIR, PHRASES_DIR, LDA_DIR, DATASETS_FULL, PARAMS, NB_TOPICS, METRICS, VERSIONS,
     EMB_DIR, CORPUS_TYPE, WORD_PATTERN, BAD_TOKENS, PLACEHOLDER, LSI_DIR, TPX_DIR
 )
-from topiclabeling.utils.logging import logg
+from topiclabeling.utils.logging import logg, EXCEPTION
 
 
 def index_level_dtypes(df):
@@ -263,13 +263,13 @@ def load(*args):
         try:
             logg(f'Reading {file}')
             if 'd2v' in dataset:
-                return Doc2Vec.load(file)
+                return Doc2Vec.load(str(file))
             if 'w2v' in dataset:
-                return Word2Vec.load(file)
+                return Word2Vec.load(str(file))
             if 'ftx' in dataset:
-                return FastText.load(file)
+                return FastText.load(str(file))
         except Exception as e:
-            logg(e)
+            logg(e, EXCEPTION)
 
     # --- gensim dict ---
     elif purpose == 'dict':
@@ -282,22 +282,22 @@ def load(*args):
         try:
             logg(f'Loading dict from {dict_path}')
             # noinspection PyTypeChecker
-            dict_from_corpus: Dictionary = Dictionary.load(dict_path)
+            dict_from_corpus: Dictionary = Dictionary.load(str(dict_path))
             _ = dict_from_corpus[0]  # init dictionary
             return dict_from_corpus
         except Exception as e:
-            logg(e)
+            logg(e, EXCEPTION)
 
     # --- MM corpus ---
     elif purpose == 'corpus':
         corpus_path = LDA_DIR / version / corpus_type / f'{dataset}_{version}_{corpus_type}.mm'
         try:
             logg(f'Loading corpus from {corpus_path}')
-            corpus = MmCorpus(corpus_path)
+            corpus = MmCorpus(str(corpus_path))
             corpus = list(corpus)
             return corpus
         except Exception as e:
-            logg(e)
+            logg(e, EXCEPTION)
 
     # --- json texts ---
     elif purpose == 'texts':
@@ -308,7 +308,7 @@ def load(*args):
                 texts = json.load(fp)
             return texts
         except Exception as e:
-            logg(e)
+            logg(e, EXCEPTION)
 
     # --- rerank topics / scores / eval_scores ---
     elif isinstance(purpose, str) and purpose.startswith('rerank'):
@@ -327,7 +327,7 @@ def load(*args):
             df = reduce_df(df, metrics, params, nbtopics)
             return df
         except Exception as e:
-            logg(e)
+            logg(e, EXCEPTION)
 
     # --- topics ---
     elif purpose in {'topic', 'topics'}:
@@ -377,6 +377,7 @@ def load(*args):
                 kwargs['param_ids'] = params
             if nbtopics:
                 kwargs['nbs_topics'] = nbtopics
+
             return TopicsLoader(**kwargs).topics
 
     # --- labels ---
@@ -388,6 +389,7 @@ def load(*args):
             df_ = df_.applymap(eval)
             if 'minimal' in args:
                 df_ = df_.query('label_method in ["comb", "comb_ftx"]').applymap(lambda x: x[0])
+
             return reduce_df(df_, metrics, params, nbtopics)
 
         df = None
@@ -397,7 +399,7 @@ def load(*args):
                 file = file_path + '_reranker-candidates.csv'
                 df = _load_label_file(file)
             except Exception as e:
-                logg(e)
+                logg(e, EXCEPTION)
         else:
             file_path = (
                 LDA_DIR / version / corpus_type / 'topics' / f'{dataset}_{version}_{corpus_type}'
@@ -408,7 +410,7 @@ def load(*args):
                     file = file_path + '_label-candidates.csv'
                     df = w2v = _load_label_file(file)
                 except Exception as e:
-                    logg(e)
+                    logg(e, EXCEPTION)
             if 'ftx' in args or 'w2v' not in args:
                 try:
                     file = file_path + '_label-candidates_ftx.csv'
@@ -417,7 +419,7 @@ def load(*args):
                         ftx = ftx.query('label_method != "d2v"')
                         df = w2v.append(ftx).sort_index()
                 except Exception as e:
-                    logg(e)
+                    logg(e, EXCEPTION)
         return df
 
     # --- scores ---
@@ -474,6 +476,7 @@ def load(*args):
         else:
             logg('oops')
             return
+
         if dataset == 'speeches':
             file = [
                 directory / f'{DATASETS_FULL["E"]}{suffix}.pickle',
@@ -510,7 +513,7 @@ def load(*args):
                     [pd.read_pickle(f).drop('new', axis=1, errors='ignore') for f in file]
                 )
         except Exception as e:
-            logg(e)
+            logg(e, EXCEPTION)
 
 
 class Unlemmatizer(object):
@@ -554,10 +557,12 @@ class Unlemmatizer(object):
         word = word.replace('_.', '.').replace('_', ' ')
         if word != token:
             logg(f'   {token} -> {word}')
+
         return word
 
     def unlemmatize_group(self, group):
         lemmap = load(group.name, 'lemmap')
+
         return group.applymap(lambda x: self.unlemmatize_token(x, lemmap))
 
     def unlemmatize_topics(self, topics, dataset=None):
@@ -567,11 +572,13 @@ class Unlemmatizer(object):
             topics = topics.applymap(lambda x: self.unlemmatize_token(x, lemmap))
         else:
             topics = topics.groupby('dataset', sort=False).apply(self.unlemmatize_group)
+
         return topics
 
     def unlemmatize_labels(self, labels):
         labels = labels.copy()
         labels = labels.applymap(self.unlemmatize_token)
+
         return labels
 
 
@@ -628,6 +635,7 @@ class TopicsLoader(object):
             df = df.set_index(['dataset', 'param_id', 'nb_topics', 'topic_idx'])
             if not self.include_weights:
                 df = df.loc[:, 'term0':f'term{self.topn-1}']
+
             return df
 
         all_topics = []
@@ -675,6 +683,7 @@ class TopicsLoader(object):
             .reset_index(drop=False)
             .set_index(['dataset', 'param_id', 'nb_topics', 'topic_idx'])
         )
+
         return topics
 
     def topic_ids(self):
@@ -695,6 +704,7 @@ class TopicsLoader(object):
             model_path = model_dir / model_file
             model = LdaModel.load(str(model_path))
         logg(f'Loading model from {model_path}')
+
         return model
 
     def _load_dict(self):
@@ -709,6 +719,7 @@ class TopicsLoader(object):
         dict_from_corpus: Dictionary = Dictionary.load(str(dict_path))
         dict_from_corpus.add_documents([[PLACEHOLDER]])
         _ = dict_from_corpus[0]  # init dictionary
+
         return dict_from_corpus
 
     def _load_corpus(self):
@@ -721,6 +732,7 @@ class TopicsLoader(object):
         corpus = MmCorpus(corpus_path)
         corpus = list(corpus)
         corpus.append([(self.dictionary.token2id[PLACEHOLDER], 1.0)])
+
         return corpus
 
     def _load_texts(self):
@@ -732,4 +744,5 @@ class TopicsLoader(object):
             logg(f'Loading texts from {doc_path}')
             texts = json.load(fp)
         texts.append([PLACEHOLDER])
+
         return texts

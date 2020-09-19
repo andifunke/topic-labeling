@@ -1,17 +1,21 @@
 import argparse
 import gc
 import warnings
+from logging import WARNING
+from pathlib import Path
 from time import time
 
 import numpy as np
 import pandas as pd
-from gensim.models import CoherenceModel
+from gensim.corpora import Dictionary, MmCorpus
+from gensim.models import CoherenceModel, Doc2Vec
+from tqdm import tqdm
 
 from topiclabeling.utils.constants import PARAMS, LDA_DIR, DATASETS_FULL, NB_TOPICS
 from topiclabeling.utils.logging import init_logging, log_args, logg
 from topiclabeling.utils.utils import load
 
-warnings.simplefilter(action='ignore', category=FutureWarning)
+# warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 def cosine_similarities(vector_1, vectors_all):
@@ -61,14 +65,25 @@ def eval_coherence(
     if not (corpus or texts or keyed_vectors):
         logg('provide corpus, texts and/or keyed_vectors')
         return
+
     if metrics is None:
         if corpus is not None:
-            metrics = ['u_mass']
+            metrics = [
+                'u_mass'
+            ]
         if texts is not None:
             if metrics is None:
-                metrics = ['c_v', 'c_npmi', 'c_uci']
+                metrics = [
+                    'c_v',
+                    'c_npmi',
+                    'c_uci',
+                ]
             else:
-                metrics += ['c_v', 'c_npmi', 'c_uci']
+                metrics += [
+                    'c_v',
+                    'c_npmi',
+                    'c_uci'
+                ]
         if keyed_vectors is not None:
             if metrics is None:
                 metrics = ['c_w2v']
@@ -94,11 +109,27 @@ def eval_coherence(
         t0 = time()
         gc.collect()
         logg(metric)
-        txt = texts + oov if texts is not None else None
+
+        if isinstance(corpus, Path):
+            logg(f'Loading corpus from {corpus}')
+            mm_corpus = MmCorpus(str(corpus))
+        else:
+            mm_corpus = corpus
+
+        fp = None
+        if metric == 'u_mass':
+            txt = None
+        elif isinstance(texts, Path):
+            fp = open(texts, 'r')
+            logg(f'Loading texts from {texts}')
+            txt = tqdm(map(lambda x: x.strip().split(), fp), unit=' documents')
+        else:
+            txt = texts + oov if texts is not None else None
+
         cm = CoherenceModel(
             topics=topics_values,
             dictionary=dictionary,
-            corpus=corpus,
+            corpus=mm_corpus,
             texts=txt,
             coherence=metric,
             topn=topn,
@@ -112,9 +143,16 @@ def eval_coherence(
         t1 = int(time() - t0)
         logg("    done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60))
 
+        if fp is not None:
+            fp.close()
+
+    if not scores:
+        return None
+
     df = pd.DataFrame(scores)
     df.index = topics.index
     gc.collect()
+
     return df
 
 
@@ -142,6 +180,11 @@ def parse_args():
     parser.add_argument("--method", type=str, required=False, default='both',
                         choices=['coherence', 'w2v', 'both'])
 
+    parser.add_argument("--dictionary", type=str, required=False)
+    parser.add_argument("--corpus", type=str, required=False)
+    parser.add_argument("--texts", type=str, required=False)
+    parser.add_argument("--d2v", type=str, required=False)
+
     args = parser.parse_args()
 
     args.dataset = DATASETS_FULL.get(args.dataset, args.dataset)
@@ -156,12 +199,16 @@ def parse_args():
 def main():
     args = parse_args()
 
-    init_logging(name=f'Eval_topics_{args.dataset}', to_stdout=True, to_file=True)
+    init_logging(
+        name=f'Eval_topics{f"_{args.dataset}" if args.dataset else ""}',
+        to_stdout=True, to_file=True
+    )
     log_args(args)
 
     purpose = 'rerank' if args.rerank else 'topics'
     if args.topics:
         topics = pd.read_csv(args.topics, header=None)
+        topics.columns = [f'term{i}' for i in topics.columns]
     else:
         topics = load(
             purpose, args.dataset, args.version, args.corpus_type, args.lsi,
@@ -171,43 +218,59 @@ def main():
         topics = topics[:args.topn]
     else:
         args.topn = topics.shape[1]
-    logg(f'number of topics: {topics.shape}')
+    logg(f'Number of topics: {topics.shape}')
     unique_topics = topics.drop_duplicates()
-    logg(f'number of unique topics: {unique_topics.shape}')
+    logg(f'Number of unique topics: {unique_topics.shape}')
     wiki_dict = load('dict', 'dewiki', 'unfiltered')
+
+    if args.dictionary:
+        logg(f'Loading dictionary from {args.dictionary}')
+        dictionary = Dictionary.load(args.dictionary)
+    else:
+        dictionary = load('dict', args.dataset, args.version, args.corpus_type)
 
     dfs = []
     if args.use_coherence:
-        dictionary = load('dict', args.dataset, args.version, args.corpus_type)
-        corpus = load('corpus', args.dataset, args.version, args.corpus_type)
-        texts = load('texts', args.dataset, args.version)
+
+        if args.corpus:
+            corpus = Path(args.corpus)
+        else:
+            corpus = load('corpus', args.dataset, args.version, args.corpus_type)
+
+        if args.texts:
+            texts = Path(args.texts)
+        else:
+            texts = load('texts', args.dataset, args.version)
 
         df = eval_coherence(
             topics=unique_topics, dictionary=dictionary, corpus=corpus, texts=texts,
             keyed_vectors=None, metrics=None, window_size=None,
             suffix='', cores=args.cores, topn=args.topn,
         )
-        del dictionary, corpus, texts
+        del corpus, texts
         gc.collect()
-        dfs.append(df)
+        if df is not None:
+            dfs.append(df)
 
-        wiki_texts = load('texts', 'dewiki')
-        df = eval_coherence(
-            topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=wiki_texts,
-            keyed_vectors=None, metrics=None, window_size=None,
-            suffix='_wikt', cores=args.cores, topn=args.topn,
-        )
-        gc.collect()
-        dfs.append(df)
+        # evaluate coherence on wikipedia
+        if False:
+            wiki_texts = load('texts', 'dewiki')
+            df = eval_coherence(
+                topics=unique_topics, dictionary=wiki_dict, corpus=None, texts=wiki_texts,
+                keyed_vectors=None, metrics=None, window_size=None,
+                suffix='_wikt', cores=args.cores, topn=args.topn,
+            )
+            gc.collect()
+            dfs.append(df)
 
-        df = eval_coherence(
-            unique_topics, wiki_dict, corpus=None, texts=wiki_texts,
-            keyed_vectors=None, metrics=['c_uci'], window_size=20,
-            suffix='_wikt_w20', cores=args.cores, topn=args.topn,
-        )
-        del wiki_texts
-        gc.collect()
-        dfs.append(df)
+            df = eval_coherence(
+                unique_topics, wiki_dict, corpus=None, texts=wiki_texts,
+                keyed_vectors=None, metrics=['c_uci'], window_size=20,
+                suffix='_wikt_w20', cores=args.cores, topn=args.topn,
+            )
+            del wiki_texts
+            gc.collect()
+            dfs.append(df)
 
     df_sims = None
     if args.use_w2v:
@@ -254,6 +317,35 @@ def main():
         del d2v, w2v, ftx
         gc.collect()
 
+    if args.d2v:
+        d2v = Doc2Vec.load(args.d2v)
+        d2v.wv.init_sims()
+        _ = d2v.wv.vectors_norm[0]
+        df = eval_coherence(
+            topics=unique_topics, dictionary=dictionary, corpus=None, texts=None,
+            keyed_vectors=d2v.wv, metrics=None, window_size=None,
+            suffix='_d2v.wv.custom', cores=args.cores, topn=args.topn,
+        )
+        gc.collect()
+        if df is not None:
+            dfs.append(df)
+
+        # apply custom similarity metrics
+        kvs = {'d2v.wv.custom': d2v.wv}
+        ms = unique_topics.apply(mean_similarity, kvs=kvs, axis=1)
+        ps = unique_topics.apply(pairwise_similarity, kvs=kvs, ignore_oov=True, axis=1)
+        ps2 = unique_topics.apply(pairwise_similarity, kvs=kvs, ignore_oov=False, axis=1)
+        df_sims = pd.concat(
+            {
+                'mean_similarity': ms,
+                'pairwise_similarity_ignore_oov': ps,
+                'pairwise_similarity': ps2
+            },
+            axis=1
+        )
+        del d2v
+        gc.collect()
+
     dfs = pd.concat(dfs, axis=1)
     dfs = (
         dfs
@@ -276,15 +368,23 @@ def main():
         .drop(topic_columns, axis=1)
     )
 
-    tpx_path = LDA_DIR / args.version / 'bow' / 'topics'
-    if args.rerank:
-        file = tpx_path / f'{args.dataset}_reranker-eval.csv'
+    if args.topics:
+        tpx_path = Path(args.topics)
+        if args.rerank:
+            file = tpx_path.parent / f'{tpx_path.stem}_reranker-eval.csv'
+        else:
+            file = tpx_path.parent / f'{tpx_path.stem}_topic-scores.csv'
     else:
-        file = (
-            tpx_path /
-            f'{args.dataset}{f"_{args.lsi}" if args.lsi else ""}_'
-            f'{args.version}_{args.corpus_type}_topic-scores.csv'
-        )
+        tpx_path = LDA_DIR / args.version / 'bow' / 'topics'
+        if args.rerank:
+            file = tpx_path / f'{args.dataset}_reranker-eval.csv'
+        else:
+            file = (
+                tpx_path /
+                f'{args.dataset}{f"_{args.lsi}" if args.lsi else ""}_'
+                f'{args.version}_{args.corpus_type}_topic-scores.csv'
+            )
+
     if file.exists():
         file = file.parent / file.name.replace('.csv', f'_{str(time()).split(".")[0]}.csv')
 

@@ -34,14 +34,14 @@ topics = topics.reset_index(drop=True)
 topics = topics.applymap(str.lower)
 labels = pd.read_csv(args.ldata, index_col=[0, 1]).reset_index(drop=True)
 labels = labels.applymap(str.lower)
-topic_cols = [col for col in topics.columns if 'term' in col]
-label_cols = [col for col in labels.columns if 'label' in col]
+topic_cols = [col for col in topics.columns if "term" in col]
+label_cols = [col for col in labels.columns if "label" in col]
 topics = topics[topic_cols]
 labels = labels[label_cols]
 tprint(topics, 5)
 tprint(labels, 5)
 
-topic_list = topics.T.to_dict('list')
+topic_list = topics.T.to_dict("list")
 label_list = labels.values.tolist()
 
 print("Data Gathered for unsupervised model")
@@ -51,7 +51,7 @@ print("Data Gathered for unsupervised model")
 def get_topic_lg(elem):
     tot_list = []
     for item in elem:
-        trigrams = [item[i:i + 3] for i in range(0, len(item) - 2)]
+        trigrams = [item[i : i + 3] for i in range(0, len(item) - 2)]
         tot_list = tot_list + trigrams
     x = Counter(tot_list)
     total = sum(x.values(), 0.0)
@@ -71,8 +71,9 @@ def get_best_label(label_list, num):
     val_dict = {}
     values = []
     for item in label_list:
-        trigrams = [item[i:i + 3] for i in
-                    range(0, len(item) - 2)]  # Extracting letter trigram for label
+        trigrams = [
+            item[i : i + 3] for i in range(0, len(item) - 2)
+        ]  # Extracting letter trigram for label
         label_cnt = Counter(trigrams)
         total = sum(label_cnt.values(), 0.0)
         for key in label_cnt:
@@ -97,7 +98,7 @@ def get_best_label(label_list, num):
     # print(values)
     # list_sorted = sorted(val_dict.items(), key=lambda x: x[1],
     #                      reverse=True)  # Sorting the labels by rank
-    return values #[i[0] for i in list_sorted[:int(args.num_unsup_labels)]]
+    return values  # [i[0] for i in list_sorted[:int(args.num_unsup_labels)]]
 
 
 unsup_output = []
@@ -107,7 +108,7 @@ for j in range(0, len(topic_list)):
 dfout = pd.DataFrame(unsup_output)
 dfout.index = index
 print(dfout)
-dfout.to_csv('../data/unsup_output.csv')
+dfout.to_csv("../data/unsup_output.csv")
 
 # printing the top unsupervised labels.
 # print("Printing labels for unsupervised model")
@@ -115,11 +116,11 @@ dfout.to_csv('../data/unsup_output.csv')
 # g = open(args.output_unsupervised, 'w')
 # for i, item in enumerate(unsup_output):
 #     all_values.append()
-    # print("Top " + args.num_unsup_labels + " labels for topic " + str(i) + " are:")
-    # g.write("Top " + args.num_unsup_labels + " labels for topic " + str(i) + " are:" + "\n")
-    # for elem in item:
-        # print(elem)
-        # g.write(elem + "\n")
-    # print("\n")
-    # g.write("\n")
+# print("Top " + args.num_unsup_labels + " labels for topic " + str(i) + " are:")
+# g.write("Top " + args.num_unsup_labels + " labels for topic " + str(i) + " are:" + "\n")
+# for elem in item:
+# print(elem)
+# g.write(elem + "\n")
+# print("\n")
+# g.write("\n")
 # g.close()

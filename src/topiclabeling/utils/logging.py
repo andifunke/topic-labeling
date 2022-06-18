@@ -4,8 +4,17 @@
 import sys
 from datetime import datetime
 from logging import (
-    Formatter, CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET, Logger, getLogger,
-    FileHandler, StreamHandler
+    Formatter,
+    CRITICAL,
+    ERROR,
+    WARNING,
+    INFO,
+    DEBUG,
+    NOTSET,
+    Logger,
+    getLogger,
+    FileHandler,
+    StreamHandler,
 )
 from pathlib import Path
 from pprint import pformat
@@ -18,30 +27,30 @@ from tabulate import tabulate
 import topiclabeling
 from topiclabeling.utils.constants import LOG_DIR
 
-LOGGER_NAME = ''
+LOGGER_NAME = ""
 HAS_ERRORS = False
 EXCEPTION = ERROR + 1
 
 
 def timestamp() -> str:
     """Returns a formatted time stamp as string."""
-    
+
     now = datetime.now()
 
     return now.strftime("%Y-%m-%d--%H-%M-%S--%f")
 
 
 def init_logging(
-        name: str = None, 
-        to_stdout: bool = False,
-        to_file: bool = True, 
-        log_file: str = None, 
-        log_dir: str = None,
-        append: bool = False, 
-        time_stamp: str = None,
-        stdout_level=INFO,
-        logfile_level=DEBUG, 
-        debug: bool = False,
+    name: str = None,
+    to_stdout: bool = False,
+    to_file: bool = True,
+    log_file: str = None,
+    log_dir: str = None,
+    append: bool = False,
+    time_stamp: str = None,
+    stdout_level=INFO,
+    logfile_level=DEBUG,
+    debug: bool = False,
 ) -> Logger:
     """
     Initialize a (global) logger for the current runtime.
@@ -66,10 +75,10 @@ def init_logging(
 
     global LOGGER_NAME
     if LOGGER_NAME:
-        logg('logging already initialized in this session', WARNING)
+        logg("logging already initialized in this session", WARNING)
         return getLogger(LOGGER_NAME)
 
-    name = name if name else 'project'
+    name = name if name else "project"
     LOGGER_NAME = name
 
     if debug:
@@ -90,13 +99,13 @@ def init_logging(
         if not append:
             if not time_stamp:
                 time_stamp = timestamp()
-            log_file = f'{name}__{time_stamp}.log'
+            log_file = f"{name}__{time_stamp}.log"
 
-        file_path = log_dir/log_file
+        file_path = log_dir / log_file
         if not append:
-            with open(file_path, 'w'):
+            with open(file_path, "w"):
                 target = log_file
-                link_name = log_dir/f'latest__{name}.log'
+                link_name = log_dir / f"latest__{name}.log"
                 if link_name.exists():
                     link_name.unlink()
                 link_name.symlink_to(target)
@@ -104,7 +113,8 @@ def init_logging(
         fh = FileHandler(file_path)
         fh.setLevel(logfile_level)
         formatter_file = Formatter(
-            '%(asctime)s--%(name)s--%(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S',
+            "%(asctime)s--%(name)s--%(levelname)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
         fh.setFormatter(formatter_file)
         logger.addHandler(fh)
@@ -113,27 +123,28 @@ def init_logging(
         ch = StreamHandler(sys.stdout)
         ch.setLevel(stdout_level)
         formatter_stdout = Formatter(
-            '%(asctime)s--%(name)s--%(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S',
+            "%(asctime)s--%(name)s--%(levelname)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
         ch.setFormatter(formatter_stdout)
         logger.addHandler(ch)
 
-    logger.info('')
-    logger.info('#' * 75)
+    logger.info("")
+    logger.info("#" * 75)
     logger.info(f"----- {name.upper()} -----")
     logger.info(f"- log-file: {log_file} -")
     logger.info("----- start -----")
-    logger.debug(f"python: %s" % sys.version.replace('\n', ' '))
+    logger.debug(f"python: %s" % sys.version.replace("\n", " "))
     logger.debug(f"topiclabeling: {topiclabeling.__version__}")
 
     return logger
 
 
 def logg(
-        s: Any = '',
-        level: int = INFO,
-        logger: Logger = None,
-        flush: bool = False,
+    s: Any = "",
+    level: int = INFO,
+    logger: Logger = None,
+    flush: bool = False,
 ) -> object:
     """
     Enhanced replacement for the print function. Falls back to print if necessary.
@@ -195,11 +206,11 @@ def logg(
 
 
 def logging_frame(
-        main_function: Callable,
-        kwargs: dict,
-        project_name: str = None,
-        develop_mode: bool = False,
-        time_stamp: str = None,
+    main_function: Callable,
+    kwargs: dict,
+    project_name: str = None,
+    develop_mode: bool = False,
+    time_stamp: str = None,
 ):
     """
     Sets up a logging frame to deploy modules and catch critical events.
@@ -218,7 +229,7 @@ def logging_frame(
         to_stdout=True,
         to_file=True,
         debug=develop_mode,
-        time_stamp=time_stamp
+        time_stamp=time_stamp,
     )
     try:
         main_function(**kwargs)
@@ -226,19 +237,21 @@ def logging_frame(
         logg(e, CRITICAL)
     else:
         if HAS_ERRORS:
-            logg('Some Errors occurred.', WARNING)
+            logg("Some Errors occurred.", WARNING)
         else:
-            logg('No Errors occurred.', DEBUG)
+            logg("No Errors occurred.", DEBUG)
     finally:
-        logg('----- exit -----', WARNING)
+        logg("----- exit -----", WARNING)
 
 
-def table(df: Union[pd.DataFrame, pd.Series], head: int = 0, floatfmt: str = None) -> str:
+def table(
+    df: Union[pd.DataFrame, pd.Series], head: int = 0, floatfmt: str = None
+) -> str:
     """Generates a well formatted table from a DataFrame or Series."""
 
     if not (isinstance(df, pd.DataFrame) or isinstance(df, pd.Series)):
-        logg('generate table: Not a DataFrame.', WARNING)
-        return ''
+        logg("generate table: Not a DataFrame.", WARNING)
+        return ""
 
     if head > 0:
         df = df.head(head)
@@ -247,10 +260,12 @@ def table(df: Union[pd.DataFrame, pd.Series], head: int = 0, floatfmt: str = Non
 
     kwargs = dict()
     if floatfmt is not None:
-        kwargs['floatfmt'] = floatfmt
+        kwargs["floatfmt"] = floatfmt
 
     try:
-        tbl = tabulate(df, headers="keys", tablefmt="pipe", showindex="always", **kwargs)
+        tbl = tabulate(
+            df, headers="keys", tablefmt="pipe", showindex="always", **kwargs
+        )
         return tbl
     except Exception as e:
         logg(e)
@@ -258,16 +273,20 @@ def table(df: Union[pd.DataFrame, pd.Series], head: int = 0, floatfmt: str = Non
 
 
 def tprint(
-        df: pd.DataFrame, head: int = 0, floatfmt: str = None, to_latex: bool = False,
-        log_shape: bool = True, message: str = ''
+    df: pd.DataFrame,
+    head: int = 0,
+    floatfmt: str = None,
+    to_latex: bool = False,
+    log_shape: bool = True,
+    message: str = "",
 ):
     """Print a DataFrame as a well formatted table."""
 
     if df is None:
         return
     tbl = table(df=df, head=head, floatfmt=floatfmt)
-    shape = f'\nshape: {df.shape}' if log_shape else ''
-    logg(f'{message}\n{tbl}{shape}')
+    shape = f"\nshape: {df.shape}" if log_shape else ""
+    logg(f"{message}\n{tbl}{shape}")
 
     if to_latex:
         print(df.to_latex(bold_rows=True))
@@ -282,4 +301,4 @@ def hms_string(sec_elapsed):
 
 
 def log_args(args):
-    logg('\n' + pformat(vars(args)))
+    logg("\n" + pformat(vars(args)))

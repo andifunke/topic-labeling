@@ -15,13 +15,23 @@ from topiclabeling.utils.utils import init_logging, log_args
 def main():
     # --- arguments ---
     (
-        dataset, version, _, _, nbs_topics, _, _, cache_in_memory, use_callbacks, tfidf, args
+        dataset,
+        version,
+        _,
+        _,
+        nbs_topics,
+        _,
+        _,
+        cache_in_memory,
+        use_callbacks,
+        tfidf,
+        args,
     ) = parse_args()
 
-    model_class = 'LSImodel'
+    model_class = "LSImodel"
     _split_ = "_split" if use_callbacks else ""
 
-    data_name = f'{dataset}_{version}_{tfidf}'
+    data_name = f"{dataset}_{version}_{tfidf}"
     data_dir = join(LDA_DIR, version, tfidf)
 
     # --- logging ---
@@ -30,34 +40,34 @@ def main():
     log_args(logger, args)
 
     # --- load dict ---
-    logg('Loading dictionary')
-    data_file = join(data_dir, f'{data_name}.dict')
+    logg("Loading dictionary")
+    data_file = join(data_dir, f"{data_name}.dict")
     dictionary = Dictionary.load(data_file)
 
     # --- load corpus ---
-    logg('Loading corpus')
-    data_file = join(data_dir, f'{data_name}.mm')
+    logg("Loading corpus")
+    data_file = join(data_dir, f"{data_name}.mm")
     corpus = MmCorpus(data_file)
     if cache_in_memory:
-        logg('Reading corpus into RAM')
+        logg("Reading corpus into RAM")
         corpus = list(corpus)
     if use_callbacks:
         train, test = split_corpus(corpus)
     else:
         train, test = corpus, []
-    logg(f'size of... train_set={len(train)}, test_set={len(test)}')
+    logg(f"size of... train_set={len(train)}, test_set={len(test)}")
 
     # --- train ---
     topn = 20
-    columns = [f'term{x}' for x in range(topn)] + [f'weight{x}' for x in range(topn)]
+    columns = [f"term{x}" for x in range(topn)] + [f"weight{x}" for x in range(topn)]
     for nbtopics in nbs_topics:
         gc.collect()
 
-        logg(f'Running {model_class} with {nbtopics} topics')
+        logg(f"Running {model_class} with {nbtopics} topics")
         model = LsiModel(corpus=train, num_topics=nbtopics, id2word=dictionary)
 
-        model_dir = join(LSI_DIR, version, tfidf, f'{_split_}')
-        model_path = join(model_dir, f'{dataset}_{model_class}{_split_}_{nbtopics}')
+        model_dir = join(LSI_DIR, version, tfidf, f"{_split_}")
+        model_path = join(model_dir, f"{dataset}_{model_class}{_split_}_{nbtopics}")
         if not exists(model_dir):
             makedirs(model_dir)
 
@@ -65,21 +75,16 @@ def main():
         topics = model.show_topics(num_words=topn, formatted=False)
         topics = [list(chain(*zip(*topic[1]))) for topic in topics]
         topics = pd.DataFrame(topics, columns=columns)
-        logg(f'Saving topics to {model_path}.csv')
-        topics.to_csv(f'{model_path}.csv')
+        logg(f"Saving topics to {model_path}.csv")
+        topics.to_csv(f"{model_path}.csv")
 
         # --- save model ---
-        logg(f'Saving model to {model_path}')
+        logg(f"Saving model to {model_path}")
         model.save(model_path)
 
     # --- done ---
-    logg(
-        f'\n'
-        f'----- end -----\n'
-        f'----- {dataset.upper()} -----\n'
-        f'{"#" * 50}\n'
-    )
+    logg(f"\n" f"----- end -----\n" f"----- {dataset.upper()} -----\n" f'{"#" * 50}\n')
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

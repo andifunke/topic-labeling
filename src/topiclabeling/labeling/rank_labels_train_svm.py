@@ -29,29 +29,37 @@ pd.options.display.width = 1000
 
 
 # Global parameters for the model.
-ratings_version = ['all', 'removed_constants', 'cleaned_part', 'cleaned_full'][-1]
-svm_path = join(DATA_BASE, 'ranker')
-labels_path = join(svm_path, f'ratings_{ratings_version}.csv')  # label dataset with ratings
+ratings_version = ["all", "removed_constants", "cleaned_part", "cleaned_full"][-1]
+svm_path = join(DATA_BASE, "ranker")
+labels_path = join(
+    svm_path, f"ratings_{ratings_version}.csv"
+)  # label dataset with ratings
 
-svm_learn_path = join(svm_path, 'svm_rank_learn')  # path to SVM rank trainer binary
-pagerank_path = join(svm_path, 'pagerank-titles-sorted_de_categories_removed.txt')  # pagerank file
-topics_path = join(svm_path, 'topics.csv')  # topic dataset with topic terms
+svm_learn_path = join(svm_path, "svm_rank_learn")  # path to SVM rank trainer binary
+pagerank_path = join(
+    svm_path, "pagerank-titles-sorted_de_categories_removed.txt"
+)  # pagerank file
+topics_path = join(svm_path, "topics.csv")  # topic dataset with topic terms
 svm_hyperparameter = 0.1  # The SVM hyperparameter.
-omit_underscores = False  # alternative way to create trigrams (treating phrases as multiple tokens)
-dsets = ['O', 'P', 'N', 'dewac']
+omit_underscores = (
+    False  # alternative way to create trigrams (treating phrases as multiple tokens)
+)
+dsets = ["O", "P", "N", "dewac"]
 datasets = [DATASETS_FULL.get(d, d) for d in dsets]
-dstr = ('_'+'-'.join(dsets)) if dsets else ''
-output_svm_model = join(svm_path, f'svm_model_{ratings_version}{dstr}')  # path for trained SVM model
+dstr = ("_" + "-".join(dsets)) if dsets else ""
+output_svm_model = join(
+    svm_path, f"svm_model_{ratings_version}{dstr}"
+)  # path for trained SVM model
 tmp_file_path = join(svm_path, f"train_temp_{ratings_version}{dstr}.dat")
 
-FEATURES = ['letter_trigram', 'prank', 'lab_length', 'common_words']
+FEATURES = ["letter_trigram", "prank", "lab_length", "common_words"]
 
 
 def normalize(item):
-    """ Normalizes strings in topics and labels. """
+    """Normalizes strings in topics and labels."""
     if isinstance(item, str):
         item = item.lower()
-        for k, v in {' ': '_', '_!': '!', '_’': '’'}.items():
+        for k, v in {" ": "_", "_!": "!", "_’": "’"}.items():
             item = item.replace(k, v)
         return item
     else:
@@ -59,8 +67,8 @@ def normalize(item):
 
 
 def load_pageranks(file):
-    """ Reading in pageranks and converting it into a dictionary. """
-    f2 = open(file, 'r')
+    """Reading in pageranks and converting it into a dictionary."""
+    f2 = open(file, "r")
     p_rank_dict = {}
     for line in f2:
         word = line.split()
@@ -74,14 +82,14 @@ def load_pageranks(file):
 
 
 def load_topics(file, datassetz=None):
-    """ reading topic terms. """
+    """reading topic terms."""
     topics = pd.read_csv(file)
     if datassetz:
         topics = topics[topics.domain.isin(datassetz)]
         print(topics.head())
     topics = topics.applymap(normalize)
-    topics = topics.drop('domain', axis=1, errors='ignore')
-    topic_dict = topics.set_index('topic_id').T.to_dict('list')
+    topics = topics.drop("domain", axis=1, errors="ignore")
+    topic_dict = topics.set_index("topic_id").T.to_dict("list")
     topic_ids = list(topics.index)
     return topic_dict, topic_ids
 
@@ -94,11 +102,11 @@ def load_labels(file, topic_ids, datassetz=None):
         print(labels.head())
     labels.label = labels.label.apply(normalize)
     topic_labels_without_topic_id = list(labels)
-    topic_labels_without_topic_id.remove('topic_id')
-    labels['total'] = labels[topic_labels_without_topic_id].sum(axis=1)
+    topic_labels_without_topic_id.remove("topic_id")
+    labels["total"] = labels[topic_labels_without_topic_id].sum(axis=1)
     num_raters = labels.count(axis=1) - 3
-    labels['avg'] = labels['total'] / num_raters
-    topic_groups = labels.groupby('topic_id')
+    labels["avg"] = labels["total"] / num_raters
+    topic_groups = labels.groupby("topic_id")
 
     labels_dict = OrderedDict()
     for tpxid, group in topic_groups:
@@ -116,12 +124,12 @@ def get_topic_lt(tpx):
     tot_list = []
     for term in tpx:
         if omit_underscores:
-            tokens = re.split(r'[_ ]', term)
+            tokens = re.split(r"[_ ]", term)
             for token in tokens:
-                trigrams = [token[i:i + 3] for i in range(0, len(token) - 2)]
+                trigrams = [token[i : i + 3] for i in range(0, len(token) - 2)]
                 tot_list = tot_list + trigrams
         else:
-            trigrams = [term[i:i + 3] for i in range(0, len(term) - 2)]
+            trigrams = [term[i : i + 3] for i in range(0, len(term) - 2)]
             tot_list = tot_list + trigrams
     counter = Counter(tot_list)
     total = sum(counter.values(), 0.0)
@@ -142,13 +150,14 @@ def get_lt_ranks(lab_list, topic_list, num):
     for term in lab_list:
         if omit_underscores:
             # ignores underscores and spaces
-            tokens = re.split(r'[_ ]', term.lower())
+            tokens = re.split(r"[_ ]", term.lower())
             trigrams = []
             for token in tokens:
-                trigrams += [token[i:i + 3] for i in range(0, len(token) - 2)]
+                trigrams += [token[i : i + 3] for i in range(0, len(token) - 2)]
         else:
-            trigrams = [term[i:i + 3] for i in
-                        range(0, len(term) - 2)]  # Letter trigram for candidate label.
+            trigrams = [
+                term[i : i + 3] for i in range(0, len(term) - 2)
+            ]  # Letter trigram for candidate label.
         label_cnt = Counter(trigrams)
         total = sum(label_cnt.values(), 0.0)
         for key in label_cnt:
@@ -178,7 +187,7 @@ def get_lt_ranks(lab_list, topic_list, num):
 
 
 def generate_lt_feature(labels_list, topic_dict):
-    """ Generates letter trigram feature """
+    """Generates letter trigram feature"""
     temp_lt = []
     for k, v in topic_dict.items():
         temp_lt.append(get_lt_ranks(labels_list[k], topic_dict, k))
@@ -188,7 +197,7 @@ def generate_lt_feature(labels_list, topic_dict):
 
 
 def change_format(f1):
-    """ Changes the format of letter trigram into a dict of dict. """
+    """Changes the format of letter trigram into a dict of dict."""
     lt_dict = defaultdict(dict)
     for elem in f1:
         x, y, z = elem
@@ -205,7 +214,15 @@ def prepare_features(letter_tg_dict, page_rank_dict, topic_list, labels=None):
     annotator value. This annotator avlue is calculated from the candidate label datset and is used to
     train the SVM model.
     """
-    cols = ['label', 'topic_id', 'letter_trigram', 'prank', 'lab_length', 'common_words', 'avg_val']
+    cols = [
+        "label",
+        "topic_id",
+        "letter_trigram",
+        "prank",
+        "lab_length",
+        "common_words",
+        "avg_val",
+    ]
     frame = pd.DataFrame()
 
     for idx, a in letter_tg_dict.items():
@@ -220,9 +237,9 @@ def prepare_features(letter_tg_dict, page_rank_dict, topic_list, labels=None):
             # --- Page Rank Feature ---
             try:
                 pagerank = page_rank_dict[t_label]
-                pagerank = float(pagerank.replace(',', '.'))
+                pagerank = float(pagerank.replace(",", "."))
             except Exception as e:
-                print('not in pagerank file:', e)
+                print("not in pagerank file:", e)
                 pagerank = np.nan
             new_list.append(pagerank)
 
@@ -240,7 +257,7 @@ def prepare_features(letter_tg_dict, page_rank_dict, topic_list, labels=None):
             if labels is not None:
                 # The annotator value.
                 mask = (labels.topic_id == idx) & (labels.label == t_label)
-                val = labels.loc[mask, 'avg'].values[0]
+                val = labels.loc[mask, "avg"].values[0]
                 new_list.append(val)
             else:
                 # This could be just any value appended for the sake of giving a column for annotator
@@ -253,45 +270,52 @@ def prepare_features(letter_tg_dict, page_rank_dict, topic_list, labels=None):
 
         for item in FEATURES:
             # Feature normalization per topic.
-            temp_frame[item] = (temp_frame[item] - temp_frame[item].mean()) / \
-                               (temp_frame[item].max() - temp_frame[item].min())
+            temp_frame[item] = (temp_frame[item] - temp_frame[item].mean()) / (
+                temp_frame[item].max() - temp_frame[item].min()
+            )
         frame = frame.append(temp_frame, ignore_index=True)
     frame = frame.fillna(0)
     return frame
 
 
 def convert_dataset(dataset):
-    """ converts the dataset into a format which is taken by SVM ranker. """
+    """converts the dataset into a format which is taken by SVM ranker."""
     data_lst = []
     for i in range(len(dataset)):
 
-        mystring = str(dataset[i:i + 1]["avg_val"].values[0]) + " " + "qid:" + str(
-            int(dataset[i:i + 1]["topic_id"].values[0]))
+        mystring = (
+            str(dataset[i : i + 1]["avg_val"].values[0])
+            + " "
+            + "qid:"
+            + str(int(dataset[i : i + 1]["topic_id"].values[0]))
+        )
         for j, item in enumerate(FEATURES):
-            mystring = mystring + " " + str(j + 1) + ":" + str(dataset[i:i + 1][item].values[0])
-        mystring = mystring + " # " + dataset[i:i + 1]['label'].values[0]
+            mystring = (
+                mystring
+                + " "
+                + str(j + 1)
+                + ":"
+                + str(dataset[i : i + 1][item].values[0])
+            )
+        mystring = mystring + " # " + dataset[i : i + 1]["label"].values[0]
         data_lst.append(mystring)
     return data_lst
 
 
 def train(train_set, tmp_file, svm_learn_file):
-    """ This method generates the trained SVM file using SVM ranker learn """
+    """This method generates the trained SVM file using SVM ranker learn"""
     with open(tmp_file, "w") as fp:
         for item in train_set:
             fp.write("%s\n" % item)
 
-    query = ' '.join([
-        svm_learn_file,
-        '-c',
-        str(svm_hyperparameter),
-        tmp_file,
-        output_svm_model
-    ])
+    query = " ".join(
+        [svm_learn_file, "-c", str(svm_hyperparameter), tmp_file, output_svm_model]
+    )
     print(query)
     print()
     os.system(query)
 
-    query2 = f'rm {tmp_file}'
+    query2 = f"rm {tmp_file}"
     print()
     print(query2)
     os.system(query2)
@@ -309,5 +333,5 @@ def main():
     train(train_list, tmp_file_path, svm_learn_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

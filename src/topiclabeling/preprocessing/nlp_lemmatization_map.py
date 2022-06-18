@@ -32,10 +32,10 @@ def get_best_text(grp):
 
 
 def generate_and_save_map(df, dataset):
-    df = df.to_frame().rename(columns={'text': 'counts'}).reset_index()
-    df = df.groupby('token').apply(get_best_text)
-    file = f'{DATASETS_FULL.get(dataset, dataset)}_lemmatization_map.pickle'
-    logg(f'Writing {file}')
+    df = df.to_frame().rename(columns={"text": "counts"}).reset_index()
+    df = df.groupby("token").apply(get_best_text)
+    file = f"{DATASETS_FULL.get(dataset, dataset)}_lemmatization_map.pickle"
+    logg(f"Writing {file}")
     df.to_pickle(ETL_DIR / file)
     gc.collect()
 
@@ -44,36 +44,29 @@ def main():
     # the following regex are mainly there in order to reduce the vocabulary-size of the dewac
     # corpus
     digits = r'[0-9.,/=:;&#\!\?\*"\'\-\(\)\[\]]+'
-    web = r'.*?(http:|www\.|\.html|\.htm|\.php|\.de|\.net|\.com|\.at|\.org|\.info).*'
+    web = r".*?(http:|www\.|\.html|\.htm|\.php|\.de|\.net|\.com|\.at|\.org|\.info).*"
     start = r'[/&\-ï",\'\$\(\)\*\.]+.*'
-    end = r'.[\.\(\)¬]*'
-    badasc = r'.*?[].*'
+    end = r".[\.\(\)¬]*"
+    badasc = r".*?[].*"
     pat = re.compile(
-        r'^(' + '|'.join([
-            digits,
-            web,
-            start,
-            end,
-            badasc
-        ]) + r')$',
-        flags=re.IGNORECASE
+        r"^(" + "|".join([digits, web, start, end, badasc]) + r")$", flags=re.IGNORECASE
     )
 
-    datasets = ['dewac', 'dewiki']
+    datasets = ["dewac", "dewiki"]
     for dataset in datasets[:]:
         series = []
-        for df in multiload(dataset, 'nlp'):
+        for df in multiload(dataset, "nlp"):
             gc.collect()
             df = df[df.POS.isin(POS_N)]
             df = df[~df.token.str.match(pat)]
-            df = df.set_index('token').text
+            df = df.set_index("token").text
             series.append(df)
             gc.collect()
         df = pd.concat(series)
-        df = df.groupby('token').value_counts()
+        df = df.groupby("token").value_counts()
         df = df[df > 1]
         generate_and_save_map(df, dataset)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

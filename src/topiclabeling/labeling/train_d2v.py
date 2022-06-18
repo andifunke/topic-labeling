@@ -10,13 +10,16 @@ from tqdm import tqdm
 
 from topiclabeling.utils.constants import ETL_DIR, HASH, TOKEN, TEXT, EMB_DIR
 from topiclabeling.utils.logging import logg, init_logging, log_args
-from topiclabeling.utils.train_utils import parse_args, EpochSaver, EpochLogger, \
-    SynonymJudgementTaskDEMetric
+from topiclabeling.utils.train_utils import (
+    parse_args,
+    EpochSaver,
+    EpochLogger,
+    SynonymJudgementTaskDEMetric,
+)
 
 
 class Documents(object):
-
-    def __init__(self, input_path, lowercase=False, input_format='text'):
+    def __init__(self, input_path, lowercase=False, input_format="text"):
         self.input_path = Path(input_path)
         if self.input_path.is_dir():
             self.files = sorted(f for f in input_path.iterdir() if f.is_file())
@@ -24,7 +27,7 @@ class Documents(object):
             self.files = [self.input_path]
 
         self.lowercase = lowercase
-        self.pickle_format = input_format == 'pickle'
+        self.pickle_format = input_format == "pickle"
 
     def __iter__(self):
         yield from self._iter_pickle() if self.pickle_format else self._iter_text()
@@ -42,22 +45,22 @@ class Documents(object):
         for filename in self.files:
             with open(filename) as fp:
                 logg(f"Reading {filename}")
-                yield from map(tag, tqdm(fp, unit=' documents'))
+                yield from map(tag, tqdm(fp, unit=" documents"))
 
     def _iter_pickle(self):
-        titles = pd.read_pickle(ETL_DIR / 'dewiki_phrases_lemmatized.pickle')
+        titles = pd.read_pickle(ETL_DIR / "dewiki_phrases_lemmatized.pickle")
         if self.lowercase:
             titles.token = titles.token.str.lower()
             titles.text = titles.text.str.lower()
 
         for file in self.files:
             gc.collect()
-            corpus = file.name.split('.')[0]
-            logg(f'loading {corpus}')
+            corpus = file.name.split(".")[0]
+            logg(f"loading {corpus}")
 
-            df = pd.read_pickle(file)
+            df = pd.read_pickle(str(file))
 
-            # applying the same processing to each document on each iteration 
+            # applying the same processing to each document on each iteration
             # is rather inefficient. If applicable keep TaggedDocuments in memory
             if self.lowercase:
                 df.token = df.token.str.lower()
@@ -68,11 +71,10 @@ class Documents(object):
                 # allocate an array for ids of size 2^64 if int values are too big. 2nd tag
                 # is the lemmatized token, 3rd tag is the original (underscore-concatenated)
                 # title (parenthesis removed)
-                yield TaggedDocument(doc, [
-                    str(doc_id),
-                    titles.loc[doc_id, TOKEN],
-                    titles.loc[doc_id, TEXT]
-                ])
+                yield TaggedDocument(
+                    doc,
+                    [str(doc_id), titles.loc[doc_id, TOKEN], titles.loc[doc_id, TEXT]],
+                )
 
     @staticmethod
     def docs_to_lists(token_series):
@@ -84,10 +86,12 @@ def main():
     t0 = time()
 
     # --- argument parsing ---
-    args = parse_args(default_model_name='d2v', default_epochs=50)
+    args = parse_args(default_model_name="d2v", default_epochs=50)
 
     # --- init logging ---
-    init_logging(name=args.model_name, to_stdout='stdout' in args.log, to_file='file' in args.log)
+    init_logging(
+        name=args.model_name, to_stdout="stdout" in args.log, to_file="file" in args.log
+    )
     log_args(args)
 
     input_path = Path(args.input)
@@ -95,18 +99,22 @@ def main():
     model_path.mkdir(exist_ok=True, parents=True)
     logg(f"model dir: {model_path}")
 
-    documents = Documents(input_path, lowercase=args.lowercase, input_format=args.format)
+    documents = Documents(
+        input_path,
+        lowercase=args.lowercase,
+        input_format=args.format,
+    )
     if not args.stream:
         # needs approx. 25GB of RAM for Wikipedia
         logg("caching data in memory")
-        documents = [s for s in tqdm(documents, unit=' lines')]
+        documents = [s for s in tqdm(documents, unit=" lines")]
         gc.collect()
 
     # Model initialization
     if args.from_checkpoint:
         if not Path(args.from_checkpoint).exists():
             raise ValueError(f"Path {args.from_checkpoint} does not exists")
-        logg(f'Loading model from {args.from_checkpoint}')
+        logg(f"Loading model from {args.from_checkpoint}")
         model = Doc2Vec.load(args.from_checkpoint)
         model.workers = args.cores
     else:
@@ -129,9 +137,9 @@ def main():
         logg("Building vocab")
         if args.vocab:
             with open(args.vocab) as fp:
-                print(f'Loading vocab file {args.vocab}')
+                print(f"Loading vocab file {args.vocab}")
                 vocab_terms = sorted({line.strip() for line in fp.readlines()})
-                print(f'{len(vocab_terms)} terms loaded.')
+                print(f"{len(vocab_terms)} terms loaded.")
         else:
             vocab_terms = []
 
@@ -145,7 +153,9 @@ def main():
         model.build_vocab(documents, trim_rule=trim_rule)
 
     # Model training
-    epoch_saver = EpochSaver(model_path, args.checkpoint_every, start_epoch=args.from_epoch)
+    epoch_saver = EpochSaver(
+        model_path, args.checkpoint_every, start_epoch=args.from_epoch
+    )
     epoch_logger = EpochLogger(start_epoch=args.from_epoch)
     sjt_de = SynonymJudgementTaskDEMetric(call_every=1, start_epoch=args.from_epoch)
 
@@ -168,5 +178,5 @@ def main():
     logg(f"all done in {t1 // 3600:02d}:{(t1 // 60) % 60:02d}:{t1 % 60:02d}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

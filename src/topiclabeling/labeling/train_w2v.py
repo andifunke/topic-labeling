@@ -5,17 +5,25 @@ from time import time
 
 import pandas as pd
 from gensim.models import Word2Vec, FastText
+from gensim.utils import RULE_KEEP, RULE_DISCARD
 from tqdm import tqdm
 
 from topiclabeling.utils.constants import TOKEN, HASH, SENT_IDX, EMB_DIR
-from topiclabeling.utils.logging import init_logging, log_args, logg
-from topiclabeling.utils.train_utils import parse_args, EpochSaver, EpochLogger
+from topiclabeling.utils.logging import logg, init_logging, log_args
+from topiclabeling.utils.train_utils import (
+    parse_args,
+    EpochSaver,
+    EpochLogger,
+    SynonymJudgementTaskDEMetric,
+)
 
 
 class Sentences(object):
     """Memory friendly data streaming from disk."""
 
-    def __init__(self, input_path, lowercase=False, input_format='text', use_file_cache=False):
+    def __init__(
+        self, input_path, lowercase=False, input_format="text", use_file_cache=False
+    ):
         self.input_path = Path(input_path)
         if self.input_path.is_dir():
             self.files = sorted(f for f in input_path.iterdir() if f.is_file())
@@ -23,7 +31,7 @@ class Sentences(object):
             self.files = [self.input_path]
 
         self.lowercase = lowercase
-        self.pickle_format = input_format == 'pickle'
+        self.pickle_format = input_format == "pickle"
 
         if self.pickle_format:
             self.use_file_cache = use_file_cache
@@ -58,7 +66,7 @@ class Sentences(object):
                     yield sent
 
     def _init_file_cache(self):
-        cache_dir = self.input_path / 'train_cache'
+        cache_dir = self.input_path / "train_cache"
         cache_dir.mkdir(exist_ok=True, parents=True)
         logg(f"initializing file cache in {cache_dir}")
 
@@ -89,10 +97,12 @@ def main():
     t0 = time()
 
     # --- argument parsing ---
-    args = parse_args(default_model_name='w2v', default_epochs=100)
+    args = parse_args(default_model_name="w2v", default_epochs=100)
 
     # --- init logging ---
-    init_logging(name=args.model_name, to_stdout='stdout' in args.log, to_file='file' in args.log)
+    init_logging(
+        name=args.model_name, to_stdout="stdout" in args.log, to_file="file" in args.log
+    )
     log_args(args)
 
     # --- setting up paths ---
@@ -103,59 +113,86 @@ def main():
 
     # --- loading data ---
     sentences = Sentences(
-        input_path, lowercase=args.lowercase, input_format=args.format, use_file_cache=args.stream,
+        input_path,
+        lowercase=args.lowercase,
+        input_format=args.format,
+        use_file_cache=args.stream,
     )
     if not args.stream:
         # needs approx. 25GB of RAM for Wikipedia
         logg("caching data in memory")
-        sentences = [s for s in tqdm(sentences, unit=' lines')]
+        sentences = [s for s in tqdm(sentences, unit=" lines")]
         gc.collect()
 
     # Model initialization
-    logg("Initializing new model")
-    train_params = dict(
-        size=300,
-        window=5,
-        min_count=args.min_count,
-        max_vocab_size=args.max_vocab_size,
-        sample=1e-5,
-        negative=5,
-        sg=1,
-        seed=42,
-        iter=args.epochs,
-        workers=args.cores,
-    )
-    if args.fasttext:
-        model = FastText(**train_params, min_n=3, max_n=6)
+    if args.from_checkpoint:
+        if not Path(args.from_checkpoint).exists():
+            raise ValueError(f"Path {args.from_checkpoint} does not exists")
+        logg(f"Loading model from {args.from_checkpoint}")
+        model = Word2Vec.load(args.from_checkpoint)
+        model.workers = args.cores
     else:
-        model = Word2Vec(**train_params)
+        logg("Initializing new model")
+        train_params = dict(
+            size=300,
+            window=5,
+            min_count=args.min_count,
+            max_vocab_size=args.max_vocab_size,
+            sample=1e-5,
+            negative=5,
+            sg=1,
+            seed=42,
+            iter=args.epochs,
+            workers=args.cores,
+        )
+        if args.fasttext:
+            model = FastText(**train_params, min_n=3, max_n=6)
+        else:
+            model = Word2Vec(**train_params)
 
-    logg("Building vocab")
-    model.build_vocab(sentences, progress_per=100_000)
+        logg("Building vocab")
+        if args.vocab:
+            with open(args.vocab) as fp:
+                print(f"Loading vocab file {args.vocab}")
+                vocab_terms = sorted({line.strip() for line in fp.readlines()})
+                print(f"{len(vocab_terms)} terms loaded.")
+        else:
+            vocab_terms = []
+
+        def trim_rule(word, count, min_count):
+            if word in vocab_terms:
+                return RULE_KEEP
+            if count >= min_count:
+                return RULE_KEEP
+            return RULE_DISCARD
+
+        model.build_vocab(sentences, progress_per=100_000, trim_rule=trim_rule)
 
     # Model training
-    epoch_saver = EpochSaver(model_path, args.checkpoint_every)
-    epoch_logger = EpochLogger()
+    epoch_saver = EpochSaver(
+        model_path, args.checkpoint_every, start_epoch=args.from_epoch
+    )
+    epoch_logger = EpochLogger(start_epoch=args.from_epoch)
+    sjt_de = SynonymJudgementTaskDEMetric(call_every=1, start_epoch=args.from_epoch)
 
     logg(f"Training {args.epochs:d} epochs")
     model.train(
         sentences,
         total_examples=model.corpus_count,
-        epochs=model.epochs,
+        epochs=args.epochs,
         report_delay=60,
-        callbacks=[epoch_logger, epoch_saver],
-        comute_loss=True,
+        callbacks=[epoch_logger, sjt_de, epoch_saver],
     )
 
     # saving model
     file_path = model_path / args.model_name
-    logg(f"Writing model to {file_path}")
+    logg(f"Saving final model to {file_path}")
     model.callbacks = ()
     model.save(str(file_path))
 
     t1 = int(time() - t0)
-    logg(f"all done in {t1//3600:02d}:{(t1//60) % 60:02d}:{t1 % 60:02d}")
+    logg(f"all done in {t1 // 3600:02d}:{(t1 // 60) % 60:02d}:{t1 % 60:02d}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

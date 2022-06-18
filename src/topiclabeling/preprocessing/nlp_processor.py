@@ -9,15 +9,44 @@ from tqdm import tqdm
 
 from topiclabeling.preprocessing.nlp_lemmatizer_plus import LemmatizerPlus
 from topiclabeling.utils.constants import (
-    VOC_DIR, TEXT, LEMMA, IWNLP, POS, TOK_IDX, SENT_START, ENT_IOB, ENT_TYPE, ENT_IDX, TOKEN,
-    SENT_IDX, HASH, NOUN_PHRASE, NLP_DIR, PUNCT, TITLE, ETL_DIR, DESCRIPTION, IWNLP_FILE
+    VOC_DIR,
+    TEXT,
+    LEMMA,
+    IWNLP,
+    POS,
+    TOK_IDX,
+    SENT_START,
+    ENT_IOB,
+    ENT_TYPE,
+    ENT_IDX,
+    TOKEN,
+    SENT_IDX,
+    HASH,
+    NOUN_PHRASE,
+    NLP_DIR,
+    PUNCT,
+    TITLE,
+    ETL_DIR,
+    DESCRIPTION,
+    IWNLP_FILE,
 )
 from topiclabeling.utils.logging import logg
 
 
 class NLProcessor(object):
 
-    FIELDS = [HASH, TOK_IDX, SENT_IDX, TEXT, TOKEN, POS, ENT_IOB, ENT_IDX, ENT_TYPE, NOUN_PHRASE]
+    FIELDS = [
+        HASH,
+        TOK_IDX,
+        SENT_IDX,
+        TEXT,
+        TOKEN,
+        POS,
+        ENT_IOB,
+        ENT_IDX,
+        ENT_TYPE,
+        NOUN_PHRASE,
+    ]
 
     def __init__(self, spacy_path, iwnlp_path=IWNLP_FILE, lemmatization_map_file=None):
 
@@ -32,7 +61,8 @@ class NLProcessor(object):
 
         logg("loading IWNLPWrapper")
         self.lemmatizer = LemmatizerPlus(
-            iwnlp_path, self.nlp, lemmatization_map_file=lemmatization_map_file)
+            iwnlp_path, self.nlp, lemmatization_map_file=lemmatization_map_file
+        )
         self.nlp.add_pipe(self.lemmatizer)
         self.stringstore = self.nlp.vocab.strings
 
@@ -51,36 +81,40 @@ class NLProcessor(object):
         t0 = time()
 
         # read the etl dataframe
-        slicing = f"[{start:d}:{stop:d}]" if (start or stop) else ''
+        slicing = f"[{start:d}:{stop:d}]" if (start or stop) else ""
         logg(f"{corpus_name}: reading corpus{slicing} from {file_path}")
         df = self.read(file_path, start=start, stop=stop)
 
         # start the nlp pipeline
         logg(f"{corpus_name}: start processing")
         # self.check_docs(df); return
-        reader = self.process_docs(df, ignore_title=corpus_name.startswith('dewac'))
+        reader = self.process_docs(df, ignore_title=corpus_name.startswith("dewac"))
 
         if start or stop:
-            suffix = f'_{start:d}_{stop-1:d}_nlp'
+            suffix = f"_{start:d}_{stop-1:d}_nlp"
         else:
-            suffix = '_nlp'
+            suffix = "_nlp"
 
         NLP_DIR.mkdir(exist_ok=True, parents=True)
-        filename = NLP_DIR / f'{corpus_name}{suffix}.csv'
+        filename = NLP_DIR / f"{corpus_name}{suffix}.csv"
         logg(f"{corpus_name}: saving to {filename}")
 
-        with open(filename, 'w') as fp:
+        with open(filename, "w") as fp:
             header = True
             for doc in reader:
                 try:
-                    doc.to_csv(fp, sep='\t', quoting=csv.QUOTE_NONE, index=None, header=header)
+                    doc.to_csv(
+                        fp, sep="\t", quoting=csv.QUOTE_NONE, index=None, header=header
+                    )
                 except csv.Error as e:
                     logg(doc)
                     raise e
                 header = False
 
         t1 = int(time() - t0)
-        logg(f"{corpus_name}: done in {t1 // 3600:02d}:{(t1 // 60) % 60:02d}:{t1 % 60:02d}")
+        logg(
+            f"{corpus_name}: done in {t1 // 3600:02d}:{(t1 // 60) % 60:02d}:{t1 % 60:02d}"
+        )
 
     def process_docs(self, text_df, fix_encoding_errors=True, ignore_title=False):
         """Processes DataFrames from the ETL pipeline with the NLP pipeline."""
@@ -90,15 +124,17 @@ class NLProcessor(object):
             key, title, descr, text = kv
             # build spacy doc
             texts = [descr, text] if ignore_title else [title, descr, text]
-            raw_text = '\n'.join(filter(None, texts))
+            raw_text = "\n".join(filter(None, texts))
             if fix_encoding_errors:
-                raw_text = raw_text.replace('\x00', ' ')
+                raw_text = raw_text.replace("\x00", " ")
                 raw_text = fix_text(raw_text, fix_entities=True)
             doc = self.nlp(raw_text)
 
             # annotated phrases
             noun_chunks = {
-                token.i: idx for idx, chunk in enumerate(doc.noun_chunks) for token in chunk
+                token.i: idx
+                for idx, chunk in enumerate(doc.noun_chunks)
+                for token in chunk
             }
 
             # extract relevant attributes
@@ -114,7 +150,8 @@ class NLProcessor(object):
                     ENT_IOB: token.ent_iob_,
                     ENT_TYPE: token.ent_type_,
                     NOUN_PHRASE: noun_chunks.get(token.i, -1),
-                } for token in doc
+                }
+                for token in doc
             ]
 
             yield self.df_from_doc(attr)
@@ -125,8 +162,8 @@ class NLProcessor(object):
 
         df = pd.read_pickle(f)[[TITLE, DESCRIPTION, TEXT]].iloc[start:stop]
         # lazy hack for dewiki_new
-        if 'dewiki' in f.name:
-            good_ids = pd.read_pickle(ETL_DIR / 'dewiki_good_ids.pickle')
+        if "dewiki" in f.name:
+            good_ids = pd.read_pickle(ETL_DIR / "dewiki_good_ids.pickle")
             df = df[df.index.isin(good_ids.index)]
         logg(f"using {len(df):d} documents")
 
@@ -141,8 +178,8 @@ class NLProcessor(object):
         """
 
         df = pd.DataFrame.from_records(doc)
-        df[ENT_IOB] = df[ENT_IOB].astype('category')
-        df[ENT_TYPE] = df[ENT_TYPE].astype('category')
+        df[ENT_IOB] = df[ENT_IOB].astype("category")
+        df[ENT_TYPE] = df[ENT_TYPE].astype("category")
 
         # create Tokens from IWNLP lemmatization, else from spacy lemmatization (or original text)
         mask_iwnlp = ~df[IWNLP].isnull()
@@ -150,23 +187,23 @@ class NLProcessor(object):
         df.loc[~mask_iwnlp, TOKEN] = df.loc[~mask_iwnlp, LEMMA]
 
         # fixes wrong POS tagging for punctuation
-        mask_punct = df[TOKEN].isin(list('[]<>/–%'))
+        mask_punct = df[TOKEN].isin(list("[]<>/–%"))
         df.loc[mask_punct, POS] = PUNCT
-        df[POS] = df[POS].astype('category')
+        df[POS] = df[POS].astype("category")
 
         # set an index for each sentence
         df[SENT_IDX] = df[SENT_START].cumsum() - 1
 
         # set an index for each entity
-        df[ENT_IDX] = (df[ENT_IOB] == 'B')
+        df[ENT_IDX] = df[ENT_IOB] == "B"
         df[ENT_IDX] = df[ENT_IDX].cumsum() - 1
-        df.loc[df[ENT_IOB] == 'O', ENT_IDX] = -1
+        df.loc[df[ENT_IOB] == "O", ENT_IDX] = -1
 
         # fix whitespace tokens
-        df[TEXT] = df[TEXT].str.replace(' *\n *', '<newline>')
-        df[TEXT] = df[TEXT].str.replace(' *\t *', '<tab>')
-        df[TEXT] = df[TEXT].str.replace(' +', '<space>')
-        df[TOKEN] = df[TOKEN].str.replace(' +', '<space>')
+        df[TEXT] = df[TEXT].str.replace(" *\n *", "<newline>")
+        df[TEXT] = df[TEXT].str.replace(" *\t *", "<tab>")
+        df[TEXT] = df[TEXT].str.replace(" +", "<space>")
+        df[TOKEN] = df[TOKEN].str.replace(" +", "<space>")
 
         df = df[self.FIELDS]
 

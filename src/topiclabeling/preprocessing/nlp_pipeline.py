@@ -12,24 +12,29 @@ if __name__ == "__main__":
     t0 = time()
 
     args = global_args()
-    init_logging('NLP', to_stdout='stdout' in args.log, to_file='file' in args.log)
+    init_logging("NLP", to_stdout="stdout" in args.log, to_file="file" in args.log)
 
     logg("##### START #####")
 
     # filter files for certain prefixes
-    prefixes = r'^(' + '|'.join(args.corpus) + r').'
+    prefixes = r"^(" + "|".join(args.corpus) + r")."
     pattern = re.compile(prefixes)
-    files = sorted(f for f in ETL_DIR.iterdir() if f.is_file() and pattern.match(f.name))
-    processor = NLProcessor(spacy_path=args.spacy_path, lemmatization_map_file=args.lemmata)
+    files = sorted(
+        f for f in ETL_DIR.iterdir() if f.is_file() and pattern.match(f.name)
+    )
+    processor = NLProcessor(
+        spacy_path=args.spacy_path, lemmatization_map_file=args.lemmata
+    )
 
     start = args.start
 
     for file in files:
-        corpus = file.name.split('.')[0]
+        corpus = file.name.split(".")[0]
         for i in range(1, args.batches + 1):
             logg(f">>> batch: {i:d} >>>")
             processor.read_process_store(
-                file, corpus,
+                file,
+                corpus,
                 start=start,
                 stop=(start + args.batch_size) if args.batch_size else None,
             )

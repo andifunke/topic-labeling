@@ -4,8 +4,10 @@
 # http://doc.scrapy.org/en/latest/topics/items.html
 import scrapy
 
+
 class CrawlerItem(scrapy.Item):
     """Model for the scraped items"""
+
     url = scrapy.Field()
     visited = scrapy.Field()
     published = scrapy.Field()

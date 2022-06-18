@@ -7,13 +7,30 @@ from spacy.tokens import Token
 import pandas as pd
 
 from topiclabeling.utils.constants import (
-    ADJ, ADV, INTJ, NOUN, PROPN, VERB, ADP, AUX, CCONJ, CONJ, DET, NUM,
-    PART, PRON, SCONJ, PUNCT, SYM, SPACE, PHRASE, NPHRASE
+    ADJ,
+    ADV,
+    INTJ,
+    NOUN,
+    PROPN,
+    VERB,
+    ADP,
+    AUX,
+    CCONJ,
+    CONJ,
+    DET,
+    NUM,
+    PART,
+    PRON,
+    SCONJ,
+    PUNCT,
+    SYM,
+    SPACE,
+    PHRASE,
+    NPHRASE,
 )
 
 
 class LemmatizerPlus(object):
-
     def __init__(self, lemmatizer_path, nlp, lemmatization_map_file=None):
         """
 
@@ -28,12 +45,20 @@ class LemmatizerPlus(object):
         self.lemmatizer = IWNLPWrapper(lemmatizer_path=lemmatizer_path)
         self.stringstore = nlp.vocab.strings
 
-        Token.set_extension('iwnlp_lemmas', getter=self.lemmatize, force=True)
-        self.lookup = {('fast', ADV): 'fast'}
+        Token.set_extension("iwnlp_lemmas", getter=self.lemmatize, force=True)
+        self.lookup = {("fast", ADV): "fast"}
 
-        self.lemmatization_map = pd.read_csv(
-            lemmatization_map_file, sep='\t', header=None, index_col=[0, 1], names=['lemma']
-        ) if lemmatization_map_file else None
+        self.lemmatization_map = (
+            pd.read_csv(
+                lemmatization_map_file,
+                sep="\t",
+                header=None,
+                index_col=[0, 1],
+                names=["lemma"],
+            )
+            if lemmatization_map_file
+            else None
+        )
 
     def __call__(self, doc):
         for token in doc:
@@ -60,8 +85,8 @@ class LemmatizerPlus(object):
 
         try:
             if (text, math.nan) in self.lemmatization_map.index:
-                return self.lemmatization_map.loc[(text, math.nan), 'lemma']
-            return self.lemmatization_map.loc[(text, pos), 'lemma']
+                return self.lemmatization_map.loc[(text, math.nan), "lemma"]
+            return self.lemmatization_map.loc[(text, pos), "lemma"]
         except (TypeError, KeyError, AttributeError):
             pass
 
@@ -73,12 +98,12 @@ class LemmatizerPlus(object):
             return None
         # custom lemmata for whitespace
         if pos == SPACE:
-            text = token.text.strip(' ')
-            if text == '\n':
-                return '<newline>'
-            if text == '\t':
-                return '<tab>'
-            return '<space>'
+            text = token.text.strip(" ")
+            if text == "\n":
+                return "<newline>"
+            if text == "\t":
+                return "<tab>"
+            return "<space>"
 
         # Wiktionary has no POS PROPN
         if pos == PROPN:
@@ -108,7 +133,7 @@ class LemmatizerPlus(object):
                 text_low = text.lower()
                 for i in range(1, len(text) - tolerance):
                     # looks ugly, but avoids full capitalization
-                    text_edit = text_low[i].upper() + text_low[i+1:]
+                    text_edit = text_low[i].upper() + text_low[i + 1 :]
                     lemmata = self.lemmatizer.lemmatize(text_edit, pos)
                     if lemmata:
                         value = text_edit if text_edit in lemmata else lemmata[0]
@@ -121,7 +146,19 @@ class LemmatizerPlus(object):
             if lemmata:
                 value = text if text in lemmata else lemmata[0]
 
-        if value and pos in {ADJ, ADP, ADV, AUX, CCONJ, CONJ, INTJ, PART, PRON, SCONJ, VERB}:
+        if value and pos in {
+            ADJ,
+            ADP,
+            ADV,
+            AUX,
+            CCONJ,
+            CONJ,
+            INTJ,
+            PART,
+            PRON,
+            SCONJ,
+            VERB,
+        }:
             value = value.lower()
 
         if value:

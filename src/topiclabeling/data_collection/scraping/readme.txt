@@ -4,7 +4,7 @@ To fetch news-articles from one of the following sources, run:
 
 >>> scrapy crawl focus
 
-By default these spiders crawl for articles from the categories "politik" and "wirtschaft".
+By default, these spiders crawl for articles from the categories "politik" and "wirtschaft".
 You can specify different news-sections by supplying the following argument, e.g.:
 
 >>> scrapy crawl faz -a categories="politik|finanzen|feuilleton"

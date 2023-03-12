@@ -1,6 +1,6 @@
-numpy==1.15.*
+numpy==1.19.5
 tqdm==4.29.*
 pandas==0.23.*
 gensim==3.5.*
 spacy==2.0.*
-scrapy==1.5.*
+scrapy==2.6.3

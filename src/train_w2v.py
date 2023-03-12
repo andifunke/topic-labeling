@@ -14,14 +14,17 @@ from utils import init_logging, log_args
 
 class Sentences(object):
     """this is a memory friendly approach that streams data from disk."""
+
     def __init__(self, input_dir, logger, use_file_cache=False, lowercase=False):
         self.input_dir = input_dir
-        self.cache_dir = join(input_dir, 'cache')
+        self.cache_dir = join(input_dir, "cache")
         self.logger = logger
         self.use_file_cache = use_file_cache
-        self.files = sorted([f for f in listdir(input_dir) if isfile(join(input_dir, f))])
+        self.files = sorted(
+            [f for f in listdir(input_dir) if isfile(join(input_dir, f))]
+        )
         self.cached_files = None
-        self.goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
+        self.goodids = pd.read_pickle(join(ETL_PATH, "dewiki_good_ids.pickle"))
         self.lowercase = lowercase
         if use_file_cache:
             self.init_file_cache()
@@ -30,7 +33,7 @@ class Sentences(object):
         if self.use_file_cache:
             for filename in self.cached_files:
                 gc.collect()
-                f = join(self.input_dir, 'cache', filename)
+                f = join(self.input_dir, "cache", filename)
                 self.logger.info(f)
                 ser = pd.read_pickle(f)
                 for sent in ser:
@@ -55,10 +58,12 @@ class Sentences(object):
     def init_file_cache(self):
         if not exists(self.cache_dir):
             makedirs(self.cache_dir)
-        self.logger.info('inititalizing file cache in ' + self.cache_dir)
+        self.logger.info("inititalizing file cache in " + self.cache_dir)
         for filename in self.files:
             ser = self.load(filename)
-            ser.to_pickle(join(self.cache_dir, filename.split('.')[0] + '_cache.pickle'))
+            ser.to_pickle(
+                join(self.cache_dir, filename.split(".")[0] + "_cache.pickle")
+            )
         self.cached_files = sorted(
             [f for f in listdir(self.cache_dir) if isfile(join(self.cache_dir, f))]
         )
@@ -71,31 +76,40 @@ class Sentences(object):
 def main():
     # --- argument parsing ---
     (
-        model_name, epochs, min_count, cores, checkpoint_every,
-        cache_in_memory, lowercase, fasttext, args
-    ) = parse_args(default_model_name='w2v_default', default_epochs=100)
+        model_name,
+        epochs,
+        min_count,
+        cores,
+        checkpoint_every,
+        cache_in_memory,
+        lowercase,
+        fasttext,
+        args,
+    ) = parse_args(default_model_name="w2v_default", default_epochs=100)
 
     # --- init logging ---
     logger = init_logging(name=model_name, basic=True, to_file=True, to_stdout=False)
     log_args(logger, args)
 
-    input_dir = join(SMPL_PATH, 'dewiki')
+    input_dir = join(SMPL_PATH, "dewiki")
     model_dir = join(EMB_PATH, model_name)
     if not exists(model_dir):
         makedirs(model_dir)
-    logger.info('model dir: ' + model_dir)
+    logger.info("model dir: " + model_dir)
 
     t0 = time()
     if cache_in_memory:
         # needs approx. 25GB of RAM
-        logger.info('cache data in memory')
+        logger.info("cache data in memory")
         sentences = [s for s in Sentences(input_dir, logger, lowercase=lowercase)]
     else:
-        sentences = Sentences(input_dir, logger, use_file_cache=True, lowercase=lowercase)
+        sentences = Sentences(
+            input_dir, logger, use_file_cache=True, lowercase=lowercase
+        )
     gc.collect()
 
     # Model initialization
-    logger.info('Initializing new model')
+    logger.info("Initializing new model")
     if fasttext:
         model = FastText(
             size=300,
@@ -122,14 +136,14 @@ def main():
             iter=epochs,
             workers=cores,
         )
-    logger.info('Building vocab')
+    logger.info("Building vocab")
     model.build_vocab(sentences, progress_per=100_000)
 
     # Model Training
     epoch_saver = EpochSaver(model_name, model_dir, checkpoint_every)
     epoch_logger = EpochLogger(logger)
 
-    logger.info('Training {:d} epochs'.format(epochs))
+    logger.info("Training {:d} epochs".format(epochs))
     model.train(
         sentences,
         total_examples=model.corpus_count,
@@ -140,13 +154,15 @@ def main():
 
     # saving model
     file_path = join(model_dir, model_name)
-    logger.info('Writing model to ' + file_path)
+    logger.info("Writing model to " + file_path)
     model.callbacks = ()
     model.save(file_path)
 
     t1 = int(time() - t0)
-    logger.info("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
+    logger.info(
+        "all done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60)
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

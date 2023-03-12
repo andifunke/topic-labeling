@@ -27,14 +27,14 @@ args = parser.parse_args()
 # Reading in the topic terms from the topics file.
 topics_labels = pd.read_csv(args.data, index_col=[0, 1]).reset_index(drop=True)
 topics_labels = topics_labels.applymap(str.lower)
-topic_cols = [col for col in topics_labels.columns if 'term' in col]
-label_cols = [col for col in topics_labels.columns if 'label' in col]
+topic_cols = [col for col in topics_labels.columns if "term" in col]
+label_cols = [col for col in topics_labels.columns if "label" in col]
 topics = topics_labels[topic_cols]
 labels = topics_labels[label_cols]
 tprint(topics, 5)
 tprint(labels, 5)
 
-topic_list = topics.T.to_dict('list')
+topic_list = topics.T.to_dict("list")
 label_list = labels.values.tolist()
 
 print("Data Gathered for unsupervised model")
@@ -44,7 +44,7 @@ print("Data Gathered for unsupervised model")
 def get_topic_lg(elem):
     tot_list = []
     for item in elem:
-        trigrams = [item[i:i + 3] for i in range(0, len(item) - 2)]
+        trigrams = [item[i : i + 3] for i in range(0, len(item) - 2)]
         tot_list = tot_list + trigrams
     x = Counter(tot_list)
     total = sum(x.values(), 0.0)
@@ -63,8 +63,9 @@ def get_best_label(label_list, num):
     topic_ls = get_topic_lg(topic_list[num])
     val_dict = {}
     for item in label_list:
-        trigrams = [item[i:i + 3] for i in
-                    range(0, len(item) - 2)]  # Extracting letter trigram for label
+        trigrams = [
+            item[i : i + 3] for i in range(0, len(item) - 2)
+        ]  # Extracting letter trigram for label
         label_cnt = Counter(trigrams)
         total = sum(label_cnt.values(), 0.0)
         for key in label_cnt:
@@ -83,9 +84,10 @@ def get_best_label(label_list, num):
                 listlabel.append(0.0)
         val = 1 - cosine(np.array(listtopic), np.array(listlabel))  # Cosine Similarity
         val_dict[item] = val
-    list_sorted = sorted(val_dict.items(), key=lambda x: x[1],
-                         reverse=True)  # Sorting the labels by rank
-    return [i[0] for i in list_sorted[:int(args.num_unsup_labels)]]
+    list_sorted = sorted(
+        val_dict.items(), key=lambda x: x[1], reverse=True
+    )  # Sorting the labels by rank
+    return [i[0] for i in list_sorted[: int(args.num_unsup_labels)]]
 
 
 unsup_output = []
@@ -95,10 +97,12 @@ for j in range(0, len(topic_list)):
 # printing the top unsupervised labels.
 print("Printing labels for unsupervised model")
 print("\n")
-g = open(args.output_unsupervised, 'w')
+g = open(args.output_unsupervised, "w")
 for i, item in enumerate(unsup_output):
     print("Top " + args.num_unsup_labels + " labels for topic " + str(i) + " are:")
-    g.write("Top " + args.num_unsup_labels + " labels for topic " + str(i) + " are:" + "\n")
+    g.write(
+        "Top " + args.num_unsup_labels + " labels for topic " + str(i) + " are:" + "\n"
+    )
     for elem in item:
         print(elem)
         g.write(elem + "\n")

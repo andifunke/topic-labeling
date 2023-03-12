@@ -82,7 +82,7 @@ for academia.
 
 #### 1.2 Crawling datasets from the web
 
-  - [faz/focus](src/scrapy/readme.txt): use the provided [scrapy](https://scrapy.org/) -spiders to fetch
+  - [faz/focus](src/scraping/readme.txt): use the provided [scrapy](https://scrapy.org/) -spiders to fetch
     news-articles from the web.
   - [OnlineParticipation](https://github.com/Liebeck/OnlineParticipationDatasets): Follow the
     instructions in the linked repository to download this collection.

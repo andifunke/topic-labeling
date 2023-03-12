@@ -13,14 +13,15 @@ from utils import init_logging, log_args
 
 
 class Documents(object):
-
     def __init__(self, input_dir, logger, lowercase=False):
         self.input_dir = input_dir
         self.logger = logger
         self.lowercase = lowercase
-        self.files = sorted([f for f in listdir(input_dir) if isfile(join(input_dir, f))])
-        self.goodids = pd.read_pickle(join(ETL_PATH, 'dewiki_good_ids.pickle'))
-        self.titles = pd.read_pickle(join(ETL_PATH, 'dewiki_phrases_lemmatized.pickle'))
+        self.files = sorted(
+            [f for f in listdir(input_dir) if isfile(join(input_dir, f))]
+        )
+        self.goodids = pd.read_pickle(join(ETL_PATH, "dewiki_good_ids.pickle"))
+        self.titles = pd.read_pickle(join(ETL_PATH, "dewiki_phrases_lemmatized.pickle"))
         if lowercase:
             self.titles.token = self.titles.token.str.lower()
             self.titles.text = self.titles.text.str.lower()
@@ -28,13 +29,13 @@ class Documents(object):
     def __iter__(self):
         for name in self.files[:]:
             gc.collect()
-            corpus = name.split('.')[0]
-            self.logger.info('loading ' + corpus)
-            
+            corpus = name.split(".")[0]
+            self.logger.info("loading " + corpus)
+
             f = join(self.input_dir, name)
             df = pd.read_pickle(f)
 
-            # applying the same processing to each document on each iteration 
+            # applying the same processing to each document on each iteration
             # is quite inefficient. If applicable keep TaggedDocuments in memory
             df = df[df.hash.isin(self.goodids.index)]
 
@@ -53,11 +54,14 @@ class Documents(object):
                 # The conversion of the hash_id to str is necessary since gensim trys to allocate an
                 # array for ids of size 2^64 if int values are too big. 2nd tag is the lemmatized token,
                 # 3rd tag is the original (underscore-concatenated) title (parenthesis removed)
-                yield TaggedDocument(doc, [
-                    str(doc_id),
-                    self.titles.loc[doc_id, TOKEN],
-                    self.titles.loc[doc_id, TEXT]
-                ])
+                yield TaggedDocument(
+                    doc,
+                    [
+                        str(doc_id),
+                        self.titles.loc[doc_id, TOKEN],
+                        self.titles.loc[doc_id, TEXT],
+                    ],
+                )
 
     @staticmethod
     def docs_to_lists(token_series):
@@ -67,19 +71,26 @@ class Documents(object):
 def main():
     # --- argument parsing ---
     (
-        model_name, epochs, min_count, cores, checkpoint_every,
-        cache_in_memory, lowercase, _, args
-    ) = parse_args(default_model_name='d2v', default_epochs=20)
+        model_name,
+        epochs,
+        min_count,
+        cores,
+        checkpoint_every,
+        cache_in_memory,
+        lowercase,
+        _,
+        args,
+    ) = parse_args(default_model_name="d2v", default_epochs=20)
 
     # --- init logging ---
     logger = init_logging(name=model_name, basic=True, to_file=True, to_stdout=False)
     log_args(logger, args)
 
-    input_dir = join(SMPL_PATH, 'dewiki')
+    input_dir = join(SMPL_PATH, "dewiki")
     model_dir = join(EMB_PATH, model_name)
     if not exists(model_dir):
         makedirs(model_dir)
-    logger.info('model dir: ' + model_dir)
+    logger.info("model dir: " + model_dir)
 
     t0 = time()
     documents = Documents(input_dir=input_dir, logger=logger, lowercase=lowercase)
@@ -88,7 +99,7 @@ def main():
     gc.collect()
 
     # Model initialization
-    logger.info('Initializing new model')
+    logger.info("Initializing new model")
     model = Doc2Vec(
         vector_size=300,
         window=15,
@@ -103,14 +114,14 @@ def main():
         epochs=epochs,
         workers=cores,
     )
-    logger.info('Building vocab')
+    logger.info("Building vocab")
     model.build_vocab(documents)
 
     # Model Training
     epoch_saver = EpochSaver(model_name, model_dir, checkpoint_every)
     epoch_logger = EpochLogger(logger)
 
-    logger.info('Training {:d} epochs'.format(epochs))
+    logger.info("Training {:d} epochs".format(epochs))
     model.train(
         documents,
         total_examples=model.corpus_count,
@@ -121,15 +132,17 @@ def main():
 
     # saving model
     file_path = join(model_dir, model_name)
-    logger.info('Writing model to ' + file_path)
+    logger.info("Writing model to " + file_path)
     model.callbacks = ()
     model.save(file_path)
 
     t1 = int(time() - t0)
-    logger.info("all done in {:02d}:{:02d}:{:02d}".format(t1//3600, (t1//60) % 60, t1 % 60))
+    logger.info(
+        "all done in {:02d}:{:02d}:{:02d}".format(t1 // 3600, (t1 // 60) % 60, t1 % 60)
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 
     numpy.random.randn()

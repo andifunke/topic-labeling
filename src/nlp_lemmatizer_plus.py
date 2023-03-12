@@ -3,20 +3,38 @@
 from spacy.tokens import Token
 from iwnlp.iwnlp_wrapper import IWNLPWrapper
 from constants import (
-    ADJ, ADV, INTJ, NOUN, PROPN, VERB, ADP, AUX, CCONJ, CONJ, DET, NUM,
-    PART, PRON, SCONJ, PUNCT, SYM, X, SPACE, PHRASE,
-    NPHRASE)
+    ADJ,
+    ADV,
+    INTJ,
+    NOUN,
+    PROPN,
+    VERB,
+    ADP,
+    AUX,
+    CCONJ,
+    CONJ,
+    DET,
+    NUM,
+    PART,
+    PRON,
+    SCONJ,
+    PUNCT,
+    SYM,
+    X,
+    SPACE,
+    PHRASE,
+    NPHRASE,
+)
 
 
 class LemmatizerPlus(object):
-
     def __init__(self, lemmatizer_path, nlp):
         self.lemmatizer = IWNLPWrapper(lemmatizer_path=lemmatizer_path)
         self.stringstore = nlp.vocab.strings
         # self.matcher = PhraseMatcher(nlp.vocab)
-        Token.set_extension('iwnlp_lemmas', getter=self.lemmatize, force=True)
+        Token.set_extension("iwnlp_lemmas", getter=self.lemmatize, force=True)
         self.lookup = {
-            ('fast', ADV): 'fast',
+            ("fast", ADV): "fast",
         }
 
     def __call__(self, doc):
@@ -75,7 +93,7 @@ class LemmatizerPlus(object):
                 tolerance = 3
                 for i in range(1, len(text) - tolerance):
                     # looks ugly, but avoids full captitalization
-                    text_edit = text_low[i].upper() + text_low[i+1:]
+                    text_edit = text_low[i].upper() + text_low[i + 1 :]
                     lemm = self.lemmatizer.lemmatize(text_edit, pos)
                     if lemm:
                         value = (text[:i] + lemm[0]).title()
@@ -87,7 +105,19 @@ class LemmatizerPlus(object):
             if lemm:
                 value = lemm[0]
 
-        if value and pos in {ADJ, ADP, ADV, AUX, CCONJ, CONJ, INTJ, PART, PRON, SCONJ, VERB}:
+        if value and pos in {
+            ADJ,
+            ADP,
+            ADV,
+            AUX,
+            CCONJ,
+            CONJ,
+            INTJ,
+            PART,
+            PRON,
+            SCONJ,
+            VERB,
+        }:
             value = value.lower()
 
         if value:

@@ -1,4 +1,4 @@
-numpy==1.19.5
+numpy==1.22.0
 tqdm==4.29.*
 pandas==0.23.*
 gensim==3.5.*
